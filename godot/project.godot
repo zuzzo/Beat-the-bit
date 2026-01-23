@@ -1,0 +1,32 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Beat the Bit"
+run/main_scene="res://scenes/MainMenu.tscn"
+config/features=PackedStringArray("4.5")
+
+[autoload]
+
+GameConfig="*res://scripts/GameConfig.gd"
+DeckUtils="*res://scripts/DeckUtils.gd"
+AbilityRegistry="*res://scripts/AbilityRegistry.gd"
+CardDatabase="*res://scripts/CardDatabase.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/mode=1
+
+[physics]
+
+3d/default_gravity=9.81

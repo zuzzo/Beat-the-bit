@@ -1,0 +1,84 @@
+[gd_scene load_steps=16 format=3 uid="uid://dice"]
+
+[ext_resource type="Texture2D" path="res://assets/dice/1.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/dice/2.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/dice/3.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/dice/4.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/dice/5.png" id="5"]
+[ext_resource type="Texture2D" path="res://assets/dice/6.png" id="6"]
+[ext_resource type="Script" path="res://scripts/Dice.gd" id="7"]
+
+[sub_resource type="PlaneMesh" id="1"]
+size = Vector2(0.5, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="2"]
+albedo_texture = ExtResource("1")
+cull_mode = 2
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="3"]
+albedo_texture = ExtResource("2")
+cull_mode = 2
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="4"]
+albedo_texture = ExtResource("3")
+cull_mode = 2
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="5"]
+albedo_texture = ExtResource("4")
+cull_mode = 2
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="6"]
+albedo_texture = ExtResource("5")
+cull_mode = 2
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="7"]
+albedo_texture = ExtResource("6")
+cull_mode = 2
+roughness = 0.9
+
+[sub_resource type="BoxShape3D" id="8"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[node name="Dice" type="RigidBody3D"]
+mass = 1.0
+linear_damp = 0.05
+angular_damp = 0.2
+script = ExtResource("7")
+
+[node name="FaceTop" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("3")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+
+[node name="FaceBottom" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("7")
+transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, -1, 0, -0.25, 0)
+
+[node name="FaceFront" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("6")
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0.25)
+
+[node name="FaceBack" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("2")
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, -0.25)
+
+[node name="FaceRight" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("4")
+transform = Transform3D(0, 1, 0, -1, 0, 0, 0, 0, 1, 0.25, 0, 0)
+
+[node name="FaceLeft" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("5")
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, -0.25, 0, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("8")
