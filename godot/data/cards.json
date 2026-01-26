@@ -14,9 +14,8 @@
     "penalty_violet": [
       "lose_heart_1"
     ],
-    "sacrifice_optional": [
-      "discard_hand_card_1"
-    ]
+    "sacrifice_cost": "discard_hand_card_1",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_pianta_carnivora",
@@ -31,29 +30,10 @@
       "reward_coin_4"
     ],
     "penalty_violet": [
-      "reward_green_die"
+      "add_green_die"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
-  },
-  {
-    "id": "enemy_orco",
-    "name": "Orco",
-    "type": "scontro",
-    "difficulty": 8,
-    "set": "GnG",
-    "reward_brown": [
-      "reward_coin_5",
-      "reward_group_chest"
-    ],
-    "reward_silver": [],
-    "penalty_violet": [
-      "lose_heart_1"
-    ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "sacrifice_cost": "flip_equipment",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_pipistrello",
@@ -62,16 +42,16 @@
     "difficulty": 12,
     "set": "GnG",
     "reward_brown": [
-      "reward_group_vaso_di_coccio",
       "reward_coin_3"
     ],
-    "reward_silver": [],
+    "reward_silver": [
+      "reward_group_vaso_di_coccio"
+    ],
     "penalty_violet": [
       "lose_heart_1"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "sacrifice_cost": "discard_hand_card_1",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_cavaliere_fantasma",
@@ -80,17 +60,16 @@
     "difficulty": 10,
     "set": "GnG",
     "reward_brown": [
-      "reward_green_die",
-      "reward_group_chest",
       "reward_token_tombstone"
     ],
-    "reward_silver": [],
-    "penalty_violet": [
-      "lose_heart_1"
+    "reward_silver": [
+      "reward_group_chest"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "penalty_violet": [
+      "add_green_die"
+    ],
+    "sacrifice_cost": "lose_heart_1",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_zombie_11",
@@ -99,16 +78,16 @@
     "difficulty": 11,
     "set": "GnG",
     "reward_brown": [
-      "reward_group_vaso_di_coccio",
       "reward_coin_4"
     ],
-    "reward_silver": [],
+    "reward_silver": [
+      "reward_group_vaso_di_coccio"
+    ],
     "penalty_violet": [
       "lose_heart_1"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "sacrifice_cost": "add_green_die",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_zombie_12",
@@ -117,16 +96,16 @@
     "difficulty": 12,
     "set": "GnG",
     "reward_brown": [
-      "reward_coin_4",
+      "reward_coin_4"
+    ],
+    "reward_silver": [
       "reward_token_tombstone"
     ],
-    "reward_silver": [],
     "penalty_violet": [
       "lose_heart_1"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "sacrifice_cost": "add_green_die",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_stregone",
@@ -135,17 +114,16 @@
     "difficulty": 9,
     "set": "GnG",
     "reward_brown": [
-      "reward_green_die",
-      "reward_group_chest",
       "reward_coin_4"
     ],
-    "reward_silver": [],
-    "penalty_violet": [
-      "lose_heart_1"
+    "reward_silver": [
+      "reward_group_chest"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "penalty_violet": [
+      "add_green_die"
+    ],
+    "sacrifice_cost": "lose_heart_1",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_demonietto",
@@ -154,17 +132,16 @@
     "difficulty": 13,
     "set": "GnG",
     "reward_brown": [
-      "reward_green_die",
-      "reward_coin_4",
       "reward_token_tombstone"
     ],
-    "reward_silver": [],
-    "penalty_violet": [
-      "lose_heart_1"
+    "reward_silver": [
+      "reward_coin_4"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "penalty_violet": [
+      "add_green_die"
+    ],
+    "sacrifice_cost": "flip_equipment",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_corvo",
@@ -173,16 +150,16 @@
     "difficulty": 14,
     "set": "GnG",
     "reward_brown": [
-      "reward_coin_2",
+      "reward_coin_2"
+    ],
+    "reward_silver": [
       "reward_token_tombstone"
     ],
-    "reward_silver": [],
     "penalty_violet": [
       "lose_heart_1"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue_coin_3"
-    ]
+    "sacrifice_cost": "pay_coins_3",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_imp",
@@ -191,14 +168,16 @@
     "difficulty": 11,
     "set": "GnG",
     "reward_brown": [
-      "reward_coin_3",
+      "reward_coin_3"
+    ],
+    "reward_silver": [
       "reward_group_vaso_di_coccio"
     ],
-    "reward_silver": [],
-    "penalty_violet": [],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "penalty_violet": [
+      "lose_coins_3"
+    ],
+    "sacrifice_cost": "discard_hand_card_1",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "enemy_spettro",
@@ -207,16 +186,16 @@
     "difficulty": 11,
     "set": "GnG",
     "reward_brown": [
-      "reward_group_vaso_di_coccio",
       "reward_token_tombstone"
     ],
-    "reward_silver": [],
-    "penalty_violet": [
-      "lose_heart_1"
+    "reward_silver": [
+      "reward_group_vaso_di_coccio"
     ],
-    "sacrifice_optional": [
-      "extra_die_then_remove_blue"
-    ]
+    "penalty_violet": [
+      "discard_hand_card_1"
+    ],
+    "sacrifice_cost": "lose_heart_1",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   },
   {
     "id": "curse_forma_di_rana",
@@ -302,7 +281,9 @@
     "difficulty": 8,
     "hearts": 2,
     "set": "GnG",
-    "reward_brown": [],
+    "reward_brown": [
+      "reward_group_teca"
+    ],
     "reward_silver": [],
     "penalty_violet": [
       "fail_even_discard_or_odd_lose_heart"
@@ -315,7 +296,9 @@
     "difficulty": 8,
     "hearts": 2,
     "set": "GnG",
-    "reward_brown": [],
+    "reward_brown": [
+      "reward_group_teca"
+    ],
     "reward_silver": [],
     "penalty_violet": [
       "fail_even_poison_or_odd_lose_heart"
@@ -328,7 +311,9 @@
     "difficulty": 7,
     "hearts": 2,
     "set": "GnG",
-    "reward_brown": [],
+    "reward_brown": [
+      "reward_group_teca"
+    ],
     "reward_silver": [],
     "penalty_violet": [
       "fail_even_lose_3_coins_or_odd_lose_heart"
@@ -341,7 +326,9 @@
     "difficulty": 9,
     "hearts": 2,
     "set": "GnG",
-    "reward_brown": [],
+    "reward_brown": [
+      "reward_group_teca"
+    ],
     "reward_silver": [],
     "penalty_violet": [
       "fail_even_flip_or_odd_lose_heart"
@@ -373,7 +360,17 @@
       "armor_extra_slot_1",
       "sacrifice_prevent_heart_loss"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "on_heart_loss",
+        "effect": "sacrifice_prevent_heart_loss"
+      },
+      {
+        "when": "equip",
+        "effect": "armor_extra_slot_1"
+      }
+    ]
   },
   {
     "id": "treasure_saltare",
@@ -383,9 +380,20 @@
     "group": "vaso_di_coccio",
     "cost": 3,
     "effects": [
+      "return_to_hand",
       "discard_revealed_adventure"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "before_adventure",
+        "effect": "discard_revealed_adventure"
+      },
+      {
+        "when": "before_adventure",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_torcia",
@@ -395,9 +403,20 @@
     "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
+      "return_to_hand",
       "reroll_same_dice"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "after_roll",
+        "effect": "reroll_same_dice"
+      },
+      {
+        "when": "after_roll",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_ascia",
@@ -407,9 +426,20 @@
     "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
+      "return_to_hand",
       "after_roll_minus_1_all_dice"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "after_roll",
+        "effect": "after_roll_minus_1_all_dice"
+      },
+      {
+        "when": "after_roll",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_pugnale",
@@ -419,9 +449,20 @@
     "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
+      "return_to_hand",
       "after_roll_set_one_die_to_1"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "after_roll",
+        "effect": "after_roll_set_one_die_to_1"
+      },
+      {
+        "when": "after_roll",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_lancia",
@@ -431,9 +472,20 @@
     "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
+      "return_to_hand",
       "reroll_5_or_6"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "after_roll",
+        "effect": "reroll_5_or_6"
+      },
+      {
+        "when": "after_roll",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_spada",
@@ -443,9 +495,20 @@
     "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
+      "return_to_hand",
       "halve_even_dice"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "after_roll",
+        "effect": "halve_even_dice"
+      },
+      {
+        "when": "after_roll",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_eroismo",
@@ -457,7 +520,13 @@
     "effects": [
       "add_red_die"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "any_time",
+        "effect": "add_red_die"
+      }
+    ]
   },
   {
     "id": "treasure_cannone_psichico",
@@ -469,7 +538,13 @@
     "effects": [
       "reflect_damage_poison"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "on_heart_loss",
+        "effect": "reflect_damage_poison"
+      }
+    ]
   },
   {
     "id": "treasure_velocita",
@@ -481,7 +556,13 @@
     "effects": [
       "next_roll_minus_2_all_dice"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "next_roll",
+        "effect": "next_roll_minus_2_all_dice"
+      }
+    ]
   },
   {
     "id": "treasure_specchio_riflettente",
@@ -491,9 +572,25 @@
     "group": "chest",
     "cost": 7,
     "effects": [
+      "return_to_hand",
+      "discard_hand_card_1",
       "lowest_die_applies_to_all"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "before_roll",
+        "effect": "discard_hand_card_1"
+      },
+      {
+        "when": "before_roll",
+        "effect": "lowest_die_applies_to_all"
+      },
+      {
+        "when": "before_roll",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_fulmine",
@@ -503,9 +600,25 @@
     "group": "chest",
     "cost": 7,
     "effects": [
+      "return_to_hand",
+      "discard_hand_card_1",
       "deal_1_damage"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "before_roll",
+        "effect": "discard_hand_card_1"
+      },
+      {
+        "when": "before_roll",
+        "effect": "deal_1_damage"
+      },
+      {
+        "when": "before_roll",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_armatura_oro",
@@ -518,7 +631,17 @@
       "armor_extra_slot_2",
       "ignore_fatigue_if_all_different"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "after_roll",
+        "effect": "ignore_fatigue_if_all_different"
+      },
+      {
+        "when": "equip",
+        "effect": "armor_extra_slot_2"
+      }
+    ]
   },
   {
     "id": "treasure_clone",
@@ -530,7 +653,13 @@
     "effects": [
       "next_roll_double_then_remove_half"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "next_roll",
+        "effect": "next_roll_double_then_remove_half"
+      }
+    ]
   },
   {
     "id": "treasure_scudo",
@@ -542,7 +671,13 @@
     "effects": [
       "on_heart_loss_destroy_fatigue"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "on_heart_loss",
+        "effect": "on_heart_loss_destroy_fatigue"
+      }
+    ]
   },
   {
     "id": "treasure_chiave_oro",
@@ -555,7 +690,17 @@
       "regno_del_male_portal",
       "sacrifice_open_portal"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "on_play",
+        "effect": "regno_del_male_portal"
+      },
+      {
+        "when": "on_play",
+        "effect": "sacrifice_open_portal"
+      }
+    ]
   },
   {
     "id": "treasure_croce",
@@ -565,9 +710,20 @@
     "group": "teca",
     "cost": 9,
     "effects": [
+      "return_to_hand",
       "bonus_damage_multiheart"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "after_damage",
+        "effect": "bonus_damage_multiheart"
+      },
+      {
+        "when": "after_damage",
+        "effect": "return_to_hand"
+      }
+    ]
   },
   {
     "id": "treasure_1up",
@@ -579,7 +735,13 @@
     "effects": [
       "reset_hearts_and_dice"
     ],
-    "set": "GnG"
+    "set": "GnG",
+    "timed_effects": [
+      {
+        "when": "any_time",
+        "effect": "reset_hearts_and_dice"
+      }
+    ]
   },
   {
     "id": "character_sir_arthur_a",
@@ -628,5 +790,41 @@
       "regno_del_male_track"
     ],
     "set": "GnG"
+  },
+  {
+    "id": "enemy_orco_1",
+    "name": "Orco",
+    "type": "scontro",
+    "difficulty": 8,
+    "set": "GnG",
+    "reward_brown": [
+      "reward_group_chest"
+    ],
+    "reward_silver": [
+      "reward_coin_5"
+    ],
+    "penalty_violet": [
+      "lose_heart_1"
+    ],
+    "sacrifice_cost": "add_green_die",
+    "sacrifice_effect": "extra_die_then_remove_blue"
+  },
+  {
+    "id": "enemy_orco_2",
+    "name": "Orco",
+    "type": "scontro",
+    "difficulty": 8,
+    "set": "GnG",
+    "reward_brown": [
+      "reward_group_chest"
+    ],
+    "reward_silver": [
+      "reward_coin_5"
+    ],
+    "penalty_violet": [
+      "lose_heart_1"
+    ],
+    "sacrifice_cost": "add_green_die",
+    "sacrifice_effect": "extra_die_then_remove_blue"
   }
 ]

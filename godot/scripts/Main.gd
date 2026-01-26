@@ -7,6 +7,7 @@ const TABLE_Y := 0.0
 const HAND_UI_SCRIPT := preload("res://scripts/HandUI.gd")
 const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
 const MUSIC_TRACK := preload("res://assets/music/Music.mp3")
+const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
 
 @onready var camera: Camera3D = $Camera
 
@@ -15,6 +16,7 @@ var launch_start_time: float = -1.0
 var pending_dice: Array[RigidBody3D] = []
 var sum_label: Label
 var y_label: Label
+var camera_label: Label
 var roll_history: Array[int] = []
 var roll_color_history: Array[String] = []
 var dice_count: int = 1
@@ -26,6 +28,10 @@ var hovered_card: Node3D
 var selected_card: Node3D
 var player_hand: Array = []
 var last_mouse_pos: Vector2 = Vector2.ZERO
+var mouse_down_pos: Vector2 = Vector2.ZERO
+var pending_flip_card: Node3D
+var pending_flip_is_adventure: bool = false
+const CLICK_DRAG_THRESHOLD := 8.0
 const DRAG_HEIGHT := 1.0
 var top_sorting_offset: float = 0.0
 var equipment_slots: Array[Area3D] = []
@@ -41,6 +47,11 @@ var purchase_yes_button: Button
 var purchase_no_button: Button
 var purchase_card: Node3D
 var purchase_content: VBoxContainer
+var adventure_prompt_panel: PanelContainer
+var adventure_prompt_label: Label
+var adventure_prompt_yes: Button
+var adventure_prompt_no: Button
+var pending_adventure_card: Node3D
 var music_player: AudioStreamPlayer
 var phase_index: int = 0
 var player_max_hearts: int = 0
@@ -59,6 +70,9 @@ var adventure_reveal_pos := Vector3(0, 0.0179999992251396, 0)
 var revealed_adventure_count: int = 0
 var is_adventure_stack_hovered: bool = false
 const ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
+const TREASURE_REVEAL_OFFSET := Vector3(-1.0, 0.006, 0.0)
+const TREASURE_DISCARD_OFFSET := Vector3(-2.05, 0.006, 0.315)
+const ADVENTURE_REVEAL_OFFSET := Vector3(-2.0, -0.003, 0.0)
 var adventure_image_index: Dictionary = {}
 var adventure_variant_cursor: Dictionary = {}
 const BOSS_BACK := "res://assets/cards/ghost_n_goblins/boss/back_Boss.png"
@@ -73,11 +87,12 @@ var regno_pos := Vector3(-3, 0.0359999984502792, 2.5)
 var astaroth_pos := Vector3(-5, 0.0359999984502792, 2.5)
 const HEART_TEXTURE := "res://assets/Token/cuore.png"
 var character_card: Node3D
+const BOSS_STACK_OFFSET := Vector3(0.0, 0.0, 0.0)
 
 func _ready() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	camera.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	camera.global_position.y = 14.0
+	camera.global_position = Vector3(0.43, 7.0, 1.74)
 	_play_music()
 	_spawn_placeholders()
 	_init_player_hand()
@@ -90,11 +105,12 @@ func _ready() -> void:
 	_spawn_astaroth()
 	_spawn_sum_label()
 	_spawn_hand_ui()
+	_create_adventure_prompt()
 	print("Deck selezionato:", GameConfig.selected_deck_id)
 	print("Carte avventura:", CardDatabase.deck_adventure.size())
 	# Example usage with placeholders.
 	var example_deck := ["c1", "c2", "c3", "c4", "c5"]
-	DeckUtils.shuffle_deck(example_deck)
+	DECK_UTILS.shuffle_deck(example_deck)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -123,6 +139,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			last_mouse_pos = event.position
+			mouse_down_pos = event.position
 			var card := _get_card_under_mouse(event.position)
 			if card != null:
 				if phase_index != 0:
@@ -138,23 +155,15 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						var top_card := _get_top_treasure_card()
 						if top_card != null and top_card.has_method("is_face_up_now"):
 							if not top_card.is_face_up_now():
-								_discard_revealed_treasure_cards()
-								var target_pos := treasure_reveal_pos
-								target_pos.y = treasure_reveal_pos.y + (revealed_treasure_count * REVEALED_Y_STEP)
-								top_card.set_meta("in_treasure_stack", false)
-								top_card.set_meta("in_treasure_market", true)
-								top_card.call("flip_to_side", target_pos)
-								revealed_treasure_count += 1
+								pending_flip_card = top_card
+								pending_flip_is_adventure = false
 								return
 					elif is_adventure_stack_hovered:
 						var top_adv := _get_top_adventure_card()
 						if top_adv != null and top_adv.has_method("is_face_up_now"):
 							if not top_adv.is_face_up_now():
-								var target_pos_adv := adventure_reveal_pos
-								target_pos_adv.y = adventure_reveal_pos.y + (revealed_adventure_count * REVEALED_Y_STEP)
-								top_adv.set_meta("in_adventure_stack", false)
-								top_adv.call("flip_to_side", target_pos_adv)
-								revealed_adventure_count += 1
+								pending_flip_card = top_adv
+								pending_flip_is_adventure = true
 								return
 				dragged_card = card
 				dragged_card_origin_y = card.global_position.y
@@ -174,12 +183,28 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					y_label.text = "Y carta: %.3f" % pos.y
 				if dragged_card.has_method("set_sorting_offset"):
 					_update_all_card_sorting_offsets(dragged_card)
+				if dragged_card.has_meta("in_treasure_stack") and dragged_card.get_meta("in_treasure_stack", false):
+					_update_treasure_stack_position(dragged_card.global_position)
+				elif dragged_card.has_meta("in_adventure_stack") and dragged_card.get_meta("in_adventure_stack", false):
+					_update_adventure_stack_position(dragged_card.global_position)
+				elif dragged_card.has_meta("in_boss_stack") and dragged_card.get_meta("in_boss_stack", false):
+					_update_boss_stack_position(dragged_card.global_position)
 			dragged_card = null
+			var moved := mouse_down_pos.distance_to(event.position) > CLICK_DRAG_THRESHOLD
+			if not moved and pending_flip_card != null and is_instance_valid(pending_flip_card):
+				if pending_flip_is_adventure:
+					_try_show_adventure_prompt(pending_flip_card)
+				else:
+					_discard_revealed_treasure_cards()
+					var target_pos := treasure_reveal_pos
+					target_pos.y = treasure_reveal_pos.y + (revealed_treasure_count * REVEALED_Y_STEP)
+					pending_flip_card.set_meta("in_treasure_stack", false)
+					pending_flip_card.set_meta("in_treasure_market", true)
+					pending_flip_card.call("flip_to_side", target_pos)
+					revealed_treasure_count += 1
+			pending_flip_card = null
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
-		if event.pressed:
-			pan_active = true
-		else:
-			pan_active = false
+		pan_active = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 		_zoom(-1.0)
 	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
@@ -188,9 +213,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	last_mouse_pos = event.position
 	if pan_active:
-		var pan_speed := 0.006 * camera.global_position.y
-		camera.global_position.x -= event.relative.x * pan_speed
-		camera.global_position.z -= event.relative.y * pan_speed
 		return
 	if dragged_card == null:
 		_update_hover(event.position)
@@ -222,19 +244,21 @@ func _process(_delta: float) -> void:
 	_sync_equipment_slots_root()
 	_update_hover(last_mouse_pos)
 	_update_purchase_prompt_position()
+	_update_adventure_prompt_position()
+	_update_camera_label()
 
-func _launch_dice_at(position: Vector3, hold_time: float) -> void:
+func _launch_dice_at(spawn_pos: Vector3, hold_time: float) -> void:
 	_clear_dice()
-	_spawn_dice(position, hold_time)
+	_spawn_dice(spawn_pos, hold_time)
 	dice_count += 1
 	_track_dice_sum()
 
-func _spawn_dice(position: Vector3, hold_time: float) -> void:
+func _spawn_dice(spawn_pos: Vector3, hold_time: float) -> void:
 	var hold_scale: float = clamp(0.6 + hold_time * 1.2, 0.6, 2.0)
 	for i in dice_count:
 		var dice: RigidBody3D = DICE_SCENE.instantiate() as RigidBody3D
 		add_child(dice)
-		dice.global_position = position + Vector3(i * 0.6, 2.0, 0.0)
+		dice.global_position = spawn_pos + Vector3(i * 0.6, 2.0, 0.0)
 		dice.global_rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
 		var lateral_strength := randf_range(1.2, 2.0) * hold_scale
 		var lateral_angle := randf() * TAU
@@ -259,7 +283,7 @@ func _spawn_dice(position: Vector3, hold_time: float) -> void:
 		active_dice.append(dice)
 
 func _ray_to_plane(mouse_pos: Vector2) -> Vector3:
-	var viewport := get_viewport()
+	var _viewport := get_viewport()
 	var origin := camera.project_ray_origin(mouse_pos)
 	var direction := camera.project_ray_normal(mouse_pos)
 	if abs(direction.y) < 0.0001:
@@ -323,6 +347,44 @@ func _discard_revealed_treasure_cards() -> void:
 		discarded_any = true
 	if discarded_any:
 		revealed_treasure_count = 0
+
+func _update_treasure_stack_position(new_pos: Vector3) -> void:
+	var base := Vector3(new_pos.x, treasure_deck_pos.y, new_pos.z)
+	treasure_deck_pos = base
+	treasure_reveal_pos = treasure_deck_pos + TREASURE_REVEAL_OFFSET
+	treasure_discard_pos = treasure_deck_pos + TREASURE_DISCARD_OFFSET
+	_reposition_stack("in_treasure_stack", treasure_deck_pos)
+
+func _update_adventure_stack_position(new_pos: Vector3) -> void:
+	var base := Vector3(new_pos.x, adventure_deck_pos.y, new_pos.z)
+	adventure_deck_pos = base
+	adventure_reveal_pos = adventure_deck_pos + ADVENTURE_REVEAL_OFFSET
+	_reposition_stack("in_adventure_stack", adventure_deck_pos)
+
+func _update_boss_stack_position(new_pos: Vector3) -> void:
+	var base := Vector3(new_pos.x, boss_deck_pos.y, new_pos.z)
+	boss_deck_pos = base + BOSS_STACK_OFFSET
+	_reposition_stack("in_boss_stack", boss_deck_pos)
+
+func _reposition_stack(meta_key: String, base_pos: Vector3) -> void:
+	var cards: Array = []
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta(meta_key):
+			continue
+		if not child.get_meta(meta_key, false):
+			continue
+		cards.append(child)
+	cards.sort_custom(func(a, b):
+		var a_idx := int(a.get_meta("stack_index", -1))
+		var b_idx := int(b.get_meta("stack_index", -1))
+		return a_idx < b_idx
+	)
+	for card in cards:
+		var idx: int = int(card.get_meta("stack_index", 0))
+		var pos := base_pos + Vector3(0.0, idx * REVEALED_Y_STEP, 0.0)
+		card.global_position = pos
 
 func _get_top_adventure_card() -> Node3D:
 	var top_card: Node3D = null
@@ -414,6 +476,50 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 	phase_index = new_phase_index
 	if phase_index != 0:
 		_hide_purchase_prompt()
+	if phase_index != 1:
+		_hide_adventure_prompt()
+
+func _try_show_adventure_prompt(card: Node3D) -> void:
+	if phase_index != 1:
+		return
+	pending_adventure_card = card
+	adventure_prompt_panel.visible = true
+	_resize_adventure_prompt()
+	_update_adventure_prompt_position()
+
+func _hide_adventure_prompt() -> void:
+	if adventure_prompt_panel != null:
+		adventure_prompt_panel.visible = false
+	pending_adventure_card = null
+
+func _confirm_adventure_prompt() -> void:
+	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
+		_hide_adventure_prompt()
+		return
+	var target_pos_adv := adventure_reveal_pos
+	target_pos_adv.y = adventure_reveal_pos.y + (revealed_adventure_count * REVEALED_Y_STEP)
+	pending_adventure_card.set_meta("in_adventure_stack", false)
+	pending_adventure_card.call("flip_to_side", target_pos_adv)
+	revealed_adventure_count += 1
+	_hide_adventure_prompt()
+
+func _resize_adventure_prompt() -> void:
+	if adventure_prompt_panel == null:
+		return
+	adventure_prompt_panel.custom_minimum_size = Vector2.ZERO
+	adventure_prompt_panel.reset_size()
+	adventure_prompt_panel.custom_minimum_size = adventure_prompt_panel.get_combined_minimum_size()
+	adventure_prompt_panel.reset_size()
+
+func _update_adventure_prompt_position() -> void:
+	if adventure_prompt_panel == null or not adventure_prompt_panel.visible:
+		return
+	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
+		_hide_adventure_prompt()
+		return
+	var screen_pos := camera.unproject_position(pending_adventure_card.global_position)
+	var size := adventure_prompt_panel.size
+	adventure_prompt_panel.position = screen_pos + Vector2(-size.x * 0.5, -size.y - 16.0)
 
 
 func _adjust_selected_card_y(delta: float) -> void:
@@ -436,7 +542,17 @@ func _spawn_sum_label() -> void:
 	y_label.text = "Y carta: -"
 	y_label.position = Vector2(20, 50)
 	ui.add_child(y_label)
+	camera_label = Label.new()
+	camera_label.text = "Camera: -"
+	camera_label.position = Vector2(20, 80)
+	ui.add_child(camera_label)
 	_create_purchase_prompt()
+
+func _update_camera_label() -> void:
+	if camera_label == null:
+		return
+	var pos := camera.global_position
+	camera_label.text = "Camera: x=%.2f y=%.2f z=%.2f" % [pos.x, pos.y, pos.z]
 
 func _create_purchase_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -508,6 +624,69 @@ func _create_purchase_prompt() -> void:
 	purchase_panel.add_child(purchase_content)
 	prompt_layer.add_child(purchase_panel)
 
+func _create_adventure_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 11
+	add_child(prompt_layer)
+	adventure_prompt_panel = PanelContainer.new()
+	adventure_prompt_panel.visible = false
+	adventure_prompt_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	adventure_prompt_panel.z_index = 210
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.75)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	adventure_prompt_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var content := VBoxContainer.new()
+	content.anchor_left = 0.0
+	content.anchor_right = 1.0
+	content.anchor_top = 0.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_right = -16.0
+	content.offset_top = 12.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 10)
+
+	adventure_prompt_label = Label.new()
+	adventure_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	adventure_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	adventure_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	adventure_prompt_label.custom_minimum_size = Vector2(420, 0)
+	adventure_prompt_label.text = "Vuoi affrontare una nuova avventura?"
+	adventure_prompt_label.add_theme_font_override("font", UI_FONT)
+	adventure_prompt_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	adventure_prompt_label.add_theme_constant_override("font_spacing/space", 8)
+	content.add_child(adventure_prompt_label)
+
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.set("theme_override_constants/separation", 20)
+	adventure_prompt_yes = Button.new()
+	adventure_prompt_yes.text = "Si"
+	adventure_prompt_yes.add_theme_font_override("font", UI_FONT)
+	adventure_prompt_yes.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	adventure_prompt_yes.add_theme_constant_override("font_spacing/space", 8)
+	adventure_prompt_yes.pressed.connect(_confirm_adventure_prompt)
+	adventure_prompt_no = Button.new()
+	adventure_prompt_no.text = "No"
+	adventure_prompt_no.add_theme_font_override("font", UI_FONT)
+	adventure_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	adventure_prompt_no.add_theme_constant_override("font_spacing/space", 8)
+	adventure_prompt_no.pressed.connect(_hide_adventure_prompt)
+	button_row.add_child(adventure_prompt_yes)
+	button_row.add_child(adventure_prompt_no)
+	content.add_child(button_row)
+
+	adventure_prompt_panel.add_child(content)
+	prompt_layer.add_child(adventure_prompt_panel)
+
 func _spawn_hand_ui() -> void:
 	var hand_layer := CanvasLayer.new()
 	add_child(hand_layer)
@@ -536,6 +715,7 @@ func _spawn_hand_ui() -> void:
 	if hand_root.has_method("set_gold"):
 		hand_root.call("set_gold", player_gold)
 	_update_hand_ui_stats()
+
 
 func _init_player_hand() -> void:
 	player_hand.clear()
@@ -657,7 +837,7 @@ func _spawn_treasure_cards() -> void:
 		if str(entry.get("set", "")) != "GnG":
 			continue
 		treasures.append(entry)
-	DeckUtils.shuffle_deck(treasures)
+	DECK_UTILS.shuffle_deck(treasures)
 
 	var stack_step := REVEALED_Y_STEP
 	for i in treasures.size():
@@ -719,7 +899,7 @@ func _spawn_adventure_cards() -> void:
 		if str(entry.get("set", "")) != "GnG":
 			continue
 		adventures.append(entry)
-	DeckUtils.shuffle_deck(adventures)
+	DECK_UTILS.shuffle_deck(adventures)
 
 	var stack_step := REVEALED_Y_STEP
 	for i in adventures.size():
@@ -750,7 +930,7 @@ func _spawn_boss_cards() -> void:
 		if str(entry.get("set", "")) != "GnG":
 			continue
 		bosses.append(entry)
-	DeckUtils.shuffle_deck(bosses)
+	DECK_UTILS.shuffle_deck(bosses)
 
 	var stack_step := REVEALED_Y_STEP
 	var deck_pos := boss_deck_pos
@@ -762,6 +942,8 @@ func _spawn_boss_cards() -> void:
 		card.rotate_x(-PI / 2.0)
 		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
 		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
+		card.set_meta("in_boss_stack", true)
+		card.set_meta("stack_index", i)
 		var image_path := str(bosses[i].get("image", ""))
 		if image_path.is_empty():
 			image_path = _find_boss_image(bosses[i])
@@ -775,7 +957,7 @@ func _spawn_boss_cards() -> void:
 			card.call_deferred("set_sorting_offset", i)
 
 func _find_boss_image(card: Dictionary) -> String:
-	var name := _normalize_name(str(card.get("name", "")))
+	var card_name := _normalize_name(str(card.get("name", "")))
 	var dir := DirAccess.open("res://assets/cards/ghost_n_goblins/boss")
 	if dir == null:
 		return ""
@@ -784,7 +966,7 @@ func _find_boss_image(card: Dictionary) -> String:
 	while file_name != "":
 		if not dir.current_is_dir() and file_name.to_lower().ends_with(".png"):
 			var base := _normalize_name(file_name.get_basename())
-			if base == name:
+			if base == card_name:
 				dir.list_dir_end()
 				return "%s/%s" % ["res://assets/cards/ghost_n_goblins/boss", file_name]
 		file_name = dir.get_next()
@@ -1035,8 +1217,8 @@ func _build_adventure_image_index() -> void:
 	dir.list_dir_end()
 
 func _get_adventure_image_path(card: Dictionary) -> String:
-	var name := _normalize_name(str(card.get("name", "")))
-	var key := _strip_variant_suffix(name)
+	var card_name := _normalize_name(str(card.get("name", "")))
+	var key := _strip_variant_suffix(card_name)
 	if not adventure_image_index.has(key):
 		return ""
 	if not adventure_variant_cursor.has(key):
@@ -1048,8 +1230,8 @@ func _get_adventure_image_path(card: Dictionary) -> String:
 	adventure_variant_cursor[key] = idx + 1
 	return str(list[idx])
 
-func _normalize_name(name: String) -> String:
-	var s := name.to_lower()
+func _normalize_name(card_name: String) -> String:
+	var s := card_name.to_lower()
 	s = s.replace("_", " ")
 	s = s.replace("à", "a").replace("è", "e").replace("é", "e").replace("ì", "i").replace("ò", "o").replace("ù", "u")
 	var out := ""
@@ -1069,11 +1251,11 @@ func _play_music() -> void:
 	music_player.bus = "Master"
 	add_child(music_player)
 
-func _strip_variant_suffix(name: String) -> String:
-	var parts := name.split(" ")
+func _strip_variant_suffix(card_name: String) -> String:
+	var parts := card_name.split(" ")
 	if parts.size() > 1:
 		var last := parts[parts.size() - 1]
 		if last.is_valid_int():
 			parts.remove_at(parts.size() - 1)
 			return " ".join(parts)
-	return name
+	return card_name

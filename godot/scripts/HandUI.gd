@@ -5,6 +5,8 @@ var _money_label: Label
 var _token_label: Label
 var _left_panel: PanelContainer
 var _right_panel: PanelContainer
+var _left_title: Label
+var _right_title: Label
 var _phase_label: Label
 var _turn_label: Label
 var _hearts_label: Label
@@ -240,6 +242,13 @@ func _create_hand_bar() -> void:
 	left_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left_content.set("theme_override_constants/separation", 2)
 
+	_left_title = Label.new()
+	_left_title.text = "Giocatore"
+	_left_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_apply_ui_font(_left_title)
+	_left_title.add_theme_font_size_override("font_size", 30)
+	left_content.add_child(_left_title)
+
 	_phase_label = Label.new()
 	_turn_label = Label.new()
 	_hearts_label = Label.new()
@@ -316,13 +325,14 @@ func _create_hand_bar() -> void:
 	right_style.border_width_right = 1
 	right_style.border_color = Color(1, 1, 1, 0.25)
 	_right_panel.add_theme_stylebox_override("panel", right_style)
-	var right_label := Label.new()
-	right_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	right_label.text = "Info"
-	right_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	right_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	right_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_apply_ui_font(right_label)
-	_right_panel.add_child(right_label)
+	_right_title = Label.new()
+	_right_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_right_title.text = "Info"
+	_right_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_right_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_right_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_right_title.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_apply_ui_font(_right_title)
+	_right_title.add_theme_font_size_override("font_size", 30)
+	_right_panel.add_child(_right_title)
 	add_child(_right_panel)

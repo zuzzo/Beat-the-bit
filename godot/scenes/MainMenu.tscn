@@ -71,7 +71,5 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 autowrap_mode = 2
 
-[node name="SetDefault" type="Button" parent="RootVBox/EditorSplit/RightPanel"]
-text = "Imposta come predefinita"
 
 [connection signal="pressed" from="RootVBox/TopBar/Start" to="." method="_on_start_pressed"]

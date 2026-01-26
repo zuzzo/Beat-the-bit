@@ -11,7 +11,6 @@ const SINGLE_DIR := "res://assets/cards/ghost_n_goblins/singles"
 @onready var card_list: ItemList = $RootVBox/EditorSplit/LeftPanel/CardList
 @onready var preview: TextureRect = $RootVBox/EditorSplit/RightPanel/Preview
 @onready var details: Label = $RootVBox/EditorSplit/RightPanel/Details
-@onready var set_default_button: Button = $RootVBox/EditorSplit/RightPanel/SetDefault
 
 var _cards: Array = []
 var _display_cards: Array = []
@@ -31,7 +30,6 @@ func _ready() -> void:
 	_refresh_list()
 	card_list.item_selected.connect(_on_card_selected)
 	filter_option.item_selected.connect(_on_filter_changed)
-	set_default_button.pressed.connect(_on_set_default_pressed)
 
 func _on_start_pressed() -> void:
 	var deck_id := "GnG"
@@ -171,7 +169,7 @@ func _on_card_selected(index: int) -> void:
 	else:
 		preview.texture = null
 	details.text = _build_details(card)
-	set_default_button.disabled = entry["image"] == ""
+	
 
 func _build_details(card: Dictionary) -> String:
 	var lines: Array[String] = []
@@ -192,22 +190,21 @@ func _build_details(card: Dictionary) -> String:
 		lines.append("Reward silver: %s" % ", ".join(card.get("reward_silver", [])))
 	if card.has("penalty_violet"):
 		lines.append("Penalty violet: %s" % ", ".join(card.get("penalty_violet", [])))
+	if card.has("timed_effects"):
+		var entries: Array = []
+		for item in card.get("timed_effects", []):
+			if item is Dictionary:
+				entries.append("%s: %s" % [str(item.get("when", "")), str(item.get("effect", ""))])
+		if not entries.is_empty():
+			lines.append("Effetti (timing): %s" % "; ".join(entries))
+	if card.has("sacrifice_cost") or card.has("sacrifice_effect"):
+		var cost := str(card.get("sacrifice_cost", ""))
+		var effect := str(card.get("sacrifice_effect", ""))
+		lines.append("Sacrifice: %s -> %s" % [cost, effect])
 	if card.has("sacrifice_optional"):
 		lines.append("Opzione: %s" % ", ".join(card.get("sacrifice_optional", [])))
 	return "\n".join(lines)
 
-func _on_set_default_pressed() -> void:
-	var index := card_list.get_selected_items()
-	if index.is_empty():
-		return
-	var entry: Dictionary = _display_cards[index[0]]
-	var card: Dictionary = entry["card"]
-	var img_path := str(entry["image"])
-	if img_path == "":
-		return
-	GameConfig.card_image_overrides[str(card.get("id", ""))] = img_path
-	GameConfig.save_overrides()
-	_refresh_list()
 
 func _category_for(card: Dictionary) -> String:
 	var ctype := str(card.get("type", ""))
