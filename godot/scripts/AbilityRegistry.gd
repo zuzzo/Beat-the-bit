@@ -40,6 +40,7 @@ func _ready() -> void:
     _register("remove_dice_showing_6")
     _register("flip_if_more_than_one_heart")
     _register("regno_del_male_track")
+    _register("draw_treasure_vaso_di_coccio")
 
 func _register(ability_id: String) -> void:
     var path := "res://scripts/abilities/%s.gd" % ability_id

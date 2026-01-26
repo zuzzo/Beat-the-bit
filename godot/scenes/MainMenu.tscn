@@ -7,22 +7,71 @@
 [node name="MainMenu" type="Control"]
 script = ExtResource("1")
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="RootVBox" type="VBoxContainer" parent="."]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
 
-[node name="VBox" type="VBoxContainer" parent="Center"]
+[node name="TopBar" type="HBoxContainer" parent="RootVBox"]
+size_flags_horizontal = 3
 
-[node name="Title" type="Label" parent="Center/VBox"]
+[node name="Title" type="Label" parent="RootVBox/TopBar"]
 text = "Beat the Bit"
 
-[node name="DeckLabel" type="Label" parent="Center/VBox"]
+[node name="Spacer" type="Control" parent="RootVBox/TopBar"]
+size_flags_horizontal = 3
+
+[node name="DeckLabel" type="Label" parent="RootVBox/TopBar"]
 text = "Scegli mazzo"
 
-[node name="DeckOption" type="OptionButton" parent="Center/VBox"]
+[node name="DeckOption" type="OptionButton" parent="RootVBox/TopBar"]
 
-[node name="Start" type="Button" parent="Center/VBox"]
+[node name="Start" type="Button" parent="RootVBox/TopBar"]
 text = "Avvia"
 
-[connection signal="pressed" from="Center/VBox/Start" to="." method="_on_start_pressed"]
+[node name="EditorSplit" type="HSplitContainer" parent="RootVBox"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="LeftPanel" type="VBoxContainer" parent="RootVBox/EditorSplit"]
+custom_minimum_size = Vector2(360, 0)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="FilterLabel" type="Label" parent="RootVBox/EditorSplit/LeftPanel"]
+text = "Filtra mazzo"
+
+[node name="FilterOption" type="OptionButton" parent="RootVBox/EditorSplit/LeftPanel"]
+
+[node name="CardList" type="ItemList" parent="RootVBox/EditorSplit/LeftPanel"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+fixed_icon_size = Vector2i(96, 96)
+icon_mode = 1
+same_column_width = true
+max_columns = 1
+allow_reselect = true
+
+[node name="RightPanel" type="VBoxContainer" parent="RootVBox/EditorSplit"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Preview" type="TextureRect" parent="RootVBox/EditorSplit/RightPanel"]
+custom_minimum_size = Vector2(320, 420)
+size_flags_horizontal = 3
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Details" type="Label" parent="RootVBox/EditorSplit/RightPanel"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+autowrap_mode = 2
+
+[node name="SetDefault" type="Button" parent="RootVBox/EditorSplit/RightPanel"]
+text = "Imposta come predefinita"
+
+[connection signal="pressed" from="RootVBox/TopBar/Start" to="." method="_on_start_pressed"]

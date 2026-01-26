@@ -30,5 +30,6 @@ transform = Transform3D(1, 0, 0, 0, 0.0001, -1, 0, 1, 0, 0, 18, 0)
 [node name="DirectionalLight" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.7071, 0, 0.7071, -0.3536, 0.866, 0.3536, -0.6124, -0.5, 0.6124, 0, 10, 0)
 light_color = Color(1, 0.95, 0.9, 1)
+light_energy = 2.2
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]

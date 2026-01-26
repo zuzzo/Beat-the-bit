@@ -1,0 +1,45 @@
+[gd_scene load_steps=7 format=3 uid="uid://posbox"]
+
+[ext_resource type="Script" path="res://scripts/PositionBox.gd" id="1"]
+
+[sub_resource type="BoxMesh" id="1"]
+size = Vector3(0.5, 0.2, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="2"]
+albedo_color = Color(0.2, 0.6, 0.9, 0.35)
+transparency = 1
+roughness = 0.9
+
+[sub_resource type="Shader" id="3"]
+code = "shader_type spatial;\nrender_mode unshaded, cull_disabled, depth_draw_opaque;\n\nuniform vec4 border_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);\nuniform float border_size = 0.08;\n\nvoid fragment() {\n\tfloat edge = min(min(UV.x, 1.0 - UV.x), min(UV.y, 1.0 - UV.y));\n\tfloat alpha = step(edge, border_size);\n\tALBEDO = border_color.rgb;\n\tALPHA = border_color.a * alpha;\n}\n"
+
+[sub_resource type="ShaderMaterial" id="4"]
+shader = SubResource("3")
+
+[sub_resource type="BoxShape3D" id="5"]
+size = Vector3(0.6, 0.4, 0.6)
+
+[node name="PositionBox" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("2")
+
+[node name="Outline" type="MeshInstance3D" parent="."]
+mesh = SubResource("1")
+material_override = SubResource("4")
+
+[node name="HitArea" type="Area3D" parent="."]
+collision_layer = 2
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HitArea"]
+shape = SubResource("5")
+
+[node name="Label" type="Label3D" parent="."]
+text = "Box"
+billboard = 1
+position = Vector3(0, 0.35, 0)
+font_size = 16
+modulate = Color(1, 1, 1, 0.9)

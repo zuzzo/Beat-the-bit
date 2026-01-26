@@ -25,13 +25,13 @@
     "difficulty": 14,
     "set": "GnG",
     "reward_brown": [
-      "reward_green_die",
-      "reward_coin_4",
       "reward_token_tombstone"
     ],
-    "reward_silver": [],
+    "reward_silver": [
+      "reward_coin_4"
+    ],
     "penalty_violet": [
-      "flip_equipment"
+      "reward_green_die"
     ],
     "sacrifice_optional": [
       "extra_die_then_remove_blue"
@@ -365,6 +365,7 @@
   {
     "id": "treasure_armatura_ferro",
     "name": "Armatura di ferro",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/armatura di ferro.png",
     "type": "equipaggiamento",
     "group": "vaso_di_coccio",
     "cost": 3,
@@ -377,6 +378,7 @@
   {
     "id": "treasure_saltare",
     "name": "Saltare",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/saltare.png",
     "type": "equipaggiamento",
     "group": "vaso_di_coccio",
     "cost": 3,
@@ -388,8 +390,9 @@
   {
     "id": "treasure_torcia",
     "name": "Torcia",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/torcia.png",
     "type": "equipaggiamento",
-    "group": "scrigno",
+    "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
       "reroll_same_dice"
@@ -399,8 +402,9 @@
   {
     "id": "treasure_ascia",
     "name": "Ascia",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/ascia.png",
     "type": "equipaggiamento",
-    "group": "scrigno",
+    "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
       "after_roll_minus_1_all_dice"
@@ -410,8 +414,9 @@
   {
     "id": "treasure_pugnale",
     "name": "Pugnale",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/pugnale.png",
     "type": "equipaggiamento",
-    "group": "scrigno",
+    "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
       "after_roll_set_one_die_to_1"
@@ -421,8 +426,9 @@
   {
     "id": "treasure_lancia",
     "name": "Lancia",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/lancia.png",
     "type": "equipaggiamento",
-    "group": "scrigno",
+    "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
       "reroll_5_or_6"
@@ -432,8 +438,9 @@
   {
     "id": "treasure_spada",
     "name": "Spada",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/spada.png",
     "type": "equipaggiamento",
-    "group": "scrigno",
+    "group": "vaso_di_coccio",
     "cost": 4,
     "effects": [
       "halve_even_dice"
@@ -443,8 +450,9 @@
   {
     "id": "treasure_eroismo",
     "name": "Eroismo",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/eroismo.png",
     "type": "istantaneo",
-    "group": "raro",
+    "group": "teca",
     "cost": 9,
     "effects": [
       "add_red_die"
@@ -454,8 +462,9 @@
   {
     "id": "treasure_cannone_psichico",
     "name": "Cannone psichico",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/cannone psichico.png",
     "type": "istantaneo",
-    "group": "raro",
+    "group": "chest",
     "cost": 7,
     "effects": [
       "reflect_damage_poison"
@@ -465,8 +474,9 @@
   {
     "id": "treasure_velocita",
     "name": "Velocita",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/velocità.png",
     "type": "istantaneo",
-    "group": "raro",
+    "group": "chest",
     "cost": 7,
     "effects": [
       "next_roll_minus_2_all_dice"
@@ -476,8 +486,9 @@
   {
     "id": "treasure_specchio_riflettente",
     "name": "Specchio riflettente",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/specchio riflettente.png",
     "type": "equipaggiamento",
-    "group": "raro",
+    "group": "chest",
     "cost": 7,
     "effects": [
       "lowest_die_applies_to_all"
@@ -487,8 +498,9 @@
   {
     "id": "treasure_fulmine",
     "name": "Fulmine",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/fulmine.png",
     "type": "istantaneo",
-    "group": "raro",
+    "group": "chest",
     "cost": 7,
     "effects": [
       "deal_1_damage"
@@ -498,8 +510,9 @@
   {
     "id": "treasure_armatura_oro",
     "name": "Armatura d'oro",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/armature d'oro.png",
     "type": "equipaggiamento",
-    "group": "mitico",
+    "group": "chest",
     "cost": 10,
     "effects": [
       "armor_extra_slot_2",
@@ -510,8 +523,9 @@
   {
     "id": "treasure_clone",
     "name": "Clone",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/clone.png",
     "type": "istantaneo",
-    "group": "mitico",
+    "group": "chest",
     "cost": 7,
     "effects": [
       "next_roll_double_then_remove_half"
@@ -521,8 +535,9 @@
   {
     "id": "treasure_scudo",
     "name": "Scudo",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/scudo.png",
     "type": "equipaggiamento",
-    "group": "mitico",
+    "group": "chest",
     "cost": 8,
     "effects": [
       "on_heart_loss_destroy_fatigue"
@@ -532,8 +547,9 @@
   {
     "id": "treasure_chiave_oro",
     "name": "Chiave d'oro",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/chiave d'oro.png",
     "type": "equipaggiamento",
-    "group": "mitico",
+    "group": "teca",
     "cost": 9,
     "effects": [
       "regno_del_male_portal",
@@ -544,8 +560,9 @@
   {
     "id": "treasure_croce",
     "name": "Croce",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/croce.png",
     "type": "equipaggiamento",
-    "group": "raro",
+    "group": "teca",
     "cost": 9,
     "effects": [
       "bonus_damage_multiheart"
@@ -555,8 +572,9 @@
   {
     "id": "treasure_1up",
     "name": "1UP!",
+    "image": "res://assets/cards/ghost_n_goblins/treasure/1 UP!.png",
     "type": "istantaneo",
-    "group": "raro",
+    "group": "teca",
     "cost": 9,
     "effects": [
       "reset_hearts_and_dice"
