@@ -22,11 +22,13 @@ var _max_cards := 0
 var _gold := 0
 const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
 const PLAYER_PANEL_FONT_SIZE := 32
-var _base_anchor_top := 0.8
+var _base_anchor_top := 0.7
 var _hover_anchor_top := 0.6
 var _dragging_card: Dictionary
 var _drag_preview: TextureRect
 var _drag_preview_size := Vector2.ZERO
+var _hover_overlay: Control
+var _hover_preview: TextureRect
 
 signal request_place_equipment(card: Dictionary, screen_pos: Vector2)
 signal phase_changed(phase_index: int, turn_index: int)
@@ -43,6 +45,7 @@ func _ready() -> void:
 	offset_bottom = 0.0
 	clip_contents = true
 	_create_hand_bar()
+	_create_hover_overlay()
 	_refresh_player_info()
 
 func _process(_delta: float) -> void:
@@ -63,17 +66,24 @@ func populate(hand_cards: Array, card_height: float) -> void:
 	for child in _hand_bar.get_children():
 		child.queue_free()
 	clip_contents = true
-	for i in min(3, hand_cards.size()):
+	for i in hand_cards.size():
 		var card: Dictionary = hand_cards[i]
 		var image_path := str(card.get("image", ""))
-		var full_size := Vector2(card_height * 0.7 * 2.0, card_height * 2.0)
+		var full_size := Vector2(card_height * 0.7, card_height * 2.0)
 		var preview_size := Vector2(full_size.x, full_size.y * 0.5)
+		var available_width := size.x - (_left_panel.offset_right - _left_panel.offset_left) - (-_right_panel.offset_left)
+		var needed_width := preview_size.x * hand_cards.size()
+		var overlap := 0.0
+		if available_width > 0 and needed_width > available_width:
+			overlap = clamp((needed_width - available_width) / max(hand_cards.size() - 1, 1), 0.0, preview_size.x * 0.6)
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = preview_size
 		panel.mouse_filter = Control.MOUSE_FILTER_STOP
 		panel.clip_contents = true
 		panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		panel.size_flags_vertical = Control.SIZE_SHRINK_END
+		panel.z_index = 0
+		_hand_bar.set("theme_override_constants/separation", -int(overlap))
 
 		var empty_style := StyleBoxFlat.new()
 		empty_style.bg_color = Color(0, 0, 0, 0)
@@ -95,25 +105,25 @@ func populate(hand_cards: Array, card_height: float) -> void:
 		panel.add_child(tex_rect)
 
 		var hover_style := StyleBoxFlat.new()
-		hover_style.border_width_top = 2
-		hover_style.border_width_bottom = 2
-		hover_style.border_width_left = 2
-		hover_style.border_width_right = 2
-		hover_style.border_color = Color(1, 1, 1, 1)
+		hover_style.bg_color = Color(0, 0, 0, 0)
+		hover_style.border_width_top = 0
+		hover_style.border_width_bottom = 0
+		hover_style.border_width_left = 0
+		hover_style.border_width_right = 0
 
 		panel.mouse_entered.connect(func() -> void:
 			panel.add_theme_stylebox_override("panel", hover_style)
-			panel.custom_minimum_size = full_size
 			panel.clip_contents = false
 			clip_contents = false
-			_hand_bar.anchor_top = _hover_anchor_top
+			tex_rect.visible = false
+			_show_hover_preview(tex_rect.texture, full_size * 1.5, panel)
 		)
 		panel.mouse_exited.connect(func() -> void:
 			panel.add_theme_stylebox_override("panel", empty_style)
-			panel.custom_minimum_size = preview_size
 			panel.clip_contents = true
 			clip_contents = true
-			_hand_bar.anchor_top = _base_anchor_top
+			tex_rect.visible = true
+			_hide_hover_preview()
 		)
 		panel.gui_input.connect(func(event: InputEvent) -> void:
 			_handle_panel_input(event, card, full_size, tex_rect)
@@ -301,7 +311,7 @@ func _create_hand_bar() -> void:
 	_hand_bar.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_hand_bar.size_flags_stretch_ratio = 1.0
 	_hand_bar.alignment = BoxContainer.ALIGNMENT_BEGIN
-	_hand_bar.set("theme_override_constants/separation", 4)
+	_hand_bar.set("theme_override_constants/separation", 0)
 	add_child(_hand_bar)
 
 	_right_panel = PanelContainer.new()
@@ -336,3 +346,38 @@ func _create_hand_bar() -> void:
 	_right_title.add_theme_font_size_override("font_size", 30)
 	_right_panel.add_child(_right_title)
 	add_child(_right_panel)
+
+func _create_hover_overlay() -> void:
+	_hover_overlay = Control.new()
+	_hover_overlay.anchor_left = 0.0
+	_hover_overlay.anchor_right = 1.0
+	_hover_overlay.anchor_top = 0.0
+	_hover_overlay.anchor_bottom = 1.0
+	_hover_overlay.offset_left = 0.0
+	_hover_overlay.offset_right = 0.0
+	_hover_overlay.offset_top = 0.0
+	_hover_overlay.offset_bottom = 0.0
+	_hover_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hover_overlay.z_index = 200
+	add_child(_hover_overlay)
+
+func _show_hover_preview(texture: Texture2D, size: Vector2, panel: Control) -> void:
+	_hide_hover_preview()
+	if texture == null or _hover_overlay == null:
+		return
+	_hover_preview = TextureRect.new()
+	_hover_preview.texture = texture
+	_hover_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_hover_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+	_hover_preview.size = size
+	_hover_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hover_overlay.add_child(_hover_preview)
+	var view_h := get_viewport().get_visible_rect().size.y
+	var desired_global_y := view_h - size.y + 200.0
+	var panel_global := panel.get_global_rect().position
+	_hover_preview.position = Vector2(panel_global.x, desired_global_y)
+
+func _hide_hover_preview() -> void:
+	if _hover_preview != null:
+		_hover_preview.queue_free()
+	_hover_preview = null

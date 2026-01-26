@@ -39,6 +39,9 @@ var equipment_slots_root: Node3D
 var equipment_slots_y_offset: float = 0.0
 var equipment_slots_z_offset: float = 1.2
 const CARD_CENTER_X_OFFSET := 0.7
+const EQUIP_SLOT_WIDTH := 1.4
+const EQUIP_SLOT_HEIGHT := 2.0
+const EQUIP_SLOT_SPACING := 0.2
 var hand_ui: Control
 var player_gold: int = 30
 var purchase_panel: PanelContainer
@@ -144,8 +147,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if card != null:
 				if phase_index != 0:
 					return
-				if _try_show_purchase_prompt(card):
-					return
 				if card.has_meta("equipped_slot"):
 					_return_equipped_to_hand(card)
 					return
@@ -200,10 +201,18 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					target_pos.y = treasure_reveal_pos.y + (revealed_treasure_count * REVEALED_Y_STEP)
 					pending_flip_card.set_meta("in_treasure_stack", false)
 					pending_flip_card.set_meta("in_treasure_market", true)
+					pending_flip_card.set_meta("market_index", revealed_treasure_count)
 					pending_flip_card.call("flip_to_side", target_pos)
 					revealed_treasure_count += 1
 			pending_flip_card = null
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
+		if event.pressed:
+			last_mouse_pos = event.position
+			var card := _get_card_under_mouse(event.position)
+			if card != null and phase_index == 0:
+				var top_market := _get_top_market_card()
+				if top_market != null and card == top_market:
+					_try_show_purchase_prompt(card, false)
 		pan_active = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 		_zoom(-1.0)
@@ -339,14 +348,13 @@ func _discard_revealed_treasure_cards() -> void:
 			continue
 		if not child.get_meta("in_treasure_market", false):
 			continue
-		var target_pos := treasure_discard_pos
-		target_pos.y = treasure_discard_pos.y + (discarded_treasure_count * REVEALED_Y_STEP)
-		child.global_position = target_pos
+		child.set_meta("discard_index", discarded_treasure_count)
 		child.set_meta("in_treasure_market", false)
 		discarded_treasure_count += 1
 		discarded_any = true
 	if discarded_any:
 		revealed_treasure_count = 0
+	_reposition_discard_stack()
 
 func _update_treasure_stack_position(new_pos: Vector3) -> void:
 	var base := Vector3(new_pos.x, treasure_deck_pos.y, new_pos.z)
@@ -354,6 +362,8 @@ func _update_treasure_stack_position(new_pos: Vector3) -> void:
 	treasure_reveal_pos = treasure_deck_pos + TREASURE_REVEAL_OFFSET
 	treasure_discard_pos = treasure_deck_pos + TREASURE_DISCARD_OFFSET
 	_reposition_stack("in_treasure_stack", treasure_deck_pos)
+	_reposition_market_stack()
+	_reposition_discard_stack()
 
 func _update_adventure_stack_position(new_pos: Vector3) -> void:
 	var base := Vector3(new_pos.x, adventure_deck_pos.y, new_pos.z)
@@ -386,6 +396,52 @@ func _reposition_stack(meta_key: String, base_pos: Vector3) -> void:
 		var pos := base_pos + Vector3(0.0, idx * REVEALED_Y_STEP, 0.0)
 		card.global_position = pos
 
+func _reposition_market_stack() -> void:
+	var cards: Array = []
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_treasure_market"):
+			continue
+		if not child.get_meta("in_treasure_market", false):
+			continue
+		cards.append(child)
+	if cards.is_empty():
+		return
+	cards.sort_custom(func(a, b):
+		var a_idx := int(a.get_meta("market_index", -1))
+		var b_idx := int(b.get_meta("market_index", -1))
+		if a_idx == -1 or b_idx == -1:
+			return (a as Node3D).global_position.y < (b as Node3D).global_position.y
+		return a_idx < b_idx
+	)
+	for i in cards.size():
+		var card: Node3D = cards[i]
+		if int(card.get_meta("market_index", -1)) < 0:
+			card.set_meta("market_index", i)
+		var pos := treasure_reveal_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
+		card.global_position = pos
+
+func _reposition_discard_stack() -> void:
+	var cards: Array = []
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("discard_index"):
+			continue
+		cards.append(child)
+	if cards.is_empty():
+		return
+	cards.sort_custom(func(a, b):
+		var a_idx := int(a.get_meta("discard_index", -1))
+		var b_idx := int(b.get_meta("discard_index", -1))
+		return a_idx < b_idx
+	)
+	for i in cards.size():
+		var card: Node3D = cards[i]
+		var pos := treasure_discard_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
+		card.global_position = pos
+
 func _get_top_adventure_card() -> Node3D:
 	var top_card: Node3D = null
 	var top_index := -1
@@ -402,7 +458,23 @@ func _get_top_adventure_card() -> Node3D:
 			top_card = child
 	return top_card
 
-func _try_show_purchase_prompt(card: Node3D) -> bool:
+func _get_top_market_card() -> Node3D:
+	var top_card: Node3D = null
+	var top_y := -INF
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_treasure_market"):
+			continue
+		if not child.get_meta("in_treasure_market", false):
+			continue
+		var y := (child as Node3D).global_position.y
+		if y > top_y:
+			top_y = y
+			top_card = child
+	return top_card
+
+func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 	if not card.has_meta("in_treasure_market"):
 		return false
 	if not card.get_meta("in_treasure_market", false):
@@ -415,7 +487,7 @@ func _try_show_purchase_prompt(card: Node3D) -> bool:
 	var cost := int(card_data.get("cost", 0))
 	if cost <= 0:
 		return false
-	if player_gold < cost:
+	if require_gold and player_gold < cost:
 		return false
 	purchase_card = card
 	purchase_label.text = "Vuoi  aggiungerla  alla  tua  mano  per  il  prezzo  di  %d  monete?" % cost
@@ -1010,12 +1082,6 @@ func _spawn_equipment_slots(card: Node3D) -> void:
 	slots_root.top_level = true
 	card.add_child(slots_root)
 	equipment_slots_root = slots_root
-	var slot_width := 1.4
-	var slot_height := 2.0
-	var spacing := 0.2
-	var total_width := (max_slots * slot_width) + ((max_slots - 1) * spacing)
-	var start_x := -(total_width * 0.5) + (slot_width * 0.5)
-	var base_z := equipment_slots_z_offset
 	for i in max_slots:
 		var slot := Area3D.new()
 		slot.collision_layer = 4
@@ -1023,11 +1089,10 @@ func _spawn_equipment_slots(card: Node3D) -> void:
 		slot.set_meta("equipment_slot", true)
 		slot.set_meta("slot_index", i)
 		slots_root.add_child(slot)
-		slot.position = Vector3(start_x + i * (slot_width + spacing), 0.0, base_z)
 
 		var mesh := MeshInstance3D.new()
 		var quad := QuadMesh.new()
-		quad.size = Vector2(slot_width, slot_height)
+		quad.size = Vector2(EQUIP_SLOT_WIDTH, EQUIP_SLOT_HEIGHT)
 		mesh.mesh = quad
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(0.1, 0.1, 0.1, 0.5)
@@ -1040,12 +1105,13 @@ func _spawn_equipment_slots(card: Node3D) -> void:
 
 		var shape := CollisionShape3D.new()
 		var box := BoxShape3D.new()
-		box.size = Vector3(slot_width, 0.05, slot_height)
+		box.size = Vector3(EQUIP_SLOT_WIDTH, 0.05, EQUIP_SLOT_HEIGHT)
 		shape.shape = box
 		shape.position = Vector3(0.0, 0.0, 0.0)
 		slot.add_child(shape)
 
 		equipment_slots.append(slot)
+	_reposition_equipment_slots()
 	_sync_equipment_slots_root()
 
 func _adjust_equipment_slots_y(delta: float) -> void:
@@ -1061,6 +1127,19 @@ func _sync_equipment_slots_root() -> void:
 		TABLE_Y + equipment_slots_y_offset,
 		base_pos.z + equipment_slots_z_offset
 	)
+
+func _reposition_equipment_slots() -> void:
+	var count := equipment_slots.size()
+	if count <= 0:
+		return
+	var total_width := (count * EQUIP_SLOT_WIDTH) + ((count - 1) * EQUIP_SLOT_SPACING)
+	var start_x := -(total_width * 0.5) + (EQUIP_SLOT_WIDTH * 0.5)
+	var base_z := equipment_slots_z_offset
+	for i in count:
+		var slot := equipment_slots[i]
+		if slot == null:
+			continue
+		slot.position = Vector3(start_x + i * (EQUIP_SLOT_WIDTH + EQUIP_SLOT_SPACING), 0.0, base_z)
 
 func _get_character_max_slots() -> int:
 	for entry in CardDatabase.cards_characters:
@@ -1135,6 +1214,55 @@ func _place_equipment_in_slot(slot: Area3D, card_data: Dictionary) -> void:
 	slot.set_meta("occupied", true)
 	slot.set_meta("equipped_card", card)
 	card.set_meta("equipped_slot", slot)
+	_apply_equipment_extra_slots(card_data)
+
+func _apply_equipment_extra_slots(card_data: Dictionary) -> void:
+	var effects: Array = card_data.get("effects", [])
+	var extra := 0
+	for effect in effects:
+		var name := str(effect)
+		if name == "armor_extra_slot_1":
+			extra += 1
+		elif name == "armor_extra_slot_2":
+			extra += 2
+	if extra <= 0:
+		return
+	_add_equipment_slots(extra)
+
+func _add_equipment_slots(extra: int) -> void:
+	if equipment_slots_root == null:
+		return
+	for i in extra:
+		var slot := Area3D.new()
+		slot.collision_layer = 4
+		slot.collision_mask = 0
+		slot.set_meta("equipment_slot", true)
+		slot.set_meta("slot_index", equipment_slots.size())
+		equipment_slots_root.add_child(slot)
+
+		var mesh := MeshInstance3D.new()
+		var quad := QuadMesh.new()
+		quad.size = Vector2(EQUIP_SLOT_WIDTH, EQUIP_SLOT_HEIGHT)
+		mesh.mesh = quad
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.1, 0.1, 0.1, 0.5)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.roughness = 0.9
+		mesh.material_override = mat
+		mesh.position = Vector3(0.0, 0.0, 0.0)
+		mesh.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
+		slot.add_child(mesh)
+
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(EQUIP_SLOT_WIDTH, 0.05, EQUIP_SLOT_HEIGHT)
+		shape.shape = box
+		shape.position = Vector3(0.0, 0.0, 0.0)
+		slot.add_child(shape)
+
+		equipment_slots.append(slot)
+	_reposition_equipment_slots()
+	_sync_equipment_slots_root()
 
 func _refresh_hand_ui() -> void:
 	for child in get_children():
