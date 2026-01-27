@@ -9,12 +9,28 @@ const SINGLE_DIR := "res://assets/cards/ghost_n_goblins/singles"
 @onready var deck_option: OptionButton = $RootVBox/TopBar/DeckOption
 @onready var filter_option: OptionButton = $RootVBox/EditorSplit/LeftPanel/FilterOption
 @onready var card_list: ItemList = $RootVBox/EditorSplit/LeftPanel/CardList
-@onready var preview: TextureRect = $RootVBox/EditorSplit/RightPanel/Preview
+@onready var preview_container: Control = $RootVBox/EditorSplit/RightPanel/PreviewContainer
+@onready var preview: TextureRect = $RootVBox/EditorSplit/RightPanel/PreviewContainer/Preview
+@onready var regno_overlay: Control = $RootVBox/EditorSplit/RightPanel/PreviewContainer/RegnoOverlay
 @onready var details: Label = $RootVBox/EditorSplit/RightPanel/Details
+@onready var regno_edit_toggle: Button = $RootVBox/EditorSplit/RightPanel/PreviewControls/RegnoEditToggle
+@onready var regno_save_button: Button = $RootVBox/EditorSplit/RightPanel/PreviewControls/RegnoSave
 
 var _cards: Array = []
 var _display_cards: Array = []
 var _adventure_index: Dictionary = {}
+var _selected_card: Dictionary = {}
+var _selected_entry: Dictionary = {}
+var _regno_nodes: Array[Control] = []
+var _regno_edit_mode: bool = false
+var _regno_drag_index: int = -1
+var _regno_drag_offset: Vector2 = Vector2.ZERO
+var _regno_resizing: bool = false
+var _regno_resize_start: Vector2 = Vector2.ZERO
+var _regno_resize_mouse: Vector2 = Vector2.ZERO
+
+const REGNO_ID := "shared_regno_del_male"
+const REGNO_NODE_COUNT := 11
 
 func _ready() -> void:
 	deck_option.add_item("Ghosts 'n Goblins", 0)
@@ -30,6 +46,12 @@ func _ready() -> void:
 	_refresh_list()
 	card_list.item_selected.connect(_on_card_selected)
 	filter_option.item_selected.connect(_on_filter_changed)
+	regno_edit_toggle.pressed.connect(_on_regno_edit_toggled)
+	regno_save_button.pressed.connect(_on_regno_save_pressed)
+	regno_overlay.visible = false
+	regno_save_button.disabled = true
+	regno_edit_toggle.disabled = true
+	preview_container.resized.connect(_on_preview_resized)
 
 func _on_start_pressed() -> void:
 	var deck_id := "GnG"
@@ -164,11 +186,14 @@ func _on_card_selected(index: int) -> void:
 	var entry: Dictionary = _display_cards[index]
 	var card: Dictionary = entry["card"]
 	var img_path := str(entry["image"])
+	_selected_card = card
+	_selected_entry = entry
 	if img_path != "":
 		preview.texture = load(img_path)
 	else:
 		preview.texture = null
 	details.text = _build_details(card)
+	_update_regno_controls()
 	
 
 func _build_details(card: Dictionary) -> String:
@@ -205,9 +230,176 @@ func _build_details(card: Dictionary) -> String:
 		lines.append("Opzione: %s" % ", ".join(card.get("sacrifice_optional", [])))
 	return "\n".join(lines)
 
+func _update_regno_controls() -> void:
+	var is_regno := _is_regno_card(_selected_card)
+	regno_edit_toggle.disabled = not is_regno
+	regno_save_button.disabled = not (_regno_edit_mode and is_regno)
+	if not is_regno:
+		_set_regno_edit_mode(false)
+
+func _is_regno_card(card: Dictionary) -> bool:
+	return str(card.get("id", "")) == REGNO_ID
+
+func _on_regno_edit_toggled() -> void:
+	_set_regno_edit_mode(regno_edit_toggle.button_pressed)
+
+func _set_regno_edit_mode(active: bool) -> void:
+	_regno_edit_mode = active
+	if not _regno_edit_mode:
+		regno_overlay.visible = false
+		regno_save_button.disabled = true
+		_clear_regno_nodes()
+		return
+	if not _is_regno_card(_selected_card):
+		regno_edit_toggle.button_pressed = false
+		return
+	if preview.texture == null:
+		regno_edit_toggle.button_pressed = false
+		return
+	regno_overlay.visible = true
+	regno_save_button.disabled = false
+	_build_regno_nodes()
+
+func _on_regno_save_pressed() -> void:
+	if not _is_regno_card(_selected_card):
+		return
+	var nodes := _collect_regno_nodes_normalized()
+	if nodes.is_empty():
+		return
+	_selected_card["track_nodes"] = nodes
+	_save_cards()
+	details.text = _build_details(_selected_card)
+
+func _build_regno_nodes() -> void:
+	_clear_regno_nodes()
+	var stored: Array = _selected_card.get("track_nodes", [])
+	var default_size: Vector2 = Vector2(40, 40)
+	if preview.texture != null:
+		var tex_size: Vector2 = preview.texture.get_size()
+		var scale: float = min(preview.size.x / tex_size.x, preview.size.y / tex_size.y)
+		var display: Vector2 = tex_size * scale
+		var side: float = min(display.x, display.y) * 0.08
+		if side < 24:
+			side = 24
+		default_size = Vector2(side, side)
+	for i in REGNO_NODE_COUNT:
+		var rect := _create_regno_node(i + 1)
+		var pos := Vector2(10 + i * 6, 10 + i * 6)
+		var size := default_size
+		if stored is Array and i < stored.size() and stored[i] is Dictionary:
+			var data: Dictionary = stored[i]
+			var image_rect := _get_preview_image_rect()
+			pos = image_rect.position + Vector2(float(data.get("x", 0.0)) * image_rect.size.x, float(data.get("y", 0.0)) * image_rect.size.y)
+			var raw_size: Vector2 = Vector2(float(data.get("w", 0.0)) * image_rect.size.x, float(data.get("h", 0.0)) * image_rect.size.y)
+			var side: float = max(raw_size.x, raw_size.y)
+			size = Vector2(side, side)
+		rect.position = pos
+		rect.size = size
+		regno_overlay.add_child(rect)
+		_regno_nodes.append(rect)
+
+func _clear_regno_nodes() -> void:
+	for node in _regno_nodes:
+		if node != null and node.is_inside_tree():
+			node.queue_free()
+	_regno_nodes.clear()
+
+func _create_regno_node(index: int) -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "RegnoNode_%d" % index
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.size = Vector2(40, 40)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0)
+	style.border_color = Color(1.0, 0.9, 0.2, 1.0)
+	style.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", style)
+	var label := Label.new()
+	label.text = str(index)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(label)
+	panel.gui_input.connect(func(event: InputEvent) -> void:
+		_on_regno_node_input(index - 1, event)
+	)
+	return panel
+
+func _on_regno_node_input(index: int, event: InputEvent) -> void:
+	if not _regno_edit_mode:
+		return
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_regno_drag_index = index
+				_regno_drag_offset = event.position
+			else:
+				_regno_drag_index = -1
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				_regno_resizing = true
+				_regno_resize_start = _regno_nodes[index].size
+				_regno_resize_mouse = event.position
+			else:
+				_regno_resizing = false
+	elif event is InputEventMouseMotion:
+		if _regno_drag_index == index and not _regno_resizing:
+			var node := _regno_nodes[index]
+			node.position += event.relative
+		elif _regno_resizing:
+			var delta: Vector2 = event.position - _regno_resize_mouse
+			var new_size: Vector2 = (_regno_resize_start + Vector2(delta.x, delta.x)).clamp(Vector2(16, 16), Vector2(600, 600))
+			for node in _regno_nodes:
+				node.size = new_size
+
+func _get_preview_image_rect() -> Rect2:
+	if preview.texture == null:
+		return Rect2(Vector2.ZERO, preview.size)
+	var tex_size: Vector2 = preview.texture.get_size()
+	var size: Vector2 = preview.size
+	if tex_size.x <= 0 or tex_size.y <= 0:
+		return Rect2(Vector2.ZERO, size)
+	var scale: float = min(size.x / tex_size.x, size.y / tex_size.y)
+	var display: Vector2 = tex_size * scale
+	var offset: Vector2 = (size - display) * 0.5
+	return Rect2(offset, display)
+
+func _collect_regno_nodes_normalized() -> Array:
+	var out: Array = []
+	var image_rect := _get_preview_image_rect()
+	if image_rect.size.x <= 0.0 or image_rect.size.y <= 0.0:
+		return out
+	for node in _regno_nodes:
+		var pos := node.position - image_rect.position
+		var x := pos.x / image_rect.size.x
+		var y := pos.y / image_rect.size.y
+		var w := node.size.x / image_rect.size.x
+		var h := node.size.y / image_rect.size.y
+		out.append({
+			"x": snappedf(x, 0.0001),
+			"y": snappedf(y, 0.0001),
+			"w": snappedf(w, 0.0001),
+			"h": snappedf(h, 0.0001)
+		})
+	return out
+
+func _save_cards() -> void:
+	var file := FileAccess.open(CARDS_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	var json := JSON.stringify(_cards, "\t")
+	file.store_string(json)
+
+func _on_preview_resized() -> void:
+	if _regno_edit_mode and _is_regno_card(_selected_card):
+		_build_regno_nodes()
+
 
 func _category_for(card: Dictionary) -> String:
 	var ctype := str(card.get("type", ""))
+	if str(card.get("id", "")) == REGNO_ID:
+		return "single"
 	if ctype in ["scontro", "concatenamento", "maledizione", "evento"]:
 		return "adventure"
 	if ctype in ["equipaggiamento", "istantaneo", "missione"]:

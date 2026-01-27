@@ -60,11 +60,35 @@ allow_reselect = true
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="Preview" type="TextureRect" parent="RootVBox/EditorSplit/RightPanel"]
+[node name="PreviewControls" type="HBoxContainer" parent="RootVBox/EditorSplit/RightPanel"]
+size_flags_horizontal = 3
+
+[node name="RegnoEditToggle" type="Button" parent="RootVBox/EditorSplit/RightPanel/PreviewControls"]
+toggle_mode = true
+text = "Modifica tracciato"
+
+[node name="RegnoSave" type="Button" parent="RootVBox/EditorSplit/RightPanel/PreviewControls"]
+text = "Salva tracciato"
+
+[node name="PreviewContainer" type="Control" parent="RootVBox/EditorSplit/RightPanel"]
 custom_minimum_size = Vector2(320, 420)
 size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Preview" type="TextureRect" parent="RootVBox/EditorSplit/RightPanel/PreviewContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
 expand_mode = 1
 stretch_mode = 5
+
+[node name="RegnoOverlay" type="Control" parent="RootVBox/EditorSplit/RightPanel/PreviewContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
 
 [node name="Details" type="Label" parent="RootVBox/EditorSplit/RightPanel"]
 size_flags_horizontal = 3

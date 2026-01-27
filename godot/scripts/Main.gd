@@ -90,7 +90,14 @@ var regno_pos := Vector3(-3, 0.0359999984502792, 2.5)
 var astaroth_pos := Vector3(-5, 0.0359999984502792, 2.5)
 const HEART_TEXTURE := "res://assets/Token/cuore.png"
 var character_card: Node3D
+var regno_card: Node3D
 const BOSS_STACK_OFFSET := Vector3(0.0, 0.0, 0.0)
+var regno_track_nodes: Array = []
+var regno_track_index: int = 0
+var regno_overlay_layer: CanvasLayer
+var regno_overlay: Control
+var regno_node_boxes: Array[PanelContainer] = []
+var regno_blink_time: float = 0.0
 
 func _ready() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
@@ -109,6 +116,7 @@ func _ready() -> void:
 	_spawn_sum_label()
 	_spawn_hand_ui()
 	_create_adventure_prompt()
+	_setup_regno_overlay()
 	print("Deck selezionato:", GameConfig.selected_deck_id)
 	print("Carte avventura:", CardDatabase.deck_adventure.size())
 	# Example usage with placeholders.
@@ -196,7 +204,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				if pending_flip_is_adventure:
 					_try_show_adventure_prompt(pending_flip_card)
 				else:
-					_discard_revealed_treasure_cards()
 					var target_pos := treasure_reveal_pos
 					target_pos.y = treasure_reveal_pos.y + (revealed_treasure_count * REVEALED_Y_STEP)
 					pending_flip_card.set_meta("in_treasure_stack", false)
@@ -255,6 +262,7 @@ func _process(_delta: float) -> void:
 	_update_purchase_prompt_position()
 	_update_adventure_prompt_position()
 	_update_camera_label()
+	_update_regno_overlay()
 
 func _launch_dice_at(spawn_pos: Vector3, hold_time: float) -> void:
 	_clear_dice()
@@ -1311,6 +1319,110 @@ func _spawn_regno_del_male() -> void:
 		card.call_deferred("set_back_texture", REGNO_BACK)
 	if card.has_method("set_face_up"):
 		card.call_deferred("set_face_up", true)
+	regno_card = card
+
+func _setup_regno_overlay() -> void:
+	regno_track_nodes = _get_regno_track_nodes()
+	if regno_track_nodes.is_empty():
+		return
+	if regno_overlay_layer != null and is_instance_valid(regno_overlay_layer):
+		regno_overlay_layer.queue_free()
+	regno_overlay_layer = CanvasLayer.new()
+	add_child(regno_overlay_layer)
+	regno_overlay = Control.new()
+	regno_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	regno_overlay_layer.add_child(regno_overlay)
+	regno_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	regno_overlay.offset_left = 0
+	regno_overlay.offset_top = 0
+	regno_overlay.offset_right = 0
+	regno_overlay.offset_bottom = 0
+	_build_regno_boxes()
+
+func _build_regno_boxes() -> void:
+	for node in regno_node_boxes:
+		if node != null and node.is_inside_tree():
+			node.queue_free()
+	regno_node_boxes.clear()
+	for i in regno_track_nodes.size():
+		var box := PanelContainer.new()
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0, 0, 0, 0)
+		style.border_color = Color(1.0, 0.9, 0.2, 0.0)
+		style.set_border_width_all(3)
+		box.add_theme_stylebox_override("panel", style)
+		regno_overlay.add_child(box)
+		regno_node_boxes.append(box)
+
+func _update_regno_overlay() -> void:
+	if regno_overlay == null or regno_track_nodes.is_empty():
+		return
+	if regno_card == null or not is_instance_valid(regno_card):
+		return
+	var rect := _get_card_screen_rect(regno_card)
+	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+		return
+	regno_blink_time = Time.get_ticks_msec() / 1000.0
+	for i in regno_track_nodes.size():
+		if i >= regno_node_boxes.size():
+			continue
+		var data: Dictionary = regno_track_nodes[i]
+		var x := float(data.get("x", 0.0))
+		var y := float(data.get("y", 0.0))
+		var w := float(data.get("w", 0.0))
+		var h := float(data.get("h", 0.0))
+		var box: PanelContainer = regno_node_boxes[i]
+		box.position = rect.position + Vector2(x * rect.size.x, y * rect.size.y)
+		var size: Vector2 = Vector2(w * rect.size.x, h * rect.size.y)
+		var side: float = max(size.x, size.y)
+		box.size = Vector2(side, side)
+		var style: StyleBoxFlat = box.get_theme_stylebox("panel") as StyleBoxFlat
+		if style != null:
+			if i == regno_track_index:
+				var alpha: float = 0.25 + 0.55 * abs(sin(regno_blink_time * 3.0))
+				style.border_color = Color(1.0, 0.9, 0.2, alpha)
+			else:
+				style.border_color = Color(1.0, 0.9, 0.2, 0.0)
+			box.add_theme_stylebox_override("panel", style)
+
+func _get_card_screen_rect(card: Node3D) -> Rect2:
+	var mesh := card.get_node_or_null("Pivot/Mesh") as MeshInstance3D
+	if mesh == null:
+		return Rect2()
+	var quad := mesh.mesh as QuadMesh
+	var size := Vector2(1.4, 2.0)
+	if quad != null:
+		size = quad.size
+	var half := size * 0.5
+	var local_corners := [
+		Vector3(-half.x, -half.y, 0.0),
+		Vector3(half.x, -half.y, 0.0),
+		Vector3(half.x, half.y, 0.0),
+		Vector3(-half.x, half.y, 0.0)
+	]
+	var min_x := INF
+	var min_y := INF
+	var max_x := -INF
+	var max_y := -INF
+	for p in local_corners:
+		var world: Vector3 = mesh.global_transform * p
+		var screen: Vector2 = camera.unproject_position(world)
+		min_x = min(min_x, screen.x)
+		min_y = min(min_y, screen.y)
+		max_x = max(max_x, screen.x)
+		max_y = max(max_y, screen.y)
+	if min_x == INF:
+		return Rect2()
+	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+
+func _get_regno_track_nodes() -> Array:
+	for entry in CardDatabase.deck_adventure:
+		if str(entry.get("id", "")) == "shared_regno_del_male":
+			var nodes: Array = entry.get("track_nodes", [])
+			if nodes is Array:
+				return nodes
+	return []
 
 func _spawn_astaroth() -> void:
 	var card := CARD_SCENE.instantiate()
