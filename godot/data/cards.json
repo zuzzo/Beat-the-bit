@@ -857,6 +857,19 @@
 				"y": 0.5905
 			}
 		],
+		"track_rewards": [
+			"start",
+			"reward_group_vaso_di_coccio",
+			"boss",
+			"gain_heart",
+			"boss",
+			"reward_group_chest",
+			"boss",
+			"gain_heart",
+			"boss",
+			"reward_group_teca",
+			"boss_finale"
+		],
 		"type": "evento"
 	},
 	{

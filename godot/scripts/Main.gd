@@ -20,6 +20,10 @@ var camera_label: Label
 var roll_history: Array[int] = []
 var roll_color_history: Array[String] = []
 var dice_count: int = 1
+var blue_dice: int = 1
+var green_dice: int = 0
+var red_dice: int = 0
+var base_dice_count: int = 1
 var active_dice: Array[RigidBody3D] = []
 var dragged_card: Node3D
 var drag_offset: Vector3 = Vector3.ZERO
@@ -55,6 +59,9 @@ var adventure_prompt_label: Label
 var adventure_prompt_yes: Button
 var adventure_prompt_no: Button
 var pending_adventure_card: Node3D
+var battlefield_warning_panel: PanelContainer
+var battlefield_warning_label: Label
+var battlefield_warning_ok: Button
 var music_player: AudioStreamPlayer
 var phase_index: int = 0
 var player_max_hearts: int = 0
@@ -70,6 +77,7 @@ var is_treasure_stack_hovered: bool = false
 const REVEALED_Y_STEP := 0.01
 var adventure_deck_pos := Vector3(2, 0.0209999997168779, 0)
 var adventure_reveal_pos := Vector3(0, 0.0179999992251396, 0)
+var battlefield_pos := Vector3(0, 0.0179999992251396, 0)
 var revealed_adventure_count: int = 0
 var is_adventure_stack_hovered: bool = false
 const ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
@@ -93,11 +101,13 @@ var character_card: Node3D
 var regno_card: Node3D
 const BOSS_STACK_OFFSET := Vector3(0.0, 0.0, 0.0)
 var regno_track_nodes: Array = []
+var regno_track_rewards: Array = []
 var regno_track_index: int = 0
 var regno_overlay_layer: CanvasLayer
 var regno_overlay: Control
 var regno_node_boxes: Array[PanelContainer] = []
 var regno_blink_time: float = 0.0
+var regno_reward_label: Label
 
 func _ready() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
@@ -116,6 +126,7 @@ func _ready() -> void:
 	_spawn_sum_label()
 	_spawn_hand_ui()
 	_create_adventure_prompt()
+	_create_battlefield_warning()
 	_setup_regno_overlay()
 	print("Deck selezionato:", GameConfig.selected_deck_id)
 	print("Carte avventura:", CardDatabase.deck_adventure.size())
@@ -130,7 +141,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_handle_mouse_motion(event)
 	elif event is InputEventKey and event.pressed:
 		if event.keycode == KEY_SPACE:
-			dice_count = 1
+			blue_dice = base_dice_count
+			green_dice = 0
+			red_dice = 0
+			dice_count = _get_total_dice()
 			_clear_dice()
 			roll_history.clear()
 			roll_color_history.clear()
@@ -166,13 +180,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 							if not top_card.is_face_up_now():
 								pending_flip_card = top_card
 								pending_flip_is_adventure = false
-								return
-					elif is_adventure_stack_hovered:
-						var top_adv := _get_top_adventure_card()
-						if top_adv != null and top_adv.has_method("is_face_up_now"):
-							if not top_adv.is_face_up_now():
-								pending_flip_card = top_adv
-								pending_flip_is_adventure = true
 								return
 				dragged_card = card
 				dragged_card_origin_y = card.global_position.y
@@ -220,6 +227,11 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				var top_market := _get_top_market_card()
 				if top_market != null and card == top_market:
 					_try_show_purchase_prompt(card, false)
+			elif is_adventure_stack_hovered and phase_index == 1:
+				var top_adv := _get_top_adventure_card()
+				if top_adv != null and top_adv.has_method("is_face_up_now"):
+					if not top_adv.is_face_up_now():
+						_try_show_adventure_prompt(top_adv)
 		pan_active = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 		_zoom(-1.0)
@@ -266,16 +278,25 @@ func _process(_delta: float) -> void:
 
 func _launch_dice_at(spawn_pos: Vector3, hold_time: float) -> void:
 	_clear_dice()
+	dice_count = _get_total_dice()
 	_spawn_dice(spawn_pos, hold_time)
-	dice_count += 1
+	blue_dice += 1
+	dice_count = _get_total_dice()
 	_track_dice_sum()
 
 func _spawn_dice(spawn_pos: Vector3, hold_time: float) -> void:
 	var hold_scale: float = clamp(0.6 + hold_time * 1.2, 0.6, 2.0)
-	for i in dice_count:
+	var offset_index: int = 0
+	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, blue_dice, "blue", offset_index)
+	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, green_dice, "green", offset_index)
+	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, red_dice, "red", offset_index)
+
+func _spawn_dice_batch(spawn_pos: Vector3, hold_scale: float, count: int, dice_type: String, start_index: int) -> int:
+	for i in count:
 		var dice: RigidBody3D = DICE_SCENE.instantiate() as RigidBody3D
 		add_child(dice)
-		dice.global_position = spawn_pos + Vector3(i * 0.6, 2.0, 0.0)
+		var idx := start_index + i
+		dice.global_position = spawn_pos + Vector3(idx * 0.6, 2.0, 0.0)
 		dice.global_rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
 		var lateral_strength := randf_range(1.2, 2.0) * hold_scale
 		var lateral_angle := randf() * TAU
@@ -296,8 +317,14 @@ func _spawn_dice(spawn_pos: Vector3, hold_time: float) -> void:
 			randf_range(-1.5, 1.5) * hold_scale,
 			randf_range(-1.5, 1.5) * hold_scale
 		)
+		if dice.has_method("set_dice_type"):
+			dice.call("set_dice_type", dice_type)
 		pending_dice.append(dice)
 		active_dice.append(dice)
+	return start_index + count
+
+func _get_total_dice() -> int:
+	return max(1, blue_dice + green_dice + red_dice)
 
 func _ray_to_plane(mouse_pos: Vector2) -> Vector3:
 	var _viewport := get_viewport()
@@ -482,6 +509,17 @@ func _get_top_market_card() -> Node3D:
 			top_card = child
 	return top_card
 
+func _get_battlefield_card() -> Node3D:
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_battlefield"):
+			continue
+		if not child.get_meta("in_battlefield", false):
+			continue
+		return child
+	return null
+
 func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 	if not card.has_meta("in_treasure_market"):
 		return false
@@ -558,11 +596,33 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 		_hide_purchase_prompt()
 	if phase_index != 1:
 		_hide_adventure_prompt()
+	if phase_index == 2:
+		_on_end_turn_with_battlefield()
+		_reset_dice_for_rest()
+
+func _on_end_turn_with_battlefield() -> void:
+	var battlefield := _get_battlefield_card()
+	if battlefield == null:
+		return
+	_show_battlefield_warning()
+	var hearts := int(battlefield.get_meta("battlefield_hearts", 1))
+	battlefield.set_meta("battlefield_hearts", hearts + 1)
+
+func _reset_dice_for_rest() -> void:
+	blue_dice = base_dice_count + green_dice + red_dice
+	green_dice = 0
+	red_dice = 0
+	dice_count = _get_total_dice()
 
 func _try_show_adventure_prompt(card: Node3D) -> void:
 	if phase_index != 1:
 		return
+	if _get_battlefield_card() != null:
+		_show_battlefield_warning()
+		return
 	pending_adventure_card = card
+	if adventure_prompt_label != null:
+		adventure_prompt_label.text = "Vuoi intraprendere una nuova avventura?"
 	adventure_prompt_panel.visible = true
 	_resize_adventure_prompt()
 	_update_adventure_prompt_position()
@@ -576,11 +636,19 @@ func _confirm_adventure_prompt() -> void:
 	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
 		_hide_adventure_prompt()
 		return
-	var target_pos_adv := adventure_reveal_pos
-	target_pos_adv.y = adventure_reveal_pos.y + (revealed_adventure_count * REVEALED_Y_STEP)
+	if _get_battlefield_card() != null:
+		_hide_adventure_prompt()
+		_show_battlefield_warning()
+		return
+	var target_pos_adv := battlefield_pos
 	pending_adventure_card.set_meta("in_adventure_stack", false)
+	pending_adventure_card.set_meta("in_battlefield", true)
+	var card_data: Dictionary = pending_adventure_card.get_meta("card_data", {})
+	var base_hearts := 1
+	if not card_data.is_empty():
+		base_hearts = int(card_data.get("hearts", 1))
+	pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
 	pending_adventure_card.call("flip_to_side", target_pos_adv)
-	revealed_adventure_count += 1
 	_hide_adventure_prompt()
 
 func _resize_adventure_prompt() -> void:
@@ -600,6 +668,88 @@ func _update_adventure_prompt_position() -> void:
 	var screen_pos := camera.unproject_position(pending_adventure_card.global_position)
 	var size := adventure_prompt_panel.size
 	adventure_prompt_panel.position = screen_pos + Vector2(-size.x * 0.5, -size.y - 16.0)
+
+func _create_battlefield_warning() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 11
+	add_child(prompt_layer)
+	battlefield_warning_panel = PanelContainer.new()
+	battlefield_warning_panel.visible = false
+	battlefield_warning_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	battlefield_warning_panel.z_index = 210
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.8)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	battlefield_warning_panel.add_theme_stylebox_override("panel", panel_style)
+	prompt_layer.add_child(battlefield_warning_panel)
+
+	var content := VBoxContainer.new()
+	content.anchor_left = 0.0
+	content.anchor_right = 1.0
+	content.anchor_top = 0.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_right = -16.0
+	content.offset_top = 12.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 10)
+	content.mouse_filter = Control.MOUSE_FILTER_PASS
+	battlefield_warning_panel.add_child(content)
+
+	battlefield_warning_label = Label.new()
+	battlefield_warning_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	battlefield_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	battlefield_warning_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	battlefield_warning_label.custom_minimum_size = Vector2(460, 0)
+	battlefield_warning_label.add_theme_font_override("font", UI_FONT)
+	battlefield_warning_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	battlefield_warning_label.add_theme_constant_override("font_spacing/space", 8)
+	battlefield_warning_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	battlefield_warning_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	battlefield_warning_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.add_child(battlefield_warning_label)
+
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button_row.set("theme_override_constants/separation", 20)
+	battlefield_warning_ok = Button.new()
+	battlefield_warning_ok.text = "Ok"
+	battlefield_warning_ok.add_theme_font_override("font", UI_FONT)
+	battlefield_warning_ok.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	battlefield_warning_ok.add_theme_constant_override("font_spacing/space", 8)
+	battlefield_warning_ok.pressed.connect(_hide_battlefield_warning)
+	button_row.add_child(battlefield_warning_ok)
+	content.add_child(button_row)
+
+func _show_battlefield_warning() -> void:
+	if battlefield_warning_panel == null:
+		return
+	battlefield_warning_label.text = "C'e un nemico nel campo di battaglia.\nSe passi al turno successivo i premi restano sul tavolo e non potrai riscattarli."
+	battlefield_warning_panel.visible = true
+	_center_battlefield_warning()
+
+func _hide_battlefield_warning() -> void:
+	if battlefield_warning_panel != null:
+		battlefield_warning_panel.visible = false
+
+func _center_battlefield_warning() -> void:
+	if battlefield_warning_panel == null:
+		return
+	battlefield_warning_panel.custom_minimum_size = Vector2.ZERO
+	battlefield_warning_panel.reset_size()
+	battlefield_warning_panel.custom_minimum_size = battlefield_warning_panel.get_combined_minimum_size()
+	battlefield_warning_panel.reset_size()
+	var view_size: Vector2 = get_viewport().get_visible_rect().size
+	var size: Vector2 = battlefield_warning_panel.size
+	battlefield_warning_panel.position = (view_size - size) * 0.5
 
 
 func _adjust_selected_card_y(delta: float) -> void:
@@ -626,6 +776,10 @@ func _spawn_sum_label() -> void:
 	camera_label.text = "Camera: -"
 	camera_label.position = Vector2(20, 80)
 	ui.add_child(camera_label)
+	regno_reward_label = Label.new()
+	regno_reward_label.text = "Regno: -"
+	regno_reward_label.position = Vector2(20, 110)
+	ui.add_child(regno_reward_label)
 	_create_purchase_prompt()
 
 func _update_camera_label() -> void:
@@ -991,6 +1145,7 @@ func _spawn_adventure_cards() -> void:
 		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
 		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
 		card.set_meta("in_adventure_stack", true)
+		card.set_meta("card_data", adventures[i])
 		card.set_meta("stack_index", i)
 		var image_path := _get_adventure_image_path(adventures[i])
 		if card.has_method("set_texture_flip_x"):
@@ -1074,6 +1229,11 @@ func _init_character_stats() -> void:
 	player_max_hand = int(stats.get("max_hand", 0))
 	player_max_hearts = int(stats.get("max_hearts", 0))
 	player_current_hearts = int(stats.get("start_hearts", 0))
+	base_dice_count = max(1, int(stats.get("start_dice", 1)))
+	blue_dice = base_dice_count
+	green_dice = 0
+	red_dice = 0
+	dice_count = _get_total_dice()
 	_update_hand_ui_stats()
 
 func _spawn_equipment_slots(card: Node3D) -> void:
@@ -1323,6 +1483,7 @@ func _spawn_regno_del_male() -> void:
 
 func _setup_regno_overlay() -> void:
 	regno_track_nodes = _get_regno_track_nodes()
+	regno_track_rewards = _get_regno_track_rewards()
 	if regno_track_nodes.is_empty():
 		return
 	if regno_overlay_layer != null and is_instance_valid(regno_overlay_layer):
@@ -1385,6 +1546,16 @@ func _update_regno_overlay() -> void:
 			else:
 				style.border_color = Color(1.0, 0.9, 0.2, 0.0)
 			box.add_theme_stylebox_override("panel", style)
+	_update_regno_reward_label()
+
+func _update_regno_reward_label() -> void:
+	if regno_reward_label == null:
+		return
+	if regno_track_rewards.is_empty() or regno_track_index < 0 or regno_track_index >= regno_track_rewards.size():
+		regno_reward_label.text = "Regno: -"
+		return
+	var code := str(regno_track_rewards[regno_track_index])
+	regno_reward_label.text = "Regno: %s" % _format_regno_reward(code)
 
 func _get_card_screen_rect(card: Node3D) -> Rect2:
 	var mesh := card.get_node_or_null("Pivot/Mesh") as MeshInstance3D
@@ -1423,6 +1594,33 @@ func _get_regno_track_nodes() -> Array:
 			if nodes is Array:
 				return nodes
 	return []
+
+func _get_regno_track_rewards() -> Array:
+	for entry in CardDatabase.deck_adventure:
+		if str(entry.get("id", "")) == "shared_regno_del_male":
+			var rewards: Array = entry.get("track_rewards", [])
+			if rewards is Array:
+				return rewards
+	return []
+
+func _format_regno_reward(code: String) -> String:
+	match code:
+		"start":
+			return "Partenza"
+		"reward_group_vaso_di_coccio":
+			return "Vaso di coccio"
+		"reward_group_chest":
+			return "Chest"
+		"reward_group_teca":
+			return "Teca"
+		"gain_heart":
+			return "Cuore"
+		"boss":
+			return "Boss"
+		"boss_finale":
+			return "Boss finale"
+		_:
+			return code
 
 func _spawn_astaroth() -> void:
 	var card := CARD_SCENE.instantiate()

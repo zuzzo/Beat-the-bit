@@ -4,6 +4,13 @@ var _faces: Array = []
 @onready var hit_sound: AudioStreamPlayer3D = $HitSound
 var _last_hit_time_ms: int = 0
 const HIT_COOLDOWN_MS := 120
+var dice_type: String = "blue"
+
+const DICE_COLORS := {
+	"blue": Color(0.7, 0.85, 1.0, 1.0),
+	"green": Color(0.65, 1.0, 0.7, 1.0),
+	"red": Color(1.0, 0.6, 0.6, 1.0)
+}
 
 func _ready() -> void:
 	# Faces with their local normals (pointing outward from cube center)
@@ -15,7 +22,31 @@ func _ready() -> void:
 		{"node": $FaceRight, "value": 3, "name": "3", "local_normal": Vector3(1, 0, 0)},
 		{"node": $FaceLeft, "value": 4, "name": "4", "local_normal": Vector3(-1, 0, 0)},
 	]
+	_apply_dice_color()
 	body_entered.connect(_on_body_entered)
+
+func set_dice_type(value: String) -> void:
+	dice_type = value
+	_apply_dice_color()
+
+func get_dice_type() -> String:
+	return dice_type
+
+func _apply_dice_color() -> void:
+	var tint: Color = DICE_COLORS.get(dice_type, DICE_COLORS["blue"])
+	for entry in _faces:
+		var node := entry["node"] as MeshInstance3D
+		if node == null:
+			continue
+		if node.material_override is StandardMaterial3D:
+			var base := node.material_override as StandardMaterial3D
+			var mat := base.duplicate() as StandardMaterial3D
+			mat.albedo_color = tint
+			node.material_override = mat
+		else:
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = tint
+			node.material_override = mat
 
 func _on_body_entered(body: Node) -> void:
 	if body == null or body.name != "Table":
