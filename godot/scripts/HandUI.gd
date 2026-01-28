@@ -7,6 +7,7 @@ var _left_panel: PanelContainer
 var _right_panel: PanelContainer
 var _left_title: Label
 var _right_title: Label
+var _info_label: Label
 var _phase_label: Label
 var _turn_label: Label
 var _hearts_label: Label
@@ -144,6 +145,10 @@ func set_phase(phase_index: int, turn_index: int) -> void:
 	_refresh_player_info()
 	phase_changed.emit(_phase_index, _turn_index)
 
+func set_phase_button_enabled(value: bool) -> void:
+	if _next_phase_button != null:
+		_next_phase_button.disabled = not value
+
 func set_hearts(current: int, maximum: int) -> void:
 	_current_hearts = max(current, 0)
 	_max_hearts = max(maximum, 0)
@@ -170,6 +175,10 @@ func _refresh_player_info() -> void:
 		_cards_label.text = "  Carte: %d/%d" % [_current_cards, _max_cards]
 	if _gold_label != null:
 		_gold_label.text = "  Oro: %d" % _gold
+
+func set_info(text: String) -> void:
+	if _info_label != null:
+		_info_label.text = text
 
 func _apply_ui_font(control: Control) -> void:
 	if control == null:
@@ -345,6 +354,16 @@ func _create_hand_bar() -> void:
 	_apply_ui_font(_right_title)
 	_right_title.add_theme_font_size_override("font_size", 30)
 	_right_panel.add_child(_right_title)
+	_info_label = Label.new()
+	_info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_info_label.text = ""
+	_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_info_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_info_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_info_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_apply_ui_font(_info_label)
+	_info_label.add_theme_font_size_override("font_size", 24)
+	_right_panel.add_child(_info_label)
 	add_child(_right_panel)
 
 func _create_hover_overlay() -> void:

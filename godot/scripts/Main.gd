@@ -17,6 +17,8 @@ var pending_dice: Array[RigidBody3D] = []
 var sum_label: Label
 var y_label: Label
 var camera_label: Label
+var total_panel: PanelContainer
+var total_label: Label
 var roll_history: Array[int] = []
 var roll_color_history: Array[String] = []
 var dice_count: int = 1
@@ -25,6 +27,14 @@ var green_dice: int = 0
 var red_dice: int = 0
 var base_dice_count: int = 1
 var active_dice: Array[RigidBody3D] = []
+var dice_hold_active: bool = false
+var dice_hold_start_ms: int = 0
+var dice_preview: Array[RigidBody3D] = []
+var roll_pending_apply: bool = false
+var last_roll_total: int = 0
+var last_roll_success: bool = false
+var last_roll_penalty: bool = false
+var roll_trigger_reset: bool = false
 var dragged_card: Node3D
 var drag_offset: Vector3 = Vector3.ZERO
 var dragged_card_origin_y: float = 0.0
@@ -59,6 +69,7 @@ var adventure_prompt_label: Label
 var adventure_prompt_yes: Button
 var adventure_prompt_no: Button
 var pending_adventure_card: Node3D
+var pending_chain_effects: Array = []
 var battlefield_warning_panel: PanelContainer
 var battlefield_warning_label: Label
 var battlefield_warning_ok: Button
@@ -67,6 +78,8 @@ var phase_index: int = 0
 var player_max_hearts: int = 0
 var player_max_hand: int = 0
 var player_current_hearts: int = 0
+var curse_stats_override: Dictionary = {}
+var active_curse_id: String = ""
 const PURCHASE_FONT_SIZE := 44
 var treasure_deck_pos := Vector3(-3, 0.0179999992251396, 0)
 var treasure_reveal_pos := Vector3(-4, 0.0240000002086163, 0)
@@ -79,8 +92,10 @@ var adventure_deck_pos := Vector3(2, 0.0209999997168779, 0)
 var adventure_reveal_pos := Vector3(0, 0.0179999992251396, 0)
 var battlefield_pos := Vector3(0, 0.0179999992251396, 0)
 var revealed_adventure_count: int = 0
+var mission_side_count: int = 0
 var is_adventure_stack_hovered: bool = false
 const ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
+const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
 const TREASURE_REVEAL_OFFSET := Vector3(-1.0, 0.006, 0.0)
 const TREASURE_DISCARD_OFFSET := Vector3(-2.05, 0.006, 0.315)
 const ADVENTURE_REVEAL_OFFSET := Vector3(-2.0, -0.003, 0.0)
@@ -166,6 +181,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			last_mouse_pos = event.position
 			mouse_down_pos = event.position
 			var card := _get_card_under_mouse(event.position)
+			if card == null and phase_index == 1 and _get_battlefield_card() != null:
+				_start_dice_hold(event.position)
+				return
 			if card != null:
 				if phase_index != 0:
 					return
@@ -189,6 +207,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				if hit != Vector3.INF:
 					drag_offset = dragged_card.global_position - hit
 		else:
+			if dice_hold_active:
+				_release_dice_hold(event.position)
+				return
 			if dragged_card != null and dragged_card.has_method("set_dragging"):
 				dragged_card.set_dragging(false)
 			if dragged_card != null:
@@ -232,6 +253,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				if top_adv != null and top_adv.has_method("is_face_up_now"):
 					if not top_adv.is_face_up_now():
 						_try_show_adventure_prompt(top_adv)
+			elif card != null and phase_index == 1 and roll_pending_apply:
+				if card.has_meta("in_battlefield") and card.get_meta("in_battlefield", false):
+					_apply_battlefield_result(card, last_roll_total)
 		pan_active = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 		_zoom(-1.0)
@@ -269,6 +293,10 @@ func _process(_delta: float) -> void:
 			dragged_card.global_position = target
 		_sync_equipment_slots_root()
 		return
+	if dice_hold_active:
+		_update_dice_hold(last_mouse_pos)
+		return
+	_ensure_idle_dice_preview()
 	_sync_equipment_slots_root()
 	_update_hover(last_mouse_pos)
 	_update_purchase_prompt_position()
@@ -283,6 +311,89 @@ func _launch_dice_at(spawn_pos: Vector3, hold_time: float) -> void:
 	blue_dice += 1
 	dice_count = _get_total_dice()
 	_track_dice_sum()
+
+func _start_dice_hold(mouse_pos: Vector2) -> void:
+	if dice_hold_active:
+		return
+	if not _can_start_roll():
+		return
+	dice_hold_active = true
+	dice_hold_start_ms = Time.get_ticks_msec()
+	_clear_dice_preview()
+	_spawn_dice_preview()
+	_update_dice_hold(mouse_pos)
+
+func _release_dice_hold(mouse_pos: Vector2) -> void:
+	if not dice_hold_active:
+		return
+	var held: float = max(0.0, (Time.get_ticks_msec() - dice_hold_start_ms) / 1000.0)
+	dice_hold_active = false
+	_clear_dice_preview()
+	var hit: Vector3 = _ray_to_plane(mouse_pos)
+	if hit == Vector3.INF:
+		return
+	_launch_dice_at(hit, held)
+
+func _can_start_roll() -> bool:
+	if roll_pending_apply:
+		return false
+	# allow reroll only if unlocked by success, penalty or reset
+	if last_roll_success or last_roll_penalty or roll_trigger_reset:
+		return true
+	# first roll of the encounter
+	if roll_history.is_empty():
+		return true
+	return false
+
+func _reset_roll_trigger() -> void:
+	roll_trigger_reset = true
+
+func _spawn_dice_preview() -> void:
+	var count := _get_total_dice()
+	var center := adventure_deck_pos
+	for i in count:
+		var dice: RigidBody3D = DICE_SCENE.instantiate() as RigidBody3D
+		add_child(dice)
+		dice.freeze = true
+		dice.global_position = center + Vector3(i * 0.5, 0.3, 0.0)
+		dice_preview.append(dice)
+
+func _ensure_idle_dice_preview() -> void:
+	if dice_hold_active:
+		return
+	if roll_pending_apply:
+		return
+	if not active_dice.is_empty():
+		return
+	var desired := _get_total_dice()
+	if dice_preview.size() == desired:
+		return
+	_clear_dice_preview()
+	_spawn_dice_preview()
+
+func _update_dice_hold(mouse_pos: Vector2) -> void:
+	if dice_preview.is_empty():
+		return
+	var hit := _ray_to_plane(mouse_pos)
+	if hit == Vector3.INF:
+		return
+	var radius := 0.8
+	var t := Time.get_ticks_msec() / 1000.0
+	var count := dice_preview.size()
+	for i in count:
+		var dice := dice_preview[i]
+		if not is_instance_valid(dice):
+			continue
+		var angle: float = t * 2.5 + (TAU * float(i) / max(count, 1))
+		var pos: Vector3 = hit + Vector3(cos(angle) * radius, 0.3, sin(angle) * radius)
+		dice.global_position = pos
+		dice.global_rotation = Vector3(0.0, angle, 0.0)
+
+func _clear_dice_preview() -> void:
+	for dice in dice_preview:
+		if is_instance_valid(dice):
+			dice.queue_free()
+	dice_preview.clear()
 
 func _spawn_dice(spawn_pos: Vector3, hold_time: float) -> void:
 	var hold_scale: float = clamp(0.6 + hold_time * 1.2, 0.6, 2.0)
@@ -520,6 +631,17 @@ func _get_battlefield_card() -> Node3D:
 		return child
 	return null
 
+func _get_blocking_adventure_card() -> Node3D:
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("adventure_blocking"):
+			continue
+		if not child.get_meta("adventure_blocking", false):
+			continue
+		return child
+	return null
+
 func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 	if not card.has_meta("in_treasure_market"):
 		return false
@@ -601,7 +723,7 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 		_reset_dice_for_rest()
 
 func _on_end_turn_with_battlefield() -> void:
-	var battlefield := _get_battlefield_card()
+	var battlefield := _get_blocking_adventure_card()
 	if battlefield == null:
 		return
 	_show_battlefield_warning()
@@ -613,12 +735,17 @@ func _reset_dice_for_rest() -> void:
 	green_dice = 0
 	red_dice = 0
 	dice_count = _get_total_dice()
+	_ensure_idle_dice_preview()
 
 func _try_show_adventure_prompt(card: Node3D) -> void:
 	if phase_index != 1:
 		return
-	if _get_battlefield_card() != null:
+	if _get_blocking_adventure_card() != null:
 		_show_battlefield_warning()
+		return
+	if not pending_chain_effects.is_empty():
+		pending_adventure_card = card
+		_confirm_adventure_prompt()
 		return
 	pending_adventure_card = card
 	if adventure_prompt_label != null:
@@ -636,20 +763,44 @@ func _confirm_adventure_prompt() -> void:
 	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
 		_hide_adventure_prompt()
 		return
-	if _get_battlefield_card() != null:
+	if _get_blocking_adventure_card() != null:
 		_hide_adventure_prompt()
 		_show_battlefield_warning()
 		return
 	var target_pos_adv := battlefield_pos
 	pending_adventure_card.set_meta("in_adventure_stack", false)
-	pending_adventure_card.set_meta("in_battlefield", true)
 	var card_data: Dictionary = pending_adventure_card.get_meta("card_data", {})
 	var base_hearts := 1
+	var card_type := ""
 	if not card_data.is_empty():
 		base_hearts = int(card_data.get("hearts", 1))
+		card_type = str(card_data.get("type", "")).strip_edges().to_lower()
+	pending_adventure_card.set_meta("adventure_type", card_type)
+	if not pending_chain_effects.is_empty():
+		pending_adventure_card.set_meta("chain_effects", pending_chain_effects.duplicate())
+		pending_chain_effects.clear()
+	if card_type == "scontro" or card_type == "maledizione":
+		pending_adventure_card.set_meta("adventure_blocking", true)
+		pending_adventure_card.set_meta("in_battlefield", true)
+	elif card_type == "concatenamento":
+		var effects: Array = []
+		if not card_data.is_empty():
+			effects = card_data.get("effects", [])
+		pending_chain_effects = effects.duplicate()
+	elif card_type == "missione":
+		pending_adventure_card.set_meta("in_mission_side", true)
+		target_pos_adv = _get_next_mission_side_pos()
+	else:
+		pending_adventure_card.set_meta("in_battlefield", true)
 	pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
 	pending_adventure_card.call("flip_to_side", target_pos_adv)
 	_hide_adventure_prompt()
+
+func _get_next_mission_side_pos() -> Vector3:
+	var base := Vector3(character_pos.x + MISSION_SIDE_OFFSET.x, adventure_reveal_pos.y, character_pos.z + MISSION_SIDE_OFFSET.z)
+	var pos := base + Vector3(0.0, mission_side_count * REVEALED_Y_STEP, 0.0)
+	mission_side_count += 1
+	return pos
 
 func _resize_adventure_prompt() -> void:
 	if adventure_prompt_panel == null:
@@ -780,7 +931,46 @@ func _spawn_sum_label() -> void:
 	regno_reward_label.text = "Regno: -"
 	regno_reward_label.position = Vector2(20, 110)
 	ui.add_child(regno_reward_label)
+	_create_total_box(ui)
 	_create_purchase_prompt()
+
+func _create_total_box(ui_layer: CanvasLayer) -> void:
+	total_panel = PanelContainer.new()
+	total_panel.visible = false
+	total_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	total_panel.z_index = 300
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.8)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.5)
+	total_panel.add_theme_stylebox_override("panel", panel_style)
+	ui_layer.add_child(total_panel)
+
+	var label := Label.new()
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_override("font", UI_FONT)
+	label.add_theme_font_size_override("font_size", 64)
+	label.add_theme_constant_override("font_spacing/space", 8)
+	label.text = "0"
+	label.custom_minimum_size = Vector2(240, 120)
+	total_panel.add_child(label)
+	total_label = label
+	_center_total_box()
+
+func _center_total_box() -> void:
+	if total_panel == null:
+		return
+	total_panel.custom_minimum_size = Vector2.ZERO
+	total_panel.reset_size()
+	total_panel.custom_minimum_size = total_panel.get_combined_minimum_size()
+	total_panel.reset_size()
+	var view_size := get_viewport().get_visible_rect().size
+	var size := total_panel.size
+	total_panel.position = Vector2((view_size.x - size.x) * 0.5, 40.0)
 
 func _update_camera_label() -> void:
 	if camera_label == null:
@@ -999,9 +1189,19 @@ func _track_dice_sum() -> void:
 	var total := 0
 	for v in values:
 		total += v
+	last_roll_total = total
+	roll_pending_apply = true
+	last_roll_success = false
+	last_roll_penalty = false
+	roll_trigger_reset = false
 	roll_history.append(total)
 	roll_color_history.append(", ".join(names))
 	sum_label.text = "Risultati: %s | Colori: %s" % [", ".join(roll_history), " | ".join(roll_color_history)]
+	if total_panel != null and total_label != null:
+		total_label.text = str(total)
+		total_panel.visible = true
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", false)
 
 func _wait_for_dice_settle(dice_list: Array[RigidBody3D]) -> void:
 	var elapsed := 0.0
@@ -1032,6 +1232,7 @@ func _clear_dice() -> void:
 			dice.queue_free()
 	active_dice.clear()
 	pending_dice.clear()
+	roll_pending_apply = false
 
 func _get_top_face_value(dice: RigidBody3D) -> int:
 	if dice.has_method("get_top_value"):
@@ -1042,6 +1243,67 @@ func _get_top_face_name(dice: RigidBody3D) -> String:
 	if dice.has_method("get_top_name"):
 		return dice.get_top_name()
 	return "?"
+
+func _apply_battlefield_result(card: Node3D, total: int) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var card_data: Dictionary = card.get_meta("card_data", {})
+	var difficulty := int(card_data.get("difficulty", 0))
+	var hearts := int(card.get_meta("battlefield_hearts", 1))
+	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
+	if card_type == "maledizione":
+		if total <= difficulty:
+			card.queue_free()
+			last_roll_success = true
+		else:
+			_apply_curse(card_data)
+			card.queue_free()
+			last_roll_penalty = true
+		roll_pending_apply = false
+		if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+			hand_ui.call("set_phase_button_enabled", true)
+		if total_panel != null:
+			total_panel.visible = false
+		return
+	if total <= difficulty:
+		hearts -= 1
+		card.set_meta("battlefield_hearts", hearts)
+		if hearts <= 0:
+			card.queue_free()
+		_report_battlefield_reward(card_data, total, difficulty)
+		last_roll_success = true
+	else:
+		_apply_player_heart_loss(1)
+		blue_dice += 1
+		dice_count = _get_total_dice()
+		last_roll_penalty = true
+	roll_pending_apply = false
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", true)
+	if total_panel != null:
+		total_panel.visible = false
+
+func _apply_player_heart_loss(amount: int) -> void:
+	player_current_hearts = max(0, player_current_hearts - amount)
+	_update_hand_ui_stats()
+
+func _apply_curse(card_data: Dictionary) -> void:
+	curse_stats_override = card_data.get("stats", {})
+	active_curse_id = str(card_data.get("id", ""))
+	_init_character_stats()
+	_spawn_equipment_slots(character_card)
+
+func _report_battlefield_reward(card_data: Dictionary, total: int, difficulty: int) -> void:
+	var rewards: Array = card_data.get("reward_brown", [])
+	if total == difficulty:
+		var silver: Array = card_data.get("reward_silver", [])
+		rewards = rewards.duplicate()
+		rewards.append_array(silver)
+	var text := "Premio:\n-"
+	if not rewards.is_empty():
+		text = "Premio:\n- %s" % "\n- ".join(rewards)
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", text)
 
 func _update_all_card_sorting_offsets(released_card: Node3D) -> void:
 	# Raccogli tutte le carte (esclusa quella rilasciata)
@@ -1226,10 +1488,13 @@ func _spawn_character_card() -> void:
 
 func _init_character_stats() -> void:
 	var stats := _get_character_stats()
+	if not curse_stats_override.is_empty():
+		stats = curse_stats_override
 	player_max_hand = int(stats.get("max_hand", 0))
 	player_max_hearts = int(stats.get("max_hearts", 0))
 	player_current_hearts = int(stats.get("start_hearts", 0))
-	base_dice_count = max(1, int(stats.get("start_dice", 1)))
+	var min_dice := int(stats.get("min_dice", stats.get("start_dice", 1)))
+	base_dice_count = max(1, min_dice)
 	blue_dice = base_dice_count
 	green_dice = 0
 	red_dice = 0
@@ -1310,6 +1575,8 @@ func _reposition_equipment_slots() -> void:
 		slot.position = Vector3(start_x + i * (EQUIP_SLOT_WIDTH + EQUIP_SLOT_SPACING), 0.0, base_z)
 
 func _get_character_max_slots() -> int:
+	if not curse_stats_override.is_empty():
+		return int(curse_stats_override.get("max_slots", 0))
 	for entry in CardDatabase.cards_characters:
 		if str(entry.get("id", "")) == "character_sir_arthur_a":
 			var stats: Dictionary = entry.get("stats", {})
@@ -1382,9 +1649,10 @@ func _place_equipment_in_slot(slot: Area3D, card_data: Dictionary) -> void:
 	slot.set_meta("occupied", true)
 	slot.set_meta("equipped_card", card)
 	card.set_meta("equipped_slot", slot)
-	_apply_equipment_extra_slots(card_data)
+	var extra := _apply_equipment_extra_slots(card_data)
+	card.set_meta("extra_slots", extra)
 
-func _apply_equipment_extra_slots(card_data: Dictionary) -> void:
+func _apply_equipment_extra_slots(card_data: Dictionary) -> int:
 	var effects: Array = card_data.get("effects", [])
 	var extra := 0
 	for effect in effects:
@@ -1394,8 +1662,9 @@ func _apply_equipment_extra_slots(card_data: Dictionary) -> void:
 		elif name == "armor_extra_slot_2":
 			extra += 2
 	if extra <= 0:
-		return
+		return 0
 	_add_equipment_slots(extra)
+	return extra
 
 func _add_equipment_slots(extra: int) -> void:
 	if equipment_slots_root == null:
@@ -1432,6 +1701,22 @@ func _add_equipment_slots(extra: int) -> void:
 	_reposition_equipment_slots()
 	_sync_equipment_slots_root()
 
+func _remove_equipment_slots(count: int) -> void:
+	var removed := 0
+	while removed < count and equipment_slots.size() > 0:
+		var slot := equipment_slots[equipment_slots.size() - 1]
+		if slot == null:
+			equipment_slots.pop_back()
+			continue
+		if slot.has_meta("occupied") and slot.get_meta("occupied", false):
+			break
+		equipment_slots.pop_back()
+		slot.queue_free()
+		removed += 1
+	if removed > 0:
+		_reposition_equipment_slots()
+		_sync_equipment_slots_root()
+
 func _refresh_hand_ui() -> void:
 	for child in get_children():
 		if child is CanvasLayer:
@@ -1464,6 +1749,9 @@ func _return_equipped_to_hand(card: Node3D) -> void:
 		card_data = {
 			"image": ""
 		}
+	var extra := int(card.get_meta("extra_slots", 0))
+	if extra > 0:
+		_remove_equipment_slots(extra)
 	player_hand.append(card_data)
 	card.queue_free()
 	_refresh_hand_ui()
@@ -1685,7 +1973,7 @@ func _play_music() -> void:
 	music_player = AudioStreamPlayer.new()
 	music_player.stream = MUSIC_TRACK
 	music_player.autoplay = true
-	music_player.volume_db = -20.0
+	music_player.volume_db = -28.0
 	music_player.bus = "Master"
 	add_child(music_player)
 
