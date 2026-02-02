@@ -138,10 +138,11 @@ var regno_overlay: Control
 var regno_node_boxes: Array[PanelContainer] = []
 var regno_blink_time: float = 0.0
 var regno_reward_label: Label
+var coin_total_label: Label3D
 
 func _ready() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-	camera.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	camera.rotation_degrees = Vector3(-80.0, 0.0, 0.0)
 	camera.global_position = Vector3(0.43, 7.0, 1.74)
 	_play_music()
 	_spawn_placeholders()
@@ -155,6 +156,7 @@ func _ready() -> void:
 	_spawn_astaroth()
 	_spawn_sum_label()
 	_spawn_hand_ui()
+	_create_coin_total_label()
 	_update_phase_info()
 	_create_adventure_prompt()
 	_create_battlefield_warning()
@@ -274,7 +276,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	last_mouse_pos = event.position
 	if pan_active:
-		_update_pan(event.position)
+		var pan_speed := 0.006 * camera.global_position.y
+		camera.global_position.x -= event.relative.x * pan_speed
+		camera.global_position.z -= event.relative.y * pan_speed
 		return
 	if dragged_card == null:
 		_update_hover(event.position)
@@ -326,6 +330,7 @@ func _process(_delta: float) -> void:
 	_update_camera_label()
 	_update_regno_overlay()
 	_update_adventure_value_box()
+	_update_coin_total_label()
 
 func _launch_dice_at(spawn_pos: Vector3, launch_dir: Vector3) -> void:
 	_clear_dice()
@@ -1082,6 +1087,39 @@ func _create_total_box(ui_layer: CanvasLayer) -> void:
 	total_panel.add_child(label)
 	total_label = label
 	_center_total_box()
+
+func _create_coin_total_label() -> void:
+	coin_total_label = Label3D.new()
+	coin_total_label.font = UI_FONT
+	coin_total_label.font_size = 64
+	coin_total_label.modulate = Color(1, 1, 1, 1)
+	coin_total_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	coin_total_label.pixel_size = 0.01
+	coin_total_label.text = "0"
+	add_child(coin_total_label)
+	_position_coin_total_label()
+
+func _position_coin_total_label() -> void:
+	if coin_total_label == null:
+		return
+	var spawner := get_node_or_null("RewardSpawner") as Node3D
+	if spawner == null:
+		return
+	var offset := Vector3(-0.9, 0.0, -0.3)
+	if spawner.has_method("get"):
+		offset = spawner.get("coin_offset")
+	coin_total_label.global_position = spawner.global_position + offset + Vector3(0.45, 0.15, 0.0)
+
+func _update_coin_total_label() -> void:
+	if coin_total_label == null:
+		return
+	var count := get_tree().get_nodes_in_group("coins").size()
+	if count <= 0:
+		coin_total_label.visible = false
+		return
+	coin_total_label.visible = true
+	coin_total_label.text = "%d" % count
+	_position_coin_total_label()
 
 func _create_adventure_value_box(ui_layer: CanvasLayer) -> void:
 	adventure_value_panel = PanelContainer.new()

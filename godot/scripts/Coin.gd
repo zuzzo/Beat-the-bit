@@ -9,6 +9,10 @@ extends RigidBody3D
 @onready var collision_shape: CollisionShape3D = $Collision
 var _settle_time: float = 0.0
 var _alive_time: float = 0.0
+const COIN_TEXTURE := preload("res://assets/Token/coin.png")
+var _uv_scale := 2.0
+var _uv_offset := Vector3(0.0, 0.0, 0.0)
+var _mat: StandardMaterial3D
 const _SETTLE_LINEAR := 0.12
 const _SETTLE_ANGULAR := 0.12
 const _SETTLE_DELAY := 0.4
@@ -18,8 +22,51 @@ const _MAX_ANGULAR := 0.3
 
 func _ready() -> void:
 	_apply_sizes()
+	_apply_texture()
+	add_to_group("coins")
 	can_sleep = true
 	sleeping = false
+
+func _apply_texture() -> void:
+	if mesh_instance == null:
+		return
+	_mat = StandardMaterial3D.new()
+	_mat.albedo_texture = COIN_TEXTURE
+	_mat.albedo_color = Color(1, 1, 1, 1)
+	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_mat.metallic = 0.2
+	_mat.roughness = 0.6
+	_update_uv()
+	mesh_instance.material_override = _mat
+
+
+func _update_uv() -> void:
+	if _mat == null:
+		return
+	_mat.uv1_scale = Vector3(_uv_scale, _uv_scale, 1.0)
+	_mat.uv1_offset = _uv_offset
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed:
+		match event.keycode:
+			KEY_PLUS, KEY_KP_ADD:
+				_uv_scale += 0.1
+				_update_uv()
+			KEY_MINUS, KEY_KP_SUBTRACT:
+				_uv_scale = max(0.1, _uv_scale - 0.1)
+				_update_uv()
+			KEY_UP:
+				_uv_offset.y -= 0.05
+				_update_uv()
+			KEY_DOWN:
+				_uv_offset.y += 0.05
+				_update_uv()
+			KEY_LEFT:
+				_uv_offset.x -= 0.05
+				_update_uv()
+			KEY_RIGHT:
+				_uv_offset.x += 0.05
+				_update_uv()
 
 func _physics_process(delta: float) -> void:
 	if sleeping:
