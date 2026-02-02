@@ -12,6 +12,7 @@ const MUSIC_OFF_ICON := preload("res://assets/Music/sound_off.png")
 const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
 
 @onready var camera: Camera3D = $Camera
+@onready var reward_spawner: Node3D = $RewardSpawner
 
 var pan_active := false
 var launch_start_time: float = -1.0
@@ -48,6 +49,8 @@ var selected_card: Node3D
 var player_hand: Array = []
 var last_mouse_pos: Vector2 = Vector2.ZERO
 var mouse_down_pos: Vector2 = Vector2.ZERO
+var pan_start_world: Vector3 = Vector3.INF
+var pan_start_cam_pos: Vector3 = Vector3.ZERO
 var pending_flip_card: Node3D
 var pending_flip_is_adventure: bool = false
 const CLICK_DRAG_THRESHOLD := 8.0
@@ -187,6 +190,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().quit()
 		elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 			_launch_dice_at(Vector3(0.0, TABLE_Y, 0.0), Vector3.ZERO)
+		elif event.keycode == KEY_1:
+			spawn_reward_tokens(1, HEART_TEXTURE, battlefield_pos)
+		elif event.keycode == KEY_2:
+			spawn_reward_coins(1, battlefield_pos)
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
@@ -251,6 +258,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				if card.has_meta("in_battlefield") and card.get_meta("in_battlefield", false):
 					_apply_battlefield_result(card, last_roll_total)
 		pan_active = false
+	elif event.button_index == MOUSE_BUTTON_MIDDLE:
+		if event.pressed:
+			last_mouse_pos = event.position
+			pan_active = true
+			pan_start_world = _ray_to_plane(event.position)
+			pan_start_cam_pos = camera.global_position
+		else:
+			pan_active = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 		_zoom(-1.0)
 	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
@@ -259,9 +274,22 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	last_mouse_pos = event.position
 	if pan_active:
+		_update_pan(event.position)
 		return
 	if dragged_card == null:
 		_update_hover(event.position)
+
+func _update_pan(mouse_pos: Vector2) -> void:
+	if camera == null:
+		return
+	if pan_start_world == Vector3.INF:
+		return
+	var current_world := _ray_to_plane(mouse_pos)
+	if current_world == Vector3.INF:
+		return
+	var delta := current_world - pan_start_world
+	var target := pan_start_cam_pos - Vector3(delta.x, 0.0, delta.z) * 1.2
+	camera.global_position = target
 
 func _zoom(direction: float) -> void:
 	var pos := camera.global_position
@@ -1602,6 +1630,18 @@ func _spawn_treasure_cards() -> void:
 
 func _spawn_tokens() -> void:
 	pass
+
+func spawn_reward_coins(count: int, center: Vector3 = battlefield_pos) -> void:
+	if reward_spawner == null:
+		return
+	if reward_spawner.has_method("spawn_coins"):
+		reward_spawner.call("spawn_coins", count, center)
+
+func spawn_reward_tokens(count: int, texture_path: String, center: Vector3 = battlefield_pos) -> void:
+	if reward_spawner == null:
+		return
+	if reward_spawner.has_method("spawn_tokens"):
+		reward_spawner.call("spawn_tokens", count, texture_path, center)
 
 func _spawn_character_hearts(card: Node3D) -> void:
 	var hearts := _get_character_hearts()

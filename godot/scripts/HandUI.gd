@@ -347,7 +347,7 @@ func _create_hand_bar() -> void:
 	_right_panel.add_theme_stylebox_override("panel", right_style)
 	_right_title = Label.new()
 	_right_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_right_title.text = "Info"
+	_right_title.text = ""
 	_right_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_right_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_right_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL

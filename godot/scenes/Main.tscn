@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://main"]
+[gd_scene load_steps=6 format=3 uid="uid://main"]
 
 [ext_resource type="Script" path="res://scripts/Main.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/RewardSpawner.gd" id="2"]
 
 [sub_resource type="PlaneMesh" id="1"]
 size = Vector2(20, 14)
@@ -14,6 +15,9 @@ size = Vector3(20, 0.1, 14)
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1")
+
+[node name="RewardSpawner" type="Node3D" parent="."]
+script = ExtResource("2")
 
 [node name="Table" type="StaticBody3D" parent="."]
 
