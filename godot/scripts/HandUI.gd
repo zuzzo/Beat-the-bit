@@ -33,6 +33,7 @@ var _hover_preview: TextureRect
 
 signal request_place_equipment(card: Dictionary, screen_pos: Vector2)
 signal phase_changed(phase_index: int, turn_index: int)
+signal request_use_magic(card: Dictionary)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -197,9 +198,9 @@ func _advance_phase() -> void:
 	phase_changed.emit(_phase_index, _turn_index)
 
 func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2, tex_rect: TextureRect) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
-			_start_drag(card, full_size, tex_rect)
+			request_use_magic.emit(card)
 
 func _start_drag(card: Dictionary, full_size: Vector2, tex_rect: TextureRect) -> void:
 	_dragging_card = card

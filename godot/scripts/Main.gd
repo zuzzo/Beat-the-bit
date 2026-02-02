@@ -7,6 +7,8 @@ const TABLE_Y := 0.0
 const HAND_UI_SCRIPT := preload("res://scripts/HandUI.gd")
 const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
 const MUSIC_TRACK := preload("res://assets/music/Music.mp3")
+const MUSIC_ON_ICON := preload("res://assets/Music/sound_on.png")
+const MUSIC_OFF_ICON := preload("res://assets/Music/sound_off.png")
 const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
 
 @onready var camera: Camera3D = $Camera
@@ -19,6 +21,8 @@ var y_label: Label
 var camera_label: Label
 var total_panel: PanelContainer
 var total_label: Label
+var adventure_value_panel: PanelContainer
+var adventure_value_label: Label
 var roll_history: Array[int] = []
 var roll_color_history: Array[String] = []
 var dice_count: int = 1
@@ -35,6 +39,7 @@ var last_roll_total: int = 0
 var last_roll_success: bool = false
 var last_roll_penalty: bool = false
 var roll_trigger_reset: bool = false
+var roll_in_progress: bool = false
 var dragged_card: Node3D
 var drag_offset: Vector3 = Vector3.ZERO
 var dragged_card_origin_y: float = 0.0
@@ -70,10 +75,17 @@ var adventure_prompt_yes: Button
 var adventure_prompt_no: Button
 var pending_adventure_card: Node3D
 var pending_chain_effects: Array = []
+var action_prompt_panel: PanelContainer
+var action_prompt_label: Label
+var action_prompt_yes: Button
+var action_prompt_no: Button
+var pending_action_card_data: Dictionary = {}
+var pending_action_is_magic: bool = false
 var battlefield_warning_panel: PanelContainer
 var battlefield_warning_label: Label
 var battlefield_warning_ok: Button
 var music_player: AudioStreamPlayer
+var music_toggle_button: TextureButton
 var phase_index: int = 0
 var player_max_hearts: int = 0
 var player_max_hand: int = 0
@@ -140,6 +152,7 @@ func _ready() -> void:
 	_spawn_astaroth()
 	_spawn_sum_label()
 	_spawn_hand_ui()
+	_update_phase_info()
 	_create_adventure_prompt()
 	_create_battlefield_warning()
 	_setup_regno_overlay()
@@ -173,7 +186,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_ESCAPE:
 			get_tree().quit()
 		elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-			_launch_dice_at(Vector3(0.0, TABLE_Y, 0.0), 0.3)
+			_launch_dice_at(Vector3(0.0, TABLE_Y, 0.0), Vector3.ZERO)
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
@@ -187,6 +200,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if card != null:
 				if phase_index != 0:
 					return
+				if roll_pending_apply and card.has_meta("equipped_slot"):
+					_show_action_prompt(card.get_meta("card_data", {}), false)
+					return
 				if card.has_meta("equipped_slot"):
 					_return_equipped_to_hand(card)
 					return
@@ -199,33 +215,11 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 								pending_flip_card = top_card
 								pending_flip_is_adventure = false
 								return
-				dragged_card = card
-				dragged_card_origin_y = card.global_position.y
-				if dragged_card.has_method("set_dragging"):
-					dragged_card.set_dragging(true)
-				var hit := _ray_to_plane(event.position)
-				if hit != Vector3.INF:
-					drag_offset = dragged_card.global_position - hit
+				# dragging disabled
 		else:
 			if dice_hold_active:
 				_release_dice_hold(event.position)
 				return
-			if dragged_card != null and dragged_card.has_method("set_dragging"):
-				dragged_card.set_dragging(false)
-			if dragged_card != null:
-				var pos := dragged_card.global_position
-				pos.y = dragged_card_origin_y + 0.003
-				dragged_card.global_position = pos
-				if y_label != null:
-					y_label.text = "Y carta: %.3f" % pos.y
-				if dragged_card.has_method("set_sorting_offset"):
-					_update_all_card_sorting_offsets(dragged_card)
-				if dragged_card.has_meta("in_treasure_stack") and dragged_card.get_meta("in_treasure_stack", false):
-					_update_treasure_stack_position(dragged_card.global_position)
-				elif dragged_card.has_meta("in_adventure_stack") and dragged_card.get_meta("in_adventure_stack", false):
-					_update_adventure_stack_position(dragged_card.global_position)
-				elif dragged_card.has_meta("in_boss_stack") and dragged_card.get_meta("in_boss_stack", false):
-					_update_boss_stack_position(dragged_card.global_position)
 			dragged_card = null
 			var moved := mouse_down_pos.distance_to(event.position) > CLICK_DRAG_THRESHOLD
 			if not moved and pending_flip_card != null and is_instance_valid(pending_flip_card):
@@ -277,12 +271,12 @@ func _zoom(direction: float) -> void:
 func _release_launch(mouse_pos: Vector2) -> void:
 	if launch_start_time < 0.0:
 		return
-	var held: float = max(0.0, (Time.get_ticks_msec() / 1000.0) - launch_start_time)
+	var _held: float = max(0.0, (Time.get_ticks_msec() / 1000.0) - launch_start_time)
 	launch_start_time = -1.0
 	var hit: Vector3 = _ray_to_plane(mouse_pos)
 	if hit == Vector3.INF:
 		return
-	_launch_dice_at(hit, held)
+	_launch_dice_at(hit, Vector3.ZERO)
 
 func _process(_delta: float) -> void:
 	if dragged_card != null:
@@ -303,11 +297,13 @@ func _process(_delta: float) -> void:
 	_update_adventure_prompt_position()
 	_update_camera_label()
 	_update_regno_overlay()
+	_update_adventure_value_box()
 
-func _launch_dice_at(spawn_pos: Vector3, hold_time: float) -> void:
+func _launch_dice_at(spawn_pos: Vector3, launch_dir: Vector3) -> void:
 	_clear_dice()
+	roll_in_progress = true
 	dice_count = _get_total_dice()
-	_spawn_dice(spawn_pos, hold_time)
+	_spawn_dice(spawn_pos, launch_dir)
 	blue_dice += 1
 	dice_count = _get_total_dice()
 	_track_dice_sum()
@@ -326,16 +322,22 @@ func _start_dice_hold(mouse_pos: Vector2) -> void:
 func _release_dice_hold(mouse_pos: Vector2) -> void:
 	if not dice_hold_active:
 		return
-	var held: float = max(0.0, (Time.get_ticks_msec() - dice_hold_start_ms) / 1000.0)
 	dice_hold_active = false
 	_clear_dice_preview()
-	var hit: Vector3 = _ray_to_plane(mouse_pos)
-	if hit == Vector3.INF:
+	var hit_start: Vector3 = _ray_to_plane(mouse_down_pos)
+	var hit_end: Vector3 = _ray_to_plane(mouse_pos)
+	if hit_end == Vector3.INF or hit_start == Vector3.INF:
 		return
-	_launch_dice_at(hit, held)
+	var launch_dir := hit_end - hit_start
+	launch_dir.y = 0.0
+	if launch_dir.length() > 0.001:
+		launch_dir = launch_dir.normalized()
+	_launch_dice_at(hit_end, launch_dir)
 
 func _can_start_roll() -> bool:
 	if roll_pending_apply:
+		return false
+	if roll_in_progress:
 		return false
 	# allow reroll only if unlocked by success, penalty or reset
 	if last_roll_success or last_roll_penalty or roll_trigger_reset:
@@ -395,14 +397,14 @@ func _clear_dice_preview() -> void:
 			dice.queue_free()
 	dice_preview.clear()
 
-func _spawn_dice(spawn_pos: Vector3, hold_time: float) -> void:
-	var hold_scale: float = clamp(0.6 + hold_time * 1.2, 0.6, 2.0)
+func _spawn_dice(spawn_pos: Vector3, launch_dir: Vector3) -> void:
+	var hold_scale: float = 1.0
 	var offset_index: int = 0
-	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, blue_dice, "blue", offset_index)
-	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, green_dice, "green", offset_index)
-	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, red_dice, "red", offset_index)
+	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, launch_dir, blue_dice, "blue", offset_index)
+	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, launch_dir, green_dice, "green", offset_index)
+	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, launch_dir, red_dice, "red", offset_index)
 
-func _spawn_dice_batch(spawn_pos: Vector3, hold_scale: float, count: int, dice_type: String, start_index: int) -> int:
+func _spawn_dice_batch(spawn_pos: Vector3, hold_scale: float, launch_dir: Vector3, count: int, dice_type: String, start_index: int) -> int:
 	for i in count:
 		var dice: RigidBody3D = DICE_SCENE.instantiate() as RigidBody3D
 		add_child(dice)
@@ -411,11 +413,12 @@ func _spawn_dice_batch(spawn_pos: Vector3, hold_scale: float, count: int, dice_t
 		dice.global_rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
 		var lateral_strength := randf_range(1.2, 2.0) * hold_scale
 		var lateral_angle := randf() * TAU
+		var dir_boost := launch_dir * 1.2
 		var impulse: Vector3 = Vector3(
 			cos(lateral_angle) * lateral_strength,
 			randf_range(4.0, 5.0) * hold_scale,
 			sin(lateral_angle) * lateral_strength
-		)
+		) + Vector3(dir_boost.x, 0.0, dir_boost.z)
 		var torque: Vector3 = Vector3(
 			randf_range(-1.1, 1.1) * hold_scale,
 			randf_range(-1.1, 1.1) * hold_scale,
@@ -721,6 +724,19 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 	if phase_index == 2:
 		_on_end_turn_with_battlefield()
 		_reset_dice_for_rest()
+	_update_phase_info()
+
+func _update_phase_info() -> void:
+	if hand_ui == null or not hand_ui.has_method("set_info"):
+		return
+	var text := ""
+	if phase_index == 0:
+		text = "Organizzazione:\n- compra tesori (dx sul mercato)\n- equip/unequip dalla mano\n- gira carta tesoro"
+	elif phase_index == 1:
+		text = "Avventura:\n- gira carta avventura (dx sul mazzo)\n- lancia dadi (tieni sx)\n- applica risultato (dx sul nemico)"
+	else:
+		text = "Recupero:\n- ripristino dadi\n- fine turno"
+	hand_ui.call("set_info", text)
 
 func _on_end_turn_with_battlefield() -> void:
 	var battlefield := _get_blocking_adventure_card()
@@ -758,6 +774,56 @@ func _hide_adventure_prompt() -> void:
 	if adventure_prompt_panel != null:
 		adventure_prompt_panel.visible = false
 	pending_adventure_card = null
+
+func _show_action_prompt(card_data: Dictionary, is_magic: bool) -> void:
+	if action_prompt_panel == null:
+		return
+	pending_action_card_data = card_data
+	pending_action_is_magic = is_magic
+	var name := str(card_data.get("name", "Carta"))
+	if action_prompt_label != null:
+		action_prompt_label.text = "Vuoi usare %s?" % name
+	action_prompt_panel.visible = true
+	_center_action_prompt()
+
+func _hide_action_prompt() -> void:
+	if action_prompt_panel != null:
+		action_prompt_panel.visible = false
+	pending_action_card_data = {}
+	pending_action_is_magic = false
+
+func _center_action_prompt() -> void:
+	if action_prompt_panel == null:
+		return
+	action_prompt_panel.custom_minimum_size = Vector2.ZERO
+	action_prompt_panel.reset_size()
+	action_prompt_panel.custom_minimum_size = action_prompt_panel.get_combined_minimum_size()
+	action_prompt_panel.reset_size()
+	var view_size := get_viewport().get_visible_rect().size
+	var size: Vector2 = action_prompt_panel.size
+	action_prompt_panel.position = (view_size - size) * 0.5
+
+func _confirm_action_prompt() -> void:
+	if pending_action_card_data.is_empty():
+		_hide_action_prompt()
+		return
+	_use_card_effects(pending_action_card_data)
+	if pending_action_is_magic:
+		player_hand.erase(pending_action_card_data)
+		_refresh_hand_ui()
+	_hide_action_prompt()
+
+func _use_card_effects(card_data: Dictionary) -> void:
+	var effects: Array = card_data.get("effects", [])
+	if effects.is_empty():
+		return
+	# allow reroll / modification
+	roll_trigger_reset = true
+	roll_pending_apply = false
+	if total_panel != null:
+		total_panel.visible = false
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", true)
 
 func _confirm_adventure_prompt() -> void:
 	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
@@ -932,7 +998,35 @@ func _spawn_sum_label() -> void:
 	regno_reward_label.position = Vector2(20, 110)
 	ui.add_child(regno_reward_label)
 	_create_total_box(ui)
+	_create_adventure_value_box(ui)
 	_create_purchase_prompt()
+	_create_action_prompt()
+
+func _create_music_toggle(ui_layer: CanvasLayer) -> void:
+	music_toggle_button = TextureButton.new()
+	music_toggle_button.texture_normal = MUSIC_ON_ICON
+	music_toggle_button.texture_pressed = MUSIC_ON_ICON
+	music_toggle_button.texture_hover = MUSIC_ON_ICON
+	music_toggle_button.texture_disabled = MUSIC_OFF_ICON
+	music_toggle_button.size = Vector2(32, 32)
+	var view_size := get_viewport().get_visible_rect().size
+	music_toggle_button.position = Vector2(view_size.x - 42, 10)
+	music_toggle_button.pressed.connect(_toggle_music)
+	ui_layer.add_child(music_toggle_button)
+
+func _toggle_music() -> void:
+	if music_player == null:
+		return
+	music_player.playing = not music_player.playing
+	if music_toggle_button != null:
+		if music_player.playing:
+			music_toggle_button.texture_normal = MUSIC_ON_ICON
+			music_toggle_button.texture_pressed = MUSIC_ON_ICON
+			music_toggle_button.texture_hover = MUSIC_ON_ICON
+		else:
+			music_toggle_button.texture_normal = MUSIC_OFF_ICON
+			music_toggle_button.texture_pressed = MUSIC_OFF_ICON
+			music_toggle_button.texture_hover = MUSIC_OFF_ICON
 
 func _create_total_box(ui_layer: CanvasLayer) -> void:
 	total_panel = PanelContainer.new()
@@ -960,6 +1054,44 @@ func _create_total_box(ui_layer: CanvasLayer) -> void:
 	total_panel.add_child(label)
 	total_label = label
 	_center_total_box()
+
+func _create_adventure_value_box(ui_layer: CanvasLayer) -> void:
+	adventure_value_panel = PanelContainer.new()
+	adventure_value_panel.visible = false
+	adventure_value_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	adventure_value_panel.z_index = 300
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.1, 0.2, 0.4, 0.85)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.5)
+	adventure_value_panel.add_theme_stylebox_override("panel", panel_style)
+	ui_layer.add_child(adventure_value_panel)
+
+	var label := Label.new()
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_override("font", UI_FONT)
+	label.add_theme_font_size_override("font_size", 42)
+	label.add_theme_constant_override("font_spacing/space", 8)
+	label.text = "Valore: -"
+	label.custom_minimum_size = Vector2(260, 90)
+	adventure_value_panel.add_child(label)
+	adventure_value_label = label
+	_center_adventure_value_box()
+
+func _center_adventure_value_box() -> void:
+	if adventure_value_panel == null:
+		return
+	adventure_value_panel.custom_minimum_size = Vector2.ZERO
+	adventure_value_panel.reset_size()
+	adventure_value_panel.custom_minimum_size = adventure_value_panel.get_combined_minimum_size()
+	adventure_value_panel.reset_size()
+	var view_size := get_viewport().get_visible_rect().size
+	var size := adventure_value_panel.size
+	adventure_value_panel.position = Vector2((view_size.x - size.x) * 0.5, 160.0)
 
 func _center_total_box() -> void:
 	if total_panel == null:
@@ -1048,6 +1180,75 @@ func _create_purchase_prompt() -> void:
 	purchase_panel.add_child(purchase_content)
 	prompt_layer.add_child(purchase_panel)
 
+func _create_action_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 12
+	add_child(prompt_layer)
+	action_prompt_panel = PanelContainer.new()
+	action_prompt_panel.visible = false
+	action_prompt_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	action_prompt_panel.z_index = 210
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.8)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	action_prompt_panel.add_theme_stylebox_override("panel", panel_style)
+	prompt_layer.add_child(action_prompt_panel)
+
+	var content := VBoxContainer.new()
+	content.anchor_left = 0.0
+	content.anchor_right = 1.0
+	content.anchor_top = 0.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_right = -16.0
+	content.offset_top = 12.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 10)
+	content.mouse_filter = Control.MOUSE_FILTER_PASS
+	action_prompt_panel.add_child(content)
+
+	action_prompt_label = Label.new()
+	action_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	action_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	action_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	action_prompt_label.custom_minimum_size = Vector2(460, 0)
+	action_prompt_label.add_theme_font_override("font", UI_FONT)
+	action_prompt_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	action_prompt_label.add_theme_constant_override("font_spacing/space", 8)
+	action_prompt_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	action_prompt_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_prompt_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.add_child(action_prompt_label)
+
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button_row.set("theme_override_constants/separation", 16)
+	action_prompt_yes = Button.new()
+	action_prompt_yes.text = "Si"
+	action_prompt_yes.add_theme_font_override("font", UI_FONT)
+	action_prompt_yes.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	action_prompt_yes.add_theme_constant_override("font_spacing/space", 8)
+	action_prompt_yes.pressed.connect(_confirm_action_prompt)
+	action_prompt_no = Button.new()
+	action_prompt_no.text = "No"
+	action_prompt_no.add_theme_font_override("font", UI_FONT)
+	action_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	action_prompt_no.add_theme_constant_override("font_spacing/space", 8)
+	action_prompt_no.pressed.connect(_hide_action_prompt)
+	button_row.add_child(action_prompt_yes)
+	button_row.add_child(action_prompt_no)
+	content.add_child(button_row)
+
+	action_prompt_panel.add_child(content)
+
 func _create_adventure_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
 	prompt_layer.layer = 11
@@ -1131,6 +1332,8 @@ func _spawn_hand_ui() -> void:
 		hand_root.connect("request_place_equipment", Callable(self, "_on_hand_request_place_equipment"))
 	if hand_root.has_signal("phase_changed"):
 		hand_root.connect("phase_changed", Callable(self, "_on_phase_changed"))
+	if hand_root.has_signal("request_use_magic"):
+		hand_root.connect("request_use_magic", Callable(self, "_on_hand_request_use_magic"))
 
 	var view_size := get_viewport().get_visible_rect().size
 	var card_height := view_size.y * 0.2
@@ -1186,6 +1389,7 @@ func _track_dice_sum() -> void:
 		values.append(value)
 		names.append(_get_top_face_name(dice))
 	pending_dice.clear()
+	roll_in_progress = false
 	var total := 0
 	for v in values:
 		total += v
@@ -1244,6 +1448,42 @@ func _get_top_face_name(dice: RigidBody3D) -> String:
 		return dice.get_top_name()
 	return "?"
 
+func _get_effective_difficulty(card_data: Dictionary) -> Dictionary:
+	var base := int(card_data.get("difficulty", 0))
+	var modifier := 0
+	var effects: Array = card_data.get("chain_effects", [])
+	for effect in effects:
+		var name := str(effect)
+		if name == "next_roll_plus_3":
+			modifier -= 3
+	var effective := base + modifier
+	return {
+		"base": base,
+		"modifier": modifier,
+		"effective": effective
+	}
+
+func _update_adventure_value_box() -> void:
+	if adventure_value_panel == null or adventure_value_label == null:
+		return
+	var battlefield := _get_battlefield_card()
+	if battlefield == null:
+		adventure_value_panel.visible = false
+		return
+	var data: Dictionary = battlefield.get_meta("card_data", {})
+	if data.is_empty():
+		adventure_value_panel.visible = false
+		return
+	var diff_info := _get_effective_difficulty(data)
+	var base := int(diff_info.get("base", 0))
+	var modifier := int(diff_info.get("modifier", 0))
+	var effective := int(diff_info.get("effective", 0))
+	if modifier != 0:
+		adventure_value_label.text = "Valore: %d\n(mod %d)" % [effective, modifier]
+	else:
+		adventure_value_label.text = "Valore: %d" % base
+	adventure_value_panel.visible = true
+
 func _apply_battlefield_result(card: Node3D, total: int) -> void:
 	if card == null or not is_instance_valid(card):
 		return
@@ -1282,6 +1522,8 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		hand_ui.call("set_phase_button_enabled", true)
 	if total_panel != null:
 		total_panel.visible = false
+	if adventure_value_panel != null:
+		adventure_value_panel.visible = false
 
 func _apply_player_heart_loss(amount: int) -> void:
 	player_current_hearts = max(0, player_current_hearts - amount)
@@ -1755,6 +1997,16 @@ func _return_equipped_to_hand(card: Node3D) -> void:
 	player_hand.append(card_data)
 	card.queue_free()
 	_refresh_hand_ui()
+
+func _on_hand_request_use_magic(card: Dictionary) -> void:
+	if phase_index != 1:
+		return
+	if not roll_pending_apply:
+		return
+	var card_type := str(card.get("type", "")).strip_edges().to_lower()
+	if card_type != "istantaneo":
+		return
+	_show_action_prompt(card, true)
 
 func _spawn_regno_del_male() -> void:
 	var card := CARD_SCENE.instantiate()
