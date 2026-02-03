@@ -20,10 +20,14 @@ var pending_dice: Array[RigidBody3D] = []
 var sum_label: Label
 var y_label: Label
 var camera_label: Label
-var total_panel: PanelContainer
-var total_label: Label
 var adventure_value_panel: PanelContainer
 var adventure_value_label: Label
+var player_value_panel: PanelContainer
+var player_value_label: Label
+var compare_button: Button
+var outcome_panel: PanelContainer
+var outcome_label: Label
+var outcome_token: int = 0
 var roll_history: Array[int] = []
 var roll_color_history: Array[String] = []
 var dice_count: int = 1
@@ -64,8 +68,10 @@ const CARD_CENTER_X_OFFSET := 0.7
 const EQUIP_SLOT_WIDTH := 1.4
 const EQUIP_SLOT_HEIGHT := 2.0
 const EQUIP_SLOT_SPACING := 0.2
+const DICE_PREVIEW_OFFSET := Vector3(2.2, 0.0, 0.0)
 var hand_ui: Control
 var player_gold: int = 30
+var enemies_defeated_total: int = 0
 var purchase_panel: PanelContainer
 var purchase_label: Label
 var purchase_yes_button: Button
@@ -89,6 +95,7 @@ var battlefield_warning_label: Label
 var battlefield_warning_ok: Button
 var music_player: AudioStreamPlayer
 var music_toggle_button: TextureButton
+var fight_icon: Texture2D
 var phase_index: int = 0
 var player_max_hearts: int = 0
 var player_max_hand: int = 0
@@ -106,11 +113,14 @@ const REVEALED_Y_STEP := 0.01
 var adventure_deck_pos := Vector3(2, 0.0209999997168779, 0)
 var adventure_reveal_pos := Vector3(0, 0.0179999992251396, 0)
 var battlefield_pos := Vector3(0, 0.0179999992251396, 0)
+var event_row_pos := Vector3(0, 0.0179999992251396, 1.6)
 var revealed_adventure_count: int = 0
 var mission_side_count: int = 0
+var event_row_count: int = 0
 var is_adventure_stack_hovered: bool = false
 const ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
 const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
+const EVENT_ROW_SPACING := 1.6
 const TREASURE_REVEAL_OFFSET := Vector3(-1.0, 0.006, 0.0)
 const TREASURE_DISCARD_OFFSET := Vector3(-2.05, 0.006, 0.315)
 const ADVENTURE_REVEAL_OFFSET := Vector3(-2.0, -0.003, 0.0)
@@ -144,6 +154,7 @@ func _ready() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	camera.rotation_degrees = Vector3(-80.0, 0.0, 0.0)
 	camera.global_position = Vector3(0.43, 7.0, 1.74)
+	fight_icon = _load_texture("res://assets/Token/fight.png")
 	_play_music()
 	_spawn_placeholders()
 	_init_player_hand()
@@ -207,6 +218,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				_start_dice_hold(event.position)
 				return
 			if card != null:
+				if phase_index == 0 and card.has_meta("in_mission_side") and card.get_meta("in_mission_side", false):
+					_try_claim_mission(card)
+					return
+				if phase_index == 0:
+					var top_market_left := _get_top_market_card()
+					if top_market_left != null and card == top_market_left:
+						_try_show_purchase_prompt(card, false)
+						return
 				if phase_index != 0:
 					return
 				if roll_pending_apply and card.has_meta("equipped_slot"):
@@ -223,6 +242,13 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 							if not top_card.is_face_up_now():
 								pending_flip_card = top_card
 								pending_flip_is_adventure = false
+								return
+					elif is_adventure_stack_hovered and phase_index == 1:
+						var top_adv_left := _get_top_adventure_card()
+						if top_adv_left != null and top_adv_left.has_method("is_face_up_now"):
+							if not top_adv_left.is_face_up_now():
+								pending_flip_card = top_adv_left
+								pending_flip_is_adventure = true
 								return
 				# dragging disabled
 		else:
@@ -251,14 +277,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				var top_market := _get_top_market_card()
 				if top_market != null and card == top_market:
 					_try_show_purchase_prompt(card, false)
-			elif is_adventure_stack_hovered and phase_index == 1:
-				var top_adv := _get_top_adventure_card()
-				if top_adv != null and top_adv.has_method("is_face_up_now"):
-					if not top_adv.is_face_up_now():
-						_try_show_adventure_prompt(top_adv)
-			elif card != null and phase_index == 1 and roll_pending_apply:
-				if card.has_meta("in_battlefield") and card.get_meta("in_battlefield", false):
-					_apply_battlefield_result(card, last_roll_total)
 		pan_active = false
 	elif event.button_index == MOUSE_BUTTON_MIDDLE:
 		if event.pressed:
@@ -334,6 +352,7 @@ func _process(_delta: float) -> void:
 
 func _launch_dice_at(spawn_pos: Vector3, launch_dir: Vector3) -> void:
 	_clear_dice()
+	_hide_outcome()
 	roll_in_progress = true
 	dice_count = _get_total_dice()
 	_spawn_dice(spawn_pos, launch_dir)
@@ -385,7 +404,7 @@ func _reset_roll_trigger() -> void:
 
 func _spawn_dice_preview() -> void:
 	var count := _get_total_dice()
-	var center := adventure_deck_pos
+	var center := adventure_deck_pos + DICE_PREVIEW_OFFSET
 	for i in count:
 		var dice: RigidBody3D = DICE_SCENE.instantiate() as RigidBody3D
 		add_child(dice)
@@ -789,6 +808,16 @@ func _reset_dice_for_rest() -> void:
 func _try_show_adventure_prompt(card: Node3D) -> void:
 	if phase_index != 1:
 		return
+	var card_data: Dictionary = card.get_meta("card_data", {})
+	var card_type := ""
+	if not card_data.is_empty():
+		card_type = str(card_data.get("type", "")).strip_edges().to_lower()
+	if card_type == "evento":
+		_reveal_event_card(card, card_data)
+		return
+	if card_type == "missione":
+		_reveal_mission_card(card, card_data)
+		return
 	if _get_blocking_adventure_card() != null:
 		_show_battlefield_warning()
 		return
@@ -851,10 +880,9 @@ func _use_card_effects(card_data: Dictionary) -> void:
 	if effects.is_empty():
 		return
 	# allow reroll / modification
+	_hide_outcome()
 	roll_trigger_reset = true
 	roll_pending_apply = false
-	if total_panel != null:
-		total_panel.visible = false
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 		hand_ui.call("set_phase_button_enabled", true)
 
@@ -881,18 +909,25 @@ func _confirm_adventure_prompt() -> void:
 	if card_type == "scontro" or card_type == "maledizione":
 		pending_adventure_card.set_meta("adventure_blocking", true)
 		pending_adventure_card.set_meta("in_battlefield", true)
+		pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
+		pending_adventure_card.call("flip_to_side", target_pos_adv)
 	elif card_type == "concatenamento":
 		var effects: Array = []
 		if not card_data.is_empty():
 			effects = card_data.get("effects", [])
 		pending_chain_effects = effects.duplicate()
+	elif card_type == "evento":
+		_reveal_event_card(pending_adventure_card, card_data)
+		_hide_adventure_prompt()
+		return
 	elif card_type == "missione":
-		pending_adventure_card.set_meta("in_mission_side", true)
-		target_pos_adv = _get_next_mission_side_pos()
+		_reveal_mission_card(pending_adventure_card, card_data)
+		_hide_adventure_prompt()
+		return
 	else:
 		pending_adventure_card.set_meta("in_battlefield", true)
-	pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
-	pending_adventure_card.call("flip_to_side", target_pos_adv)
+		pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
+		pending_adventure_card.call("flip_to_side", target_pos_adv)
 	_hide_adventure_prompt()
 
 func _get_next_mission_side_pos() -> Vector3:
@@ -900,6 +935,103 @@ func _get_next_mission_side_pos() -> Vector3:
 	var pos := base + Vector3(0.0, mission_side_count * REVEALED_Y_STEP, 0.0)
 	mission_side_count += 1
 	return pos
+
+func _get_next_event_pos() -> Vector3:
+	var pos := event_row_pos + Vector3(event_row_count * EVENT_ROW_SPACING, 0.0, 0.0)
+	event_row_count += 1
+	return pos
+
+func _reveal_event_card(card: Node3D, card_data: Dictionary) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	card.set_meta("in_adventure_stack", false)
+	card.set_meta("in_event_row", true)
+	card.set_meta("adventure_type", "evento")
+	var target_pos := _get_next_event_pos()
+	card.call("flip_to_side", target_pos)
+
+func _reveal_mission_card(card: Node3D, card_data: Dictionary) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	card.set_meta("in_adventure_stack", false)
+	card.set_meta("in_mission_side", true)
+	card.set_meta("adventure_type", "missione")
+	var target_pos := _get_next_mission_side_pos()
+	card.call("flip_to_side", target_pos)
+
+func _try_claim_mission(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	if phase_index != 0:
+		return
+	var card_data: Dictionary = card.get_meta("card_data", {})
+	if card_data.is_empty():
+		return
+	if not _is_mission_completed(card_data):
+		_report_mission_status(card_data, false)
+		return
+	_apply_mission_cost(card_data)
+	_report_mission_status(card_data, true)
+	card.queue_free()
+
+func _is_mission_completed(card_data: Dictionary) -> bool:
+	var req := _get_mission_requirements(card_data)
+	var enemies_required := int(req.get("defeat_enemies", 0))
+	var coins_required := int(req.get("pay_coins", 0))
+	if enemies_required <= 0 and coins_required <= 0:
+		return false
+	if enemies_required > 0 and enemies_defeated_total < enemies_required:
+		return false
+	if coins_required > 0 and player_gold < coins_required:
+		return false
+	return true
+
+func _apply_mission_cost(card_data: Dictionary) -> void:
+	var req := _get_mission_requirements(card_data)
+	var coins_required := int(req.get("pay_coins", 0))
+	if coins_required <= 0:
+		return
+	player_gold = max(0, player_gold - coins_required)
+	if hand_ui != null and hand_ui.has_method("set_gold"):
+		hand_ui.call("set_gold", player_gold)
+
+func _get_mission_requirements(card_data: Dictionary) -> Dictionary:
+	var req := {
+		"defeat_enemies": 0,
+		"pay_coins": 0
+	}
+	if card_data.has("mission") and card_data.get("mission", {}) is Dictionary:
+		var mission: Dictionary = card_data.get("mission", {})
+		var mtype := str(mission.get("type", "")).strip_edges().to_lower()
+		if mtype == "defeat_enemies":
+			req["defeat_enemies"] = int(mission.get("count", 0))
+		elif mtype == "pay_coins":
+			req["pay_coins"] = int(mission.get("cost", 0))
+		elif mtype == "defeat_enemies_and_pay_coins":
+			req["defeat_enemies"] = int(mission.get("count", 0))
+			req["pay_coins"] = int(mission.get("cost", 0))
+	if card_data.has("mission_defeat_enemies"):
+		req["defeat_enemies"] = max(req["defeat_enemies"], int(card_data.get("mission_defeat_enemies", 0)))
+	if card_data.has("mission_pay_coins"):
+		req["pay_coins"] = max(req["pay_coins"], int(card_data.get("mission_pay_coins", 0)))
+	return req
+
+func _report_mission_status(card_data: Dictionary, completed: bool) -> void:
+	if hand_ui == null or not hand_ui.has_method("set_info"):
+		return
+	var name := str(card_data.get("name", "Missione"))
+	if not completed:
+		hand_ui.call("set_info", "%s non completata." % name)
+		return
+	var rewards: Array = card_data.get("reward_brown", [])
+	var silver: Array = card_data.get("reward_silver", [])
+	if not silver.is_empty():
+		rewards = rewards.duplicate()
+		rewards.append_array(silver)
+	var text := "%s completata!\nPremio:\n-" % name
+	if not rewards.is_empty():
+		text = "%s completata!\nPremio:\n- %s" % [name, "\n- ".join(rewards)]
+	hand_ui.call("set_info", text)
 
 func _resize_adventure_prompt() -> void:
 	if adventure_prompt_panel == null:
@@ -1013,6 +1145,7 @@ func _adjust_selected_card_y(delta: float) -> void:
 
 func _spawn_sum_label() -> void:
 	var ui := CanvasLayer.new()
+	ui.layer = 20
 	add_child(ui)
 	sum_label = Label.new()
 	sum_label.text = "Somma: -"
@@ -1030,7 +1163,7 @@ func _spawn_sum_label() -> void:
 	regno_reward_label.text = "Regno: -"
 	regno_reward_label.position = Vector2(20, 110)
 	ui.add_child(regno_reward_label)
-	_create_total_box(ui)
+	_create_outcome_banner(ui)
 	_create_adventure_value_box(ui)
 	_create_purchase_prompt()
 	_create_action_prompt()
@@ -1060,33 +1193,6 @@ func _toggle_music() -> void:
 			music_toggle_button.texture_normal = MUSIC_OFF_ICON
 			music_toggle_button.texture_pressed = MUSIC_OFF_ICON
 			music_toggle_button.texture_hover = MUSIC_OFF_ICON
-
-func _create_total_box(ui_layer: CanvasLayer) -> void:
-	total_panel = PanelContainer.new()
-	total_panel.visible = false
-	total_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	total_panel.z_index = 300
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0, 0, 0, 0.8)
-	panel_style.border_width_top = 2
-	panel_style.border_width_bottom = 2
-	panel_style.border_width_left = 2
-	panel_style.border_width_right = 2
-	panel_style.border_color = Color(1, 1, 1, 0.5)
-	total_panel.add_theme_stylebox_override("panel", panel_style)
-	ui_layer.add_child(total_panel)
-
-	var label := Label.new()
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_override("font", UI_FONT)
-	label.add_theme_font_size_override("font_size", 64)
-	label.add_theme_constant_override("font_spacing/space", 8)
-	label.text = "0"
-	label.custom_minimum_size = Vector2(240, 120)
-	total_panel.add_child(label)
-	total_label = label
-	_center_total_box()
 
 func _create_coin_total_label() -> void:
 	coin_total_label = Label3D.new()
@@ -1124,29 +1230,109 @@ func _update_coin_total_label() -> void:
 func _create_adventure_value_box(ui_layer: CanvasLayer) -> void:
 	adventure_value_panel = PanelContainer.new()
 	adventure_value_panel.visible = false
-	adventure_value_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	adventure_value_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	adventure_value_panel.z_index = 300
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.1, 0.2, 0.4, 0.85)
-	panel_style.border_width_top = 2
-	panel_style.border_width_bottom = 2
-	panel_style.border_width_left = 2
-	panel_style.border_width_right = 2
-	panel_style.border_color = Color(1, 1, 1, 0.5)
+	panel_style.bg_color = Color(0, 0, 0, 0)
+	panel_style.border_width_top = 0
+	panel_style.border_width_bottom = 0
+	panel_style.border_width_left = 0
+	panel_style.border_width_right = 0
+	panel_style.border_color = Color(1, 1, 1, 0)
 	adventure_value_panel.add_theme_stylebox_override("panel", panel_style)
 	ui_layer.add_child(adventure_value_panel)
 
-	var label := Label.new()
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_override("font", UI_FONT)
-	label.add_theme_font_size_override("font_size", 42)
-	label.add_theme_constant_override("font_spacing/space", 8)
-	label.text = "Valore: -"
-	label.custom_minimum_size = Vector2(260, 90)
-	adventure_value_panel.add_child(label)
-	adventure_value_label = label
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.set("theme_override_constants/separation", 14)
+	adventure_value_panel.add_child(row)
+
+	var value_style := StyleBoxFlat.new()
+	value_style.bg_color = Color(0.1, 0.2, 0.4, 0.85)
+	value_style.border_width_top = 2
+	value_style.border_width_bottom = 2
+	value_style.border_width_left = 2
+	value_style.border_width_right = 2
+	value_style.border_color = Color(1, 1, 1, 0.5)
+
+	var monster_panel := PanelContainer.new()
+	monster_panel.add_theme_stylebox_override("panel", value_style)
+	row.add_child(monster_panel)
+	adventure_value_label = Label.new()
+	adventure_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	adventure_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	adventure_value_label.add_theme_font_override("font", UI_FONT)
+	adventure_value_label.add_theme_font_size_override("font_size", 38)
+	adventure_value_label.add_theme_constant_override("font_spacing/space", 8)
+	adventure_value_label.text = "Mostro: -"
+	adventure_value_label.custom_minimum_size = Vector2(260, 90)
+	monster_panel.add_child(adventure_value_label)
+
+	compare_button = Button.new()
+	if fight_icon != null:
+		compare_button.icon = fight_icon
+	compare_button.text = ""
+	compare_button.expand_icon = true
+	compare_button.tooltip_text = "Confronta"
+	compare_button.custom_minimum_size = Vector2(64, 64)
+	compare_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	compare_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	compare_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	compare_button.focus_mode = Control.FOCUS_NONE
+	compare_button.disabled = true
+	compare_button.pressed.connect(_on_compare_pressed)
+	row.add_child(compare_button)
+
+	player_value_panel = PanelContainer.new()
+	player_value_panel.add_theme_stylebox_override("panel", value_style)
+	row.add_child(player_value_panel)
+	player_value_label = Label.new()
+	player_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	player_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	player_value_label.add_theme_font_override("font", UI_FONT)
+	player_value_label.add_theme_font_size_override("font_size", 38)
+	player_value_label.add_theme_constant_override("font_spacing/space", 8)
+	player_value_label.text = "Tuo tiro: -"
+	player_value_label.custom_minimum_size = Vector2(260, 90)
+	player_value_panel.add_child(player_value_label)
 	_center_adventure_value_box()
+
+func _create_outcome_banner(ui_layer: CanvasLayer) -> void:
+	outcome_panel = PanelContainer.new()
+	outcome_panel.visible = false
+	outcome_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	outcome_panel.z_index = 500
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.85)
+	panel_style.border_width_top = 3
+	panel_style.border_width_bottom = 3
+	panel_style.border_width_left = 3
+	panel_style.border_width_right = 3
+	panel_style.border_color = Color(1, 1, 1, 0.6)
+	outcome_panel.add_theme_stylebox_override("panel", panel_style)
+	ui_layer.add_child(outcome_panel)
+
+	outcome_label = Label.new()
+	outcome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	outcome_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	outcome_label.add_theme_font_override("font", UI_FONT)
+	outcome_label.add_theme_font_size_override("font_size", 96)
+	outcome_label.add_theme_constant_override("font_spacing/space", 10)
+	outcome_label.text = ""
+	outcome_label.custom_minimum_size = Vector2(900, 180)
+	outcome_panel.add_child(outcome_label)
+	_center_outcome_banner()
+
+func _center_outcome_banner() -> void:
+	if outcome_panel == null:
+		return
+	outcome_panel.custom_minimum_size = Vector2.ZERO
+	outcome_panel.reset_size()
+	outcome_panel.custom_minimum_size = outcome_panel.get_combined_minimum_size()
+	outcome_panel.reset_size()
+	var view_size := get_viewport().get_visible_rect().size
+	var size := outcome_panel.size
+	outcome_panel.position = Vector2((view_size.x - size.x) * 0.5, 260.0)
 
 func _center_adventure_value_box() -> void:
 	if adventure_value_panel == null:
@@ -1158,17 +1344,6 @@ func _center_adventure_value_box() -> void:
 	var view_size := get_viewport().get_visible_rect().size
 	var size := adventure_value_panel.size
 	adventure_value_panel.position = Vector2((view_size.x - size.x) * 0.5, 160.0)
-
-func _center_total_box() -> void:
-	if total_panel == null:
-		return
-	total_panel.custom_minimum_size = Vector2.ZERO
-	total_panel.reset_size()
-	total_panel.custom_minimum_size = total_panel.get_combined_minimum_size()
-	total_panel.reset_size()
-	var view_size := get_viewport().get_visible_rect().size
-	var size := total_panel.size
-	total_panel.position = Vector2((view_size.x - size.x) * 0.5, 40.0)
 
 func _update_camera_label() -> void:
 	if camera_label == null:
@@ -1467,9 +1642,6 @@ func _track_dice_sum() -> void:
 	roll_history.append(total)
 	roll_color_history.append(", ".join(names))
 	sum_label.text = "Risultati: %s | Colori: %s" % [", ".join(roll_history), " | ".join(roll_color_history)]
-	if total_panel != null and total_label != null:
-		total_label.text = str(total)
-		total_panel.visible = true
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 		hand_ui.call("set_phase_button_enabled", false)
 
@@ -1545,10 +1717,25 @@ func _update_adventure_value_box() -> void:
 	var modifier := int(diff_info.get("modifier", 0))
 	var effective := int(diff_info.get("effective", 0))
 	if modifier != 0:
-		adventure_value_label.text = "Valore: %d\n(mod %d)" % [effective, modifier]
+		adventure_value_label.text = "Mostro: %d\n(mod %d)" % [effective, modifier]
 	else:
-		adventure_value_label.text = "Valore: %d" % base
+		adventure_value_label.text = "Mostro: %d" % base
+	if player_value_label != null:
+		if roll_pending_apply:
+			player_value_label.text = "Tuo tiro: %d" % last_roll_total
+		else:
+			player_value_label.text = "Tuo tiro: -"
+	if compare_button != null:
+		compare_button.disabled = not roll_pending_apply
 	adventure_value_panel.visible = true
+
+func _on_compare_pressed() -> void:
+	if not roll_pending_apply:
+		return
+	var battlefield := _get_battlefield_card()
+	if battlefield == null:
+		return
+	_apply_battlefield_result(battlefield, last_roll_total)
 
 func _apply_battlefield_result(card: Node3D, total: int) -> void:
 	if card == null or not is_instance_valid(card):
@@ -1561,33 +1748,38 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		if total <= difficulty:
 			card.queue_free()
 			last_roll_success = true
+			_show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
 		else:
 			_apply_curse(card_data)
 			card.queue_free()
 			last_roll_penalty = true
+			_show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
 		roll_pending_apply = false
 		if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 			hand_ui.call("set_phase_button_enabled", true)
-		if total_panel != null:
-			total_panel.visible = false
 		return
 	if total <= difficulty:
 		hearts -= 1
 		card.set_meta("battlefield_hearts", hearts)
 		if hearts <= 0:
+			if card_type == "scontro":
+				enemies_defeated_total += 1
 			card.queue_free()
 		_report_battlefield_reward(card_data, total, difficulty)
 		last_roll_success = true
+		if total == difficulty:
+			_show_outcome("SUCCESSO PERFETTO", Color(1.0, 0.9, 0.2))
+		else:
+			_show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
 	else:
 		_apply_player_heart_loss(1)
 		blue_dice += 1
 		dice_count = _get_total_dice()
 		last_roll_penalty = true
+		_show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
 	roll_pending_apply = false
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 		hand_ui.call("set_phase_button_enabled", true)
-	if total_panel != null:
-		total_panel.visible = false
 	if adventure_value_panel != null:
 		adventure_value_panel.visible = false
 
@@ -1668,6 +1860,24 @@ func _spawn_treasure_cards() -> void:
 
 func _spawn_tokens() -> void:
 	pass
+
+func _show_outcome(text: String, color: Color) -> void:
+	if outcome_panel == null or outcome_label == null:
+		return
+	outcome_token += 1
+	var token := outcome_token
+	outcome_label.text = text
+	outcome_label.add_theme_color_override("font_color", color)
+	outcome_panel.visible = true
+	_center_outcome_banner()
+	await get_tree().create_timer(1.8).timeout
+	if outcome_token == token and outcome_panel != null:
+		outcome_panel.visible = false
+
+func _hide_outcome() -> void:
+	outcome_token += 1
+	if outcome_panel != null:
+		outcome_panel.visible = false
 
 func spawn_reward_coins(count: int, center: Vector3 = battlefield_pos) -> void:
 	if reward_spawner == null:
@@ -2239,6 +2449,12 @@ func _format_regno_reward(code: String) -> String:
 			return "Boss finale"
 		_:
 			return code
+
+func _load_texture(path: String) -> Texture2D:
+	var image := Image.new()
+	if image.load(path) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
 
 func _spawn_astaroth() -> void:
 	var card := CARD_SCENE.instantiate()
