@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .godot/
 .import/
+
+# temp asset files
+*.png~
+*.kra
