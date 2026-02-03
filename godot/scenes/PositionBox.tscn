@@ -39,7 +39,6 @@ shape = SubResource("5")
 
 [node name="Label" type="Label3D" parent="."]
 text = "Box"
-billboard = 1
 position = Vector3(0, 0.35, 0)
 font_size = 16
 modulate = Color(1, 1, 1, 0.9)

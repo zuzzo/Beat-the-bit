@@ -6,6 +6,8 @@ extends Node3D
 
 func _ready() -> void:
 	outline.visible = false
+	if label is Label3D:
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_update_label()
 
 func set_highlighted(active: bool) -> void:

@@ -9,10 +9,21 @@ const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
 const MUSIC_TRACK := preload("res://assets/music/Music.mp3")
 const MUSIC_ON_ICON := preload("res://assets/Music/sound_on.png")
 const MUSIC_OFF_ICON := preload("res://assets/Music/sound_off.png")
+const FIGHT_ICON := preload("res://assets/Token/fight.png")
+const TOKEN_VASO := "res://assets/Token/vaso.png"
+const TOKEN_CHEST := "res://assets/Token/chest.png"
+const TOKEN_TECA := "res://assets/Token/teca.png"
+const TOKEN_TOMBSTONE := "res://assets/Token/tombstone.png"
 const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
 
 @onready var camera: Camera3D = $Camera
 @onready var reward_spawner: Node3D = $RewardSpawner
+@onready var main_light: DirectionalLight3D = $DirectionalLight
+
+const LIGHT_COLOR_ORG := Color(1, 0.95, 0.9, 1)
+const LIGHT_COLOR_ADV := Color(0.75, 0.55, 0.95, 1)
+const LIGHT_COLOR_REC := Color(1, 0.65, 0.3, 1)
+const CARD_HIT_HALF_SIZE := Vector2(0.7, 1.0)
 
 var pan_active := false
 var launch_start_time: float = -1.0
@@ -96,6 +107,7 @@ var battlefield_warning_ok: Button
 var music_player: AudioStreamPlayer
 var music_toggle_button: TextureButton
 var fight_icon: Texture2D
+var light_tween: Tween
 var phase_index: int = 0
 var player_max_hearts: int = 0
 var player_max_hand: int = 0
@@ -156,6 +168,7 @@ func _ready() -> void:
 	camera.global_position = Vector3(0.43, 7.0, 1.74)
 	fight_icon = _load_texture("res://assets/Token/fight.png")
 	_play_music()
+	_update_phase_lighting()
 	_spawn_placeholders()
 	_init_player_hand()
 	_spawn_treasure_cards()
@@ -214,6 +227,8 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			last_mouse_pos = event.position
 			mouse_down_pos = event.position
 			var card := _get_card_under_mouse(event.position)
+			if card == null and phase_index == 1:
+				card = _get_adventure_stack_card_at(event.position)
 			if card == null and phase_index == 1 and _get_battlefield_card() != null:
 				_start_dice_hold(event.position)
 				return
@@ -226,17 +241,15 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					if top_market_left != null and card == top_market_left:
 						_try_show_purchase_prompt(card, false)
 						return
-				if phase_index != 0:
-					return
-				if roll_pending_apply and card.has_meta("equipped_slot"):
+				if phase_index == 1 and roll_pending_apply and card.has_meta("equipped_slot"):
 					_show_action_prompt(card.get_meta("card_data", {}), false)
 					return
-				if card.has_meta("equipped_slot"):
+				if phase_index == 0 and card.has_meta("equipped_slot"):
 					_return_equipped_to_hand(card)
 					return
 				selected_card = card
 				if card.has_method("is_face_up_now") and card.has_method("flip_to_side"):
-					if is_treasure_stack_hovered:
+					if is_treasure_stack_hovered and phase_index == 0:
 						var top_card := _get_top_treasure_card()
 						if top_card != null and top_card.has_method("is_face_up_now"):
 							if not top_card.is_face_up_now():
@@ -273,10 +286,16 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		if event.pressed:
 			last_mouse_pos = event.position
 			var card := _get_card_under_mouse(event.position)
-			if card != null and phase_index == 0:
-				var top_market := _get_top_market_card()
-				if top_market != null and card == top_market:
-					_try_show_purchase_prompt(card, false)
+			if card == null and phase_index == 1:
+				card = _get_adventure_stack_card_at(event.position)
+			if card != null:
+				if phase_index == 0:
+					var top_market := _get_top_market_card()
+					if top_market != null and card == top_market:
+						_try_show_purchase_prompt(card, false)
+				elif phase_index == 1:
+					if card.has_meta("in_adventure_stack") and card.get_meta("in_adventure_stack", false):
+						_try_show_adventure_prompt(card)
 		pan_active = false
 	elif event.button_index == MOUSE_BUTTON_MIDDLE:
 		if event.pressed:
@@ -776,6 +795,7 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 	if phase_index == 2:
 		_on_end_turn_with_battlefield()
 		_reset_dice_for_rest()
+	_update_phase_lighting()
 	_update_phase_info()
 
 func _update_phase_info() -> void:
@@ -783,12 +803,40 @@ func _update_phase_info() -> void:
 		return
 	var text := ""
 	if phase_index == 0:
-		text = "Organizzazione:\n- compra tesori (dx sul mercato)\n- equip/unequip dalla mano\n- gira carta tesoro"
+		text = "Organizzazione:\n- compra tesori (dx sul mercato)\n- equip/unequip dalla mano\n- gira carta tesoro\n- riscatta missione (clic)"
 	elif phase_index == 1:
-		text = "Avventura:\n- gira carta avventura (dx sul mazzo)\n- lancia dadi (tieni sx)\n- applica risultato (dx sul nemico)"
+		text = "Avventura:\n- gira carta avventura (clic sul mazzo)\n- lancia dadi (tieni sx, rilascia)\n- usa equip (sx) o magie (dx)\n- applica risultato (pulsante fight)"
 	else:
 		text = "Recupero:\n- ripristino dadi\n- fine turno"
 	hand_ui.call("set_info", text)
+
+func _update_phase_lighting() -> void:
+	if main_light == null:
+		return
+	var target := LIGHT_COLOR_ORG
+	if phase_index == 1:
+		target = LIGHT_COLOR_ADV
+	elif phase_index == 2:
+		target = LIGHT_COLOR_REC
+	if light_tween != null and light_tween.is_valid():
+		light_tween.kill()
+	light_tween = create_tween()
+	light_tween.tween_property(main_light, "light_color", target, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+func _get_adventure_stack_card_at(mouse_pos: Vector2) -> Node3D:
+	var card := _get_card_under_mouse(mouse_pos)
+	if card != null and card.has_meta("in_adventure_stack") and card.get_meta("in_adventure_stack", false):
+		return _get_top_adventure_card()
+	var top := _get_top_adventure_card()
+	if top == null:
+		return null
+	var hit := _ray_to_plane(mouse_pos)
+	if hit == Vector3.INF:
+		return null
+	var center := top.global_position
+	if abs(hit.x - center.x) <= CARD_HIT_HALF_SIZE.x and abs(hit.z - center.z) <= CARD_HIT_HALF_SIZE.y:
+		return top
+	return null
 
 func _on_end_turn_with_battlefield() -> void:
 	var battlefield := _get_blocking_adventure_card()
@@ -910,6 +958,7 @@ func _confirm_adventure_prompt() -> void:
 		pending_adventure_card.set_meta("adventure_blocking", true)
 		pending_adventure_card.set_meta("in_battlefield", true)
 		pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
+		_spawn_battlefield_hearts(pending_adventure_card, base_hearts)
 		pending_adventure_card.call("flip_to_side", target_pos_adv)
 	elif card_type == "concatenamento":
 		var effects: Array = []
@@ -927,8 +976,28 @@ func _confirm_adventure_prompt() -> void:
 	else:
 		pending_adventure_card.set_meta("in_battlefield", true)
 		pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
+		_spawn_battlefield_hearts(pending_adventure_card, base_hearts)
 		pending_adventure_card.call("flip_to_side", target_pos_adv)
 	_hide_adventure_prompt()
+
+func _spawn_battlefield_hearts(card: Node3D, hearts: int) -> void:
+	if card == null or hearts <= 0:
+		return
+	for child in card.get_children():
+		if child is Node3D and child.has_meta("battlefield_heart_token"):
+			child.queue_free()
+	var spacing := 0.3
+	var total_width := (hearts - 1) * spacing
+	var start_x := -total_width * 0.5
+	for i in hearts:
+		var token := TOKEN_SCENE.instantiate()
+		card.add_child(token)
+		token.set_meta("battlefield_heart_token", true)
+		token.position = Vector3(start_x + i * spacing, 0.03, -0.5)
+		token.rotation = Vector3(-PI / 2.0, deg_to_rad(randf_range(-4.0, 4.0)), 0.0)
+		token.scale = Vector3(0.65, 0.65, 0.65)
+		if token.has_method("set_token_texture"):
+			token.call_deferred("set_token_texture", HEART_TEXTURE)
 
 func _get_next_mission_side_pos() -> Vector3:
 	var base := Vector3(character_pos.x + MISSION_SIDE_OFFSET.x, adventure_reveal_pos.y, character_pos.z + MISSION_SIDE_OFFSET.z)
@@ -1165,6 +1234,7 @@ func _spawn_sum_label() -> void:
 	ui.add_child(regno_reward_label)
 	_create_outcome_banner(ui)
 	_create_adventure_value_box(ui)
+	_create_music_toggle(ui)
 	_create_purchase_prompt()
 	_create_action_prompt()
 
@@ -1173,26 +1243,36 @@ func _create_music_toggle(ui_layer: CanvasLayer) -> void:
 	music_toggle_button.texture_normal = MUSIC_ON_ICON
 	music_toggle_button.texture_pressed = MUSIC_ON_ICON
 	music_toggle_button.texture_hover = MUSIC_ON_ICON
-	music_toggle_button.texture_disabled = MUSIC_OFF_ICON
-	music_toggle_button.size = Vector2(32, 32)
-	var view_size := get_viewport().get_visible_rect().size
-	music_toggle_button.position = Vector2(view_size.x - 42, 10)
+	music_toggle_button.toggle_mode = true
+	music_toggle_button.button_pressed = true
+	var size := Vector2(218, 197)
+	if FIGHT_ICON != null:
+		size = FIGHT_ICON.get_size()
+	size *= 0.1
+	music_toggle_button.ignore_texture_size = true
+	music_toggle_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	music_toggle_button.custom_minimum_size = size
+	music_toggle_button.size = size
+	music_toggle_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	music_toggle_button.offset_right = -10.0
+	music_toggle_button.offset_left = music_toggle_button.offset_right - size.x
+	music_toggle_button.offset_top = 10.0
+	music_toggle_button.offset_bottom = music_toggle_button.offset_top + size.y
 	music_toggle_button.pressed.connect(_toggle_music)
 	ui_layer.add_child(music_toggle_button)
 
 func _toggle_music() -> void:
-	if music_player == null:
+	if music_player == null or music_toggle_button == null:
 		return
-	music_player.playing = not music_player.playing
-	if music_toggle_button != null:
-		if music_player.playing:
-			music_toggle_button.texture_normal = MUSIC_ON_ICON
-			music_toggle_button.texture_pressed = MUSIC_ON_ICON
-			music_toggle_button.texture_hover = MUSIC_ON_ICON
-		else:
-			music_toggle_button.texture_normal = MUSIC_OFF_ICON
-			music_toggle_button.texture_pressed = MUSIC_OFF_ICON
-			music_toggle_button.texture_hover = MUSIC_OFF_ICON
+	music_player.playing = music_toggle_button.button_pressed
+	if music_player.playing:
+		music_toggle_button.texture_normal = MUSIC_ON_ICON
+		music_toggle_button.texture_pressed = MUSIC_ON_ICON
+		music_toggle_button.texture_hover = MUSIC_ON_ICON
+	else:
+		music_toggle_button.texture_normal = MUSIC_OFF_ICON
+		music_toggle_button.texture_pressed = MUSIC_OFF_ICON
+		music_toggle_button.texture_hover = MUSIC_OFF_ICON
 
 func _create_coin_total_label() -> void:
 	coin_total_label = Label3D.new()
@@ -1741,7 +1821,8 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 	if card == null or not is_instance_valid(card):
 		return
 	var card_data: Dictionary = card.get_meta("card_data", {})
-	var difficulty := int(card_data.get("difficulty", 0))
+	var diff_info := _get_effective_difficulty(card_data)
+	var difficulty := int(diff_info.get("effective", card_data.get("difficulty", 0)))
 	var hearts := int(card.get_meta("battlefield_hearts", 1))
 	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
 	if card_type == "maledizione":
@@ -1764,6 +1845,7 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		if hearts <= 0:
 			if card_type == "scontro":
 				enemies_defeated_total += 1
+			_spawn_defeat_explosion(card.global_position)
 			card.queue_free()
 		_report_battlefield_reward(card_data, total, difficulty)
 		last_roll_success = true
@@ -1772,9 +1854,7 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		else:
 			_show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
 	else:
-		_apply_player_heart_loss(1)
-		blue_dice += 1
-		dice_count = _get_total_dice()
+		_apply_failure_penalty()
 		last_roll_penalty = true
 		_show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
 	roll_pending_apply = false
@@ -1786,6 +1866,32 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 func _apply_player_heart_loss(amount: int) -> void:
 	player_current_hearts = max(0, player_current_hearts - amount)
 	_update_hand_ui_stats()
+
+func _apply_failure_penalty() -> void:
+	_apply_player_heart_loss(1)
+	blue_dice += 1
+	dice_count = _get_total_dice()
+
+func _spawn_defeat_explosion(world_pos: Vector3) -> void:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.9, 0.9)
+	var flash := MeshInstance3D.new()
+	flash.mesh = quad
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.6, 0.2, 0.9)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.4, 0.1)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	flash.material_override = mat
+	flash.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
+	add_child(flash)
+	var tween := create_tween()
+	tween.tween_property(flash, "scale", Vector3(1.6, 1.6, 1.6), 0.25)
+	tween.parallel().tween_property(flash, "modulate", Color(1, 1, 1, 0), 0.25)
+	await tween.finished
+	if is_instance_valid(flash):
+		flash.queue_free()
 
 func _apply_curse(card_data: Dictionary) -> void:
 	curse_stats_override = card_data.get("stats", {})
@@ -1804,6 +1910,27 @@ func _report_battlefield_reward(card_data: Dictionary, total: int, difficulty: i
 		text = "Premio:\n- %s" % "\n- ".join(rewards)
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", text)
+	_spawn_battlefield_rewards(rewards)
+
+func _spawn_battlefield_rewards(rewards: Array) -> void:
+	if rewards.is_empty():
+		return
+	for reward in rewards:
+		var code := str(reward)
+		if code.begins_with("reward_coin_"):
+			var count := int(code.get_slice("_", 2))
+			if count > 0:
+				spawn_reward_coins(count, battlefield_pos)
+			continue
+		match code:
+			"reward_group_vaso_di_coccio":
+				spawn_reward_tokens(1, TOKEN_VASO, battlefield_pos)
+			"reward_group_chest":
+				spawn_reward_tokens(1, TOKEN_CHEST, battlefield_pos)
+			"reward_group_teca":
+				spawn_reward_tokens(1, TOKEN_TECA, battlefield_pos)
+			"reward_token_tombstone":
+				spawn_reward_tokens(1, TOKEN_TOMBSTONE, battlefield_pos)
 
 func _update_all_card_sorting_offsets(released_card: Node3D) -> void:
 	# Raccogli tutte le carte (esclusa quella rilasciata)
