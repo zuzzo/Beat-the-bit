@@ -14,6 +14,7 @@ const TOKEN_VASO := "res://assets/Token/vaso.png"
 const TOKEN_CHEST := "res://assets/Token/chest.png"
 const TOKEN_TECA := "res://assets/Token/teca.png"
 const TOKEN_TOMBSTONE := "res://assets/Token/tombstone.png"
+const EXPLOSION_SHEET := "res://assets/Animation/explosion.png"
 const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
 
 @onready var camera: Camera3D = $Camera
@@ -131,6 +132,7 @@ var revealed_treasure_count: int = 0
 var discarded_treasure_count: int = 0
 var is_treasure_stack_hovered: bool = false
 const REVEALED_Y_STEP := 0.01
+const TREASURE_REVEALED_Y_STEP := 0.02
 var adventure_deck_pos := Vector3(4, 0.02, 0)
 var adventure_reveal_pos := Vector3(2, 0.2, 0)
 var battlefield_pos := Vector3(0, 0.02, 0)
@@ -139,11 +141,14 @@ var event_row_pos := Vector3(-5, 0.02, 2.5)
 var revealed_adventure_count: int = 0
 var mission_side_count: int = 0
 var event_row_count: int = 0
+var chain_row_count: int = 0
 var discarded_adventure_count: int = 0
 var is_adventure_stack_hovered: bool = false
 const ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
 const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
 const EVENT_ROW_SPACING := 1.6
+const CHAIN_ROW_SPACING := 0.9
+const CHAIN_ROW_OFFSET := Vector3(-1.6, 0.0, 0.0)
 const TREASURE_REVEAL_OFFSET := Vector3(-1.0, 0.006, 0.0)
 const TREASURE_DISCARD_OFFSET := Vector3(-2.05, 0.006, 0.315)
 const ADVENTURE_REVEAL_OFFSET := Vector3(5, 0, 0.0)
@@ -300,7 +305,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					_try_show_adventure_prompt(pending_flip_card)
 				else:
 					var target_pos := treasure_reveal_pos
-					target_pos.y = treasure_reveal_pos.y + (revealed_treasure_count * REVEALED_Y_STEP)
+					target_pos.y = treasure_reveal_pos.y + (revealed_treasure_count * TREASURE_REVEALED_Y_STEP)
 					pending_flip_card.set_meta("in_treasure_stack", false)
 					pending_flip_card.set_meta("in_treasure_market", true)
 					pending_flip_card.set_meta("market_index", revealed_treasure_count)
@@ -565,6 +570,10 @@ func _get_card_under_mouse(mouse_pos: Vector2) -> Node3D:
 		if node.has_method("set_highlighted"):
 			if node.has_meta("in_treasure_stack") and node.get_meta("in_treasure_stack", false):
 				return _get_top_treasure_card()
+			if node.has_meta("in_treasure_discard") and node.get_meta("in_treasure_discard", false):
+				return _get_top_treasure_discard_card()
+			if node.has_meta("discard_index"):
+				return _get_top_treasure_discard_card()
 			if node.has_meta("in_adventure_stack") and node.get_meta("in_adventure_stack", false):
 				return _get_top_adventure_card()
 			return node
@@ -587,6 +596,22 @@ func _get_top_treasure_card() -> Node3D:
 			top_card = child
 	return top_card
 
+func _get_top_treasure_discard_card() -> Node3D:
+	var top_card: Node3D = null
+	var top_index := -1
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if child.has_meta("in_treasure_discard") and not child.get_meta("in_treasure_discard", false):
+			continue
+		if not child.has_meta("discard_index"):
+			continue
+		var idx: int = int(child.get_meta("discard_index", -1))
+		if idx > top_index:
+			top_index = idx
+			top_card = child
+	return top_card
+
 func _discard_revealed_treasure_cards() -> void:
 	var discarded_any := false
 	for child in get_children():
@@ -595,6 +620,7 @@ func _discard_revealed_treasure_cards() -> void:
 		if not child.get_meta("in_treasure_market", false):
 			continue
 		child.set_meta("discard_index", discarded_treasure_count)
+		child.set_meta("in_treasure_discard", true)
 		child.set_meta("in_treasure_market", false)
 		discarded_treasure_count += 1
 		discarded_any = true
@@ -667,7 +693,7 @@ func _reposition_market_stack() -> void:
 		var card: Node3D = cards[i]
 		if int(card.get_meta("market_index", -1)) < 0:
 			card.set_meta("market_index", i)
-		var pos := treasure_reveal_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
+		var pos := treasure_reveal_pos + Vector3(0.0, i * TREASURE_REVEALED_Y_STEP, 0.0)
 		card.global_position = pos
 
 func _reposition_discard_stack() -> void:
@@ -687,7 +713,7 @@ func _reposition_discard_stack() -> void:
 	)
 	for i in cards.size():
 		var card: Node3D = cards[i]
-		var pos := treasure_discard_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
+		var pos := treasure_discard_pos + Vector3(0.0, i * TREASURE_REVEALED_Y_STEP, 0.0)
 		card.global_position = pos
 
 func _reposition_adventure_discard_stack() -> void:
@@ -939,13 +965,14 @@ func _draw_treasure_until_group(group_key: String) -> void:
 			_refresh_hand_ui()
 			return
 		top.set_meta("discard_index", discarded_treasure_count)
+		top.set_meta("in_treasure_discard", true)
 		discarded_treasure_count += 1
-		top.global_position = treasure_discard_pos + Vector3(0.0, (discarded_treasure_count - 1) * REVEALED_Y_STEP, 0.0)
+		top.global_position = treasure_discard_pos + Vector3(0.0, (discarded_treasure_count - 1) * TREASURE_REVEALED_Y_STEP, 0.0)
 
 func _flip_treasure_card_for_recovery(card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
-	var reveal_pos := treasure_reveal_pos + Vector3(0.0, revealed_treasure_count * REVEALED_Y_STEP, 0.0)
+	var reveal_pos := treasure_reveal_pos + Vector3(0.0, revealed_treasure_count * TREASURE_REVEALED_Y_STEP, 0.0)
 	if card.has_method("flip_to_side"):
 		card.call("flip_to_side", reveal_pos)
 		await get_tree().create_timer(0.35).timeout
@@ -1105,6 +1132,11 @@ func _show_action_prompt(card_data: Dictionary, is_magic: bool, source_card: Nod
 	pending_action_card_data = card_data
 	pending_action_is_magic = is_magic
 	pending_action_source_card = source_card
+	var action_window := _get_current_card_action_window(card_data)
+	var effects := _get_effects_for_window(card_data, action_window)
+	if effects.has("after_roll_set_one_die_to_1") and roll_pending_apply:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Seleziona 1 dado da impostare a 1 e poi conferma."))
 	var name := str(card_data.get("name", "Carta"))
 	if action_prompt_label != null:
 		action_prompt_label.text = _ui_text("Vuoi usare %s?" % name)
@@ -1288,7 +1320,7 @@ func _apply_post_roll_effect(effect_name: String, selected_values: Array[int]) -
 		"after_roll_set_one_die_to_1":
 			var target := _get_first_selected_die_index()
 			if target >= 0:
-				last_roll_values[target] = max(1, int(last_roll_values[target]) - 1)
+				last_roll_values[target] = 1
 		"lowest_die_applies_to_all":
 			if selected_values.is_empty():
 				return
@@ -1389,9 +1421,14 @@ func _rebuild_roll_values_from_active_dice() -> void:
 func _validate_roll_selection_for_effects(effects: Array) -> bool:
 	if not roll_pending_apply:
 		return true
-	if effects.has("after_roll_set_one_die_to_1") and selected_roll_dice.is_empty():
-		_set_selection_error("Seleziona almeno 1 dado per questa abilita.")
-		return false
+	if effects.has("after_roll_set_one_die_to_1"):
+		if selected_roll_dice.is_empty():
+			_set_selection_error("Seleziona 1 dado da impostare a 1.")
+			return false
+		if selected_roll_dice.size() > 1:
+			_set_selection_error("Seleziona solo 1 dado per questa abilita.")
+			return false
+		return true
 	if effects.has("reroll_same_dice") and selected_roll_dice.is_empty():
 		_set_selection_error("Seleziona almeno 1 dado da rilanciare.")
 		return false
@@ -1435,8 +1472,11 @@ func _confirm_adventure_prompt() -> void:
 		if not card_data.is_empty():
 			effects = card_data.get("effects", [])
 		pending_chain_effects = effects.duplicate()
-		pending_adventure_card.call("flip_to_side", adventure_discard_pos + Vector3(0.0, discarded_adventure_count * REVEALED_Y_STEP, 0.0))
-		_move_adventure_to_discard(pending_adventure_card)
+		var chain_pos := _get_next_chain_pos()
+		pending_adventure_card.set_meta("in_battlefield", true)
+		pending_adventure_card.set_meta("adventure_blocking", false)
+		pending_adventure_card.call("flip_to_side", chain_pos)
+		_schedule_next_chain_reveal()
 	elif card_type == "evento":
 		_reveal_event_card(pending_adventure_card, card_data)
 		_hide_adventure_prompt()
@@ -1451,6 +1491,27 @@ func _confirm_adventure_prompt() -> void:
 		_spawn_battlefield_hearts(pending_adventure_card, base_hearts)
 		pending_adventure_card.call("flip_to_side", target_pos_adv)
 	_hide_adventure_prompt()
+
+func _schedule_adventure_discard(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	await get_tree().create_timer(0.7).timeout
+	if is_instance_valid(card):
+		_move_adventure_to_discard(card)
+
+func _get_next_chain_pos() -> Vector3:
+	var base := battlefield_pos + CHAIN_ROW_OFFSET
+	var pos := base + Vector3(chain_row_count * CHAIN_ROW_SPACING, 0.0, 0.0)
+	chain_row_count += 1
+	return pos
+
+func _schedule_next_chain_reveal() -> void:
+	await get_tree().create_timer(1.0).timeout
+	var top := _get_top_adventure_card()
+	if top == null or not is_instance_valid(top):
+		return
+	pending_adventure_card = top
+	_confirm_adventure_prompt()
 
 func _get_battlefield_target_pos() -> Vector3:
 	var pos := battlefield_pos
@@ -1935,7 +1996,7 @@ func _center_adventure_value_box() -> void:
 	adventure_value_panel.reset_size()
 	var view_size := get_viewport().get_visible_rect().size
 	var size := adventure_value_panel.size
-	adventure_value_panel.position = Vector2((view_size.x - size.x) * 0.5, 160.0)
+	adventure_value_panel.position = Vector2((view_size.x - size.x) * 0.5, 60.0)
 
 func _update_camera_label() -> void:
 	if camera_label == null:
@@ -2197,6 +2258,7 @@ func _update_hover(mouse_pos: Vector2) -> void:
 	var card := _get_card_under_mouse(mouse_pos)
 	is_treasure_stack_hovered = false
 	is_adventure_stack_hovered = false
+	_update_discard_stack_highlight()
 	if card != null and card.has_meta("in_treasure_stack") and card.get_meta("in_treasure_stack", false):
 		is_treasure_stack_hovered = true
 		var top_card := _get_top_treasure_card()
@@ -2214,6 +2276,17 @@ func _update_hover(mouse_pos: Vector2) -> void:
 	hovered_card = card
 	if hovered_card != null and hovered_card.has_method("set_highlighted"):
 		hovered_card.set_highlighted(true)
+
+func _update_discard_stack_highlight() -> void:
+	var top_discard := _get_top_treasure_discard_card()
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_method("set_highlighted"):
+			continue
+		if child.has_meta("discard_index"):
+			if child != top_discard:
+				child.set_highlighted(false)
 
 
 func _track_dice_sum() -> void:
@@ -2415,6 +2488,23 @@ func _on_roll_die_button_pressed(index: int) -> void:
 		selected_roll_dice.erase(index)
 	else:
 		selected_roll_dice.append(index)
+	if action_prompt_panel != null and action_prompt_panel.visible:
+		var action_window := _get_current_card_action_window(pending_action_card_data)
+		var effects := _get_effects_for_window(pending_action_card_data, action_window)
+		if roll_pending_apply and effects.has("after_roll_set_one_die_to_1"):
+			selected_roll_dice.clear()
+			selected_roll_dice.append(index)
+			last_roll_values[index] = 1
+			_recalculate_last_roll_total()
+			_refresh_roll_dice_buttons()
+			if not pending_action_is_magic and pending_action_source_card != null and is_instance_valid(pending_action_source_card):
+				if effects.has("return_to_hand"):
+					_force_return_equipped_to_hand(pending_action_source_card)
+			if pending_action_is_magic:
+				if not effects.has("return_to_hand"):
+					player_hand.erase(pending_action_card_data)
+					_refresh_hand_ui()
+			_hide_action_prompt()
 
 func _get_selected_roll_values() -> Array[int]:
 	var out: Array[int] = []
@@ -2502,6 +2592,7 @@ func _apply_player_heart_loss(amount: int) -> void:
 		_discard_one_fatigue_from_battlefield()
 	player_current_hearts = max(0, player_current_hearts - max(0, remaining))
 	_update_hand_ui_stats()
+	_refresh_character_hearts_tokens()
 
 func _consume_equipped_prevent_heart_loss() -> bool:
 	for slot in equipment_slots:
@@ -2736,6 +2827,31 @@ func _discard_one_equipped_card() -> bool:
 	return false
 
 func _spawn_defeat_explosion(world_pos: Vector3) -> void:
+	var tex := ResourceLoader.load(EXPLOSION_SHEET) as Texture2D
+	if tex != null:
+		var sprite := AnimatedSprite3D.new()
+		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sprite.pixel_size = 0.01
+		sprite.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
+		var frames := SpriteFrames.new()
+		var frame_count := 5
+		var frame_w := int(floor(tex.get_width() / float(frame_count)))
+		var frame_h := tex.get_height()
+		for i in frame_count:
+			var atlas := AtlasTexture.new()
+			atlas.atlas = tex
+			atlas.region = Rect2(i * frame_w, 0, frame_w, frame_h)
+			frames.add_frame("default", atlas)
+		frames.set_animation_speed("default", 12.0)
+		frames.set_animation_loop("default", false)
+		sprite.sprite_frames = frames
+		add_child(sprite)
+		sprite.play("default")
+		sprite.animation_finished.connect(func() -> void:
+			if is_instance_valid(sprite):
+				sprite.queue_free()
+		)
+		return
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.9, 0.9)
 	var flash := MeshInstance3D.new()
@@ -2906,15 +3022,25 @@ func _spawn_reward_tokens_with_code(count: int, texture_path: String, reward_cod
 		token.set_meta("reward_code", reward_code)
 
 func _spawn_character_hearts(card: Node3D) -> void:
-	var hearts := _get_character_hearts()
+	_refresh_character_hearts_tokens()
+
+func _refresh_character_hearts_tokens() -> void:
+	if character_card == null or not is_instance_valid(character_card):
+		return
+	for child in character_card.get_children():
+		if child is Node3D and child.has_meta("character_heart_token"):
+			child.queue_free()
+	var hearts: int = max(player_current_hearts, 0)
 	if hearts <= 0:
 		return
-	var start_x := -0.45
-	var spacing := 0.3
+	var spacing: float = 0.3
+	var total_width: float = float(hearts - 1) * spacing
+	var start_x: float = -total_width * 0.5 + 0.65
 	for i in hearts:
 		var token := TOKEN_SCENE.instantiate()
-		card.add_child(token)
-		token.position = Vector3(start_x + i * spacing, 0.02, 0.0)
+		character_card.add_child(token)
+		token.set_meta("character_heart_token", true)
+		token.position = Vector3(start_x + i * spacing, -1.1, 0.0)
 		token.rotation = Vector3(-PI / 2.0, deg_to_rad(randf_range(-4.0, 4.0)), 0.0)
 		token.scale = Vector3(0.78, 0.78, 0.78)
 		if token.has_method("set_token_texture"):
@@ -3044,6 +3170,7 @@ func _init_character_stats() -> void:
 	red_dice = 0
 	dice_count = _get_total_dice()
 	_update_hand_ui_stats()
+	_refresh_character_hearts_tokens()
 
 func _spawn_equipment_slots(card: Node3D) -> void:
 	equipment_slots.clear()
@@ -3344,6 +3471,8 @@ func _get_current_card_action_window(card_data: Dictionary) -> String:
 		if windows.has("any_time"):
 			return "any_time"
 		return ""
+	if windows.has("before_adventure"):
+		return "before_adventure"
 	if windows.has("before_roll") or windows.has("next_roll"):
 		return "before_roll"
 	if windows.has("any_time"):
