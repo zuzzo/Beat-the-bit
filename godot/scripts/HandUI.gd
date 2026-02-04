@@ -30,6 +30,10 @@ var _drag_preview: TextureRect
 var _drag_preview_size := Vector2.ZERO
 var _hover_overlay: Control
 var _hover_preview: TextureRect
+var _right_preview_active: bool = false
+var _right_preview_panel: Control
+var _right_preview_texture: Texture2D
+var _right_preview_size: Vector2
 
 signal request_place_equipment(card: Dictionary, screen_pos: Vector2)
 signal phase_changed(phase_index: int, turn_index: int)
@@ -198,9 +202,27 @@ func _advance_phase() -> void:
 	phase_changed.emit(_phase_index, _turn_index)
 
 func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2, tex_rect: TextureRect) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
-		if event.pressed:
-			request_use_magic.emit(card)
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			if _phase_index == 0:
+				request_place_equipment.emit(card, get_viewport().get_mouse_position())
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				if _phase_index == 0:
+					_right_preview_active = true
+					_right_preview_panel = tex_rect.get_parent() as Control
+					_right_preview_texture = tex_rect.texture
+					_right_preview_size = full_size * 1.5
+					_show_hover_preview(_right_preview_texture, _right_preview_size, _right_preview_panel)
+				elif _phase_index == 1:
+					request_use_magic.emit(card)
+			else:
+				if _right_preview_active:
+					_right_preview_active = false
+					_right_preview_panel = null
+					_right_preview_texture = null
+					_right_preview_size = Vector2.ZERO
+					_hide_hover_preview()
 
 func _start_drag(card: Dictionary, full_size: Vector2, tex_rect: TextureRect) -> void:
 	_dragging_card = card
