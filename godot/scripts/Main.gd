@@ -2524,7 +2524,7 @@ func _consume_equipped_prevent_heart_loss() -> bool:
 
 func _consume_hand_reactive_heart_guard() -> bool:
 	for i in player_hand.size():
-		var card := player_hand[i]
+		var card: Variant = player_hand[i]
 		if not (card is Dictionary):
 			continue
 		var data := card as Dictionary
