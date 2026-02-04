@@ -274,14 +274,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					return
 				selected_card = card
 				if card.has_method("is_face_up_now") and card.has_method("flip_to_side"):
-					if is_treasure_stack_hovered and phase_index == 0:
+					if phase_index == 0 and card.has_meta("in_treasure_stack") and card.get_meta("in_treasure_stack", false):
 						var top_card := _get_top_treasure_card()
 						if top_card != null and top_card.has_method("is_face_up_now"):
 							if not top_card.is_face_up_now():
 								pending_flip_card = top_card
 								pending_flip_is_adventure = false
 								return
-					elif is_adventure_stack_hovered and phase_index == 1:
+					elif phase_index == 1 and card.has_meta("in_adventure_stack") and card.get_meta("in_adventure_stack", false):
 						var top_adv_left := _get_top_adventure_card()
 						if top_adv_left != null and top_adv_left.has_method("is_face_up_now"):
 							if not top_adv_left.is_face_up_now():
@@ -1435,6 +1435,8 @@ func _confirm_adventure_prompt() -> void:
 		if not card_data.is_empty():
 			effects = card_data.get("effects", [])
 		pending_chain_effects = effects.duplicate()
+		pending_adventure_card.call("flip_to_side", adventure_discard_pos + Vector3(0.0, discarded_adventure_count * REVEALED_Y_STEP, 0.0))
+		_move_adventure_to_discard(pending_adventure_card)
 	elif card_type == "evento":
 		_reveal_event_card(pending_adventure_card, card_data)
 		_hide_adventure_prompt()
