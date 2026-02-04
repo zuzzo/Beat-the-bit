@@ -35,6 +35,8 @@ var adventure_value_panel: PanelContainer
 var adventure_value_label: Label
 var player_value_panel: PanelContainer
 var player_value_label: Label
+var player_dice_buttons_row: HBoxContainer
+var player_dice_buttons_key: String = ""
 var compare_button: Button
 var outcome_panel: PanelContainer
 var outcome_label: Label
@@ -52,9 +54,12 @@ var dice_hold_start_ms: int = 0
 var dice_preview: Array[RigidBody3D] = []
 var roll_pending_apply: bool = false
 var last_roll_total: int = 0
+var last_roll_values: Array[int] = []
+var selected_roll_dice: Array[int] = []
 var last_roll_success: bool = false
 var last_roll_penalty: bool = false
 var roll_trigger_reset: bool = false
+var post_roll_effects: Array[String] = []
 var roll_in_progress: bool = false
 var dragged_card: Node3D
 var drag_offset: Vector3 = Vector3.ZERO
@@ -73,7 +78,7 @@ const DRAG_HEIGHT := 1.0
 var top_sorting_offset: float = 0.0
 var equipment_slots: Array[Area3D] = []
 var equipment_slots_root: Node3D
-var equipment_slots_y_offset: float = 0.0
+var equipment_slots_y_offset: float = 0.2
 var equipment_slots_z_offset: float = 1.2
 const CARD_CENTER_X_OFFSET := 0.7
 const EQUIP_SLOT_WIDTH := 1.4
@@ -82,7 +87,10 @@ const EQUIP_SLOT_SPACING := 0.2
 const DICE_PREVIEW_OFFSET := Vector3(2.2, 0.0, 0.0)
 var hand_ui: Control
 var player_gold: int = 30
+var player_tombstones: int = 0
 var enemies_defeated_total: int = 0
+var pending_penalty_discards: int = 0
+var pending_discard_reason: String = ""
 var purchase_panel: PanelContainer
 var purchase_label: Label
 var purchase_yes_button: Button
@@ -101,6 +109,7 @@ var action_prompt_yes: Button
 var action_prompt_no: Button
 var pending_action_card_data: Dictionary = {}
 var pending_action_is_magic: bool = false
+var pending_action_source_card: Node3D
 var battlefield_warning_panel: PanelContainer
 var battlefield_warning_label: Label
 var battlefield_warning_ok: Button
@@ -122,20 +131,23 @@ var revealed_treasure_count: int = 0
 var discarded_treasure_count: int = 0
 var is_treasure_stack_hovered: bool = false
 const REVEALED_Y_STEP := 0.01
-var adventure_deck_pos := Vector3(2, 0.0209999997168779, 0)
-var adventure_reveal_pos := Vector3(0, 0.0179999992251396, 0)
-var battlefield_pos := Vector3(0, 0.0179999992251396, 0)
-var event_row_pos := Vector3(0, 0.0179999992251396, 1.6)
+var adventure_deck_pos := Vector3(4, 0.02, 0)
+var adventure_reveal_pos := Vector3(2, 0.2, 0)
+var battlefield_pos := Vector3(0, 0.02, 0)
+var adventure_discard_pos := Vector3(6.1, 0.026, 0.35)
+var event_row_pos := Vector3(0, 0.02, 1.6)
 var revealed_adventure_count: int = 0
 var mission_side_count: int = 0
 var event_row_count: int = 0
+var discarded_adventure_count: int = 0
 var is_adventure_stack_hovered: bool = false
 const ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
 const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
 const EVENT_ROW_SPACING := 1.6
 const TREASURE_REVEAL_OFFSET := Vector3(-1.0, 0.006, 0.0)
 const TREASURE_DISCARD_OFFSET := Vector3(-2.05, 0.006, 0.315)
-const ADVENTURE_REVEAL_OFFSET := Vector3(-2.0, -0.003, 0.0)
+const ADVENTURE_REVEAL_OFFSET := Vector3(5, 0, 0.0)
+const ADVENTURE_DISCARD_OFFSET := Vector3(2.1, 0.006, 0.35)
 var adventure_image_index: Dictionary = {}
 var adventure_variant_cursor: Dictionary = {}
 const BOSS_BACK := "res://assets/cards/ghost_n_goblins/boss/back_Boss.png"
@@ -161,11 +173,18 @@ var regno_node_boxes: Array[PanelContainer] = []
 var regno_blink_time: float = 0.0
 var regno_reward_label: Label
 var coin_total_label: Label3D
+var coin_pile_count: int = 0
+const COIN_PILE_SPACING_X := 0.8
+const COIN_PILE_SPACING_Z := 0.55
+const COIN_PILE_COLUMNS := 4
+
+func _ui_text(text: String) -> String:
+	return text.replace(" ", "  ")
 
 func _ready() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	camera.rotation_degrees = Vector3(-80.0, 0.0, 0.0)
-	camera.global_position = Vector3(0.43, 7.0, 1.74)
+	camera.global_position = Vector3(0.65, 6.0, 3.8)
 	fight_icon = _load_texture("res://assets/Token/fight.png")
 	_play_music()
 	_update_phase_lighting()
@@ -242,7 +261,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						_try_show_purchase_prompt(card, false)
 						return
 				if phase_index == 1 and roll_pending_apply and card.has_meta("equipped_slot"):
-					_show_action_prompt(card.get_meta("card_data", {}), false)
+					_show_action_prompt(card.get_meta("card_data", {}), false, card)
 					return
 				if phase_index == 0 and card.has_meta("equipped_slot"):
 					_return_equipped_to_hand(card)
@@ -372,6 +391,7 @@ func _process(_delta: float) -> void:
 func _launch_dice_at(spawn_pos: Vector3, launch_dir: Vector3) -> void:
 	_clear_dice()
 	_hide_outcome()
+	post_roll_effects.clear()
 	roll_in_progress = true
 	dice_count = _get_total_dice()
 	_spawn_dice(spawn_pos, launch_dir)
@@ -589,7 +609,9 @@ func _update_adventure_stack_position(new_pos: Vector3) -> void:
 	var base := Vector3(new_pos.x, adventure_deck_pos.y, new_pos.z)
 	adventure_deck_pos = base
 	adventure_reveal_pos = adventure_deck_pos + ADVENTURE_REVEAL_OFFSET
+	adventure_discard_pos = adventure_deck_pos + ADVENTURE_DISCARD_OFFSET
 	_reposition_stack("in_adventure_stack", adventure_deck_pos)
+	_reposition_adventure_discard_stack()
 
 func _update_boss_stack_position(new_pos: Vector3) -> void:
 	var base := Vector3(new_pos.x, boss_deck_pos.y, new_pos.z)
@@ -661,6 +683,37 @@ func _reposition_discard_stack() -> void:
 		var card: Node3D = cards[i]
 		var pos := treasure_discard_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
 		card.global_position = pos
+
+func _reposition_adventure_discard_stack() -> void:
+	var cards: Array = []
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("adventure_discard_index"):
+			continue
+		cards.append(child)
+	if cards.is_empty():
+		return
+	cards.sort_custom(func(a, b):
+		var a_idx := int(a.get_meta("adventure_discard_index", -1))
+		var b_idx := int(b.get_meta("adventure_discard_index", -1))
+		return a_idx < b_idx
+	)
+	for i in cards.size():
+		var card: Node3D = cards[i]
+		card.global_position = adventure_discard_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
+
+func _move_adventure_to_discard(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	card.set_meta("in_battlefield", false)
+	card.set_meta("adventure_blocking", false)
+	card.set_meta("in_mission_side", false)
+	card.set_meta("in_event_row", false)
+	card.set_meta("in_adventure_discard", true)
+	card.set_meta("adventure_discard_index", discarded_adventure_count)
+	discarded_adventure_count += 1
+	card.global_position = adventure_discard_pos + Vector3(0.0, (discarded_adventure_count - 1) * REVEALED_Y_STEP, 0.0)
 
 func _get_top_adventure_card() -> Node3D:
 	var top_card: Node3D = null
@@ -787,16 +840,136 @@ func _confirm_purchase() -> void:
 	_hide_purchase_prompt()
 
 func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
+	if new_phase_index == 0 and _block_turn_pass_if_hand_exceeds_limit(_turn_index):
+		return
 	phase_index = new_phase_index
 	if phase_index != 0:
 		_hide_purchase_prompt()
 	if phase_index != 1:
 		_hide_adventure_prompt()
 	if phase_index == 2:
+		await _cleanup_battlefield_rewards_for_recovery()
 		_on_end_turn_with_battlefield()
+		_try_advance_regno_track()
 		_reset_dice_for_rest()
 	_update_phase_lighting()
 	_update_phase_info()
+
+func _block_turn_pass_if_hand_exceeds_limit(turn_index: int) -> bool:
+	var excess := player_hand.size() - player_max_hand
+	if excess <= 0:
+		return false
+	pending_penalty_discards = max(pending_penalty_discards, excess)
+	_set_hand_discard_mode(true, "hand_limit")
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", "Fine turno: scarta %d carte (limite mano %d)." % [excess, player_max_hand])
+	if hand_ui != null and hand_ui.has_method("set_phase_silent"):
+		hand_ui.call("set_phase_silent", 2, max(1, turn_index - 1))
+	phase_index = 2
+	_update_phase_lighting()
+	_update_phase_info()
+	return true
+
+func _cleanup_battlefield_rewards_for_recovery() -> void:
+	await _resolve_reward_tokens_for_recovery()
+	# Move coins toward the player HUD area, then remove them.
+	var target := _get_player_collect_target()
+	for coin in get_tree().get_nodes_in_group("coins"):
+		if not (coin is RigidBody3D):
+			continue
+		var body := coin as RigidBody3D
+		if not is_instance_valid(body):
+			continue
+		body.freeze = true
+		body.sleeping = true
+		var tween := create_tween()
+		tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tween.tween_property(body, "global_position", target + Vector3(randf_range(-0.06, 0.06), 0.0, randf_range(-0.06, 0.06)), 0.35)
+		tween.tween_callback(func() -> void:
+			if is_instance_valid(body):
+				body.queue_free()
+		)
+	coin_pile_count = 0
+
+func _resolve_reward_tokens_for_recovery() -> void:
+	var tokens: Array = get_tree().get_nodes_in_group("reward_tokens")
+	if tokens.is_empty():
+		return
+	var hud_target := _get_player_collect_target()
+	for node in tokens:
+		var token := node as RigidBody3D
+		if token == null or not is_instance_valid(token):
+			continue
+		var code := str(token.get_meta("reward_code", ""))
+		match code:
+			"reward_group_vaso_di_coccio":
+				await _consume_token_and_draw_treasure(token, "vaso_di_coccio")
+			"reward_group_chest":
+				await _consume_token_and_draw_treasure(token, "chest")
+			"reward_group_teca":
+				await _consume_token_and_draw_treasure(token, "teca")
+			"reward_token_tombstone":
+				_collect_tombstone_token(token, hud_target)
+			_:
+				token.queue_free()
+
+func _consume_token_and_draw_treasure(token: RigidBody3D, group_key: String) -> void:
+	if token != null and is_instance_valid(token):
+		token.queue_free()
+	await _draw_treasure_until_group(group_key)
+
+func _draw_treasure_until_group(group_key: String) -> void:
+	while true:
+		var top := _get_top_treasure_card()
+		if top == null:
+			break
+		var card_data: Dictionary = top.get_meta("card_data", {})
+		top.set_meta("in_treasure_stack", false)
+		await _flip_treasure_card_for_recovery(top)
+		var group := str(card_data.get("group", "")).strip_edges().to_lower()
+		if group == group_key:
+			player_hand.append(card_data)
+			top.queue_free()
+			_refresh_hand_ui()
+			return
+		top.set_meta("discard_index", discarded_treasure_count)
+		discarded_treasure_count += 1
+		top.global_position = treasure_discard_pos + Vector3(0.0, (discarded_treasure_count - 1) * REVEALED_Y_STEP, 0.0)
+
+func _flip_treasure_card_for_recovery(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var reveal_pos := treasure_reveal_pos + Vector3(0.0, revealed_treasure_count * REVEALED_Y_STEP, 0.0)
+	if card.has_method("flip_to_side"):
+		card.call("flip_to_side", reveal_pos)
+		await get_tree().create_timer(0.35).timeout
+	else:
+		card.global_position = reveal_pos
+
+func _collect_tombstone_token(token: RigidBody3D, target: Vector3) -> void:
+	if token == null or not is_instance_valid(token):
+		return
+	token.freeze = true
+	token.sleeping = true
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(token, "global_position", target + Vector3(randf_range(-0.06, 0.06), 0.0, randf_range(-0.06, 0.06)), 0.35)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(token):
+			token.queue_free()
+		player_tombstones += 1
+		if hand_ui != null and hand_ui.has_method("set_tokens"):
+			hand_ui.call("set_tokens", player_tombstones)
+	)
+
+func _get_player_collect_target() -> Vector3:
+	var view_size := get_viewport().get_visible_rect().size
+	var hud_point := Vector2(210.0, view_size.y - 120.0)
+	var world := _ray_to_plane(hud_point)
+	if world == Vector3.INF:
+		return battlefield_pos + Vector3(-2.4, 0.02, 1.9)
+	world.y = battlefield_pos.y + 0.02
+	return world
 
 func _update_phase_info() -> void:
 	if hand_ui == null or not hand_ui.has_method("set_info"):
@@ -808,7 +981,7 @@ func _update_phase_info() -> void:
 		text = "Avventura:\n- gira carta avventura (clic sul mazzo)\n- lancia dadi (tieni sx, rilascia)\n- usa equip (sx) o magie (dx)\n- applica risultato (pulsante fight)"
 	else:
 		text = "Recupero:\n- ripristino dadi\n- fine turno"
-	hand_ui.call("set_info", text)
+	hand_ui.call("set_info", _ui_text(text))
 
 func _update_phase_lighting() -> void:
 	if main_light == null:
@@ -846,12 +1019,29 @@ func _on_end_turn_with_battlefield() -> void:
 	var hearts := int(battlefield.get_meta("battlefield_hearts", 1))
 	battlefield.set_meta("battlefield_hearts", hearts + 1)
 
+func _try_advance_regno_track() -> void:
+	# Advance only when leaving adventure with no unresolved blocking enemy.
+	if _get_blocking_adventure_card() != null:
+		return
+	if regno_card == null or not is_instance_valid(regno_card):
+		return
+	if regno_track_rewards.is_empty():
+		return
+	var max_index := regno_track_rewards.size() - 1
+	if regno_track_index >= max_index:
+		return
+	regno_track_index += 1
+	_update_regno_reward_label()
+
 func _reset_dice_for_rest() -> void:
+	_clear_dice()
+	roll_pending_apply = false
 	blue_dice = base_dice_count + green_dice + red_dice
 	green_dice = 0
 	red_dice = 0
 	dice_count = _get_total_dice()
-	_ensure_idle_dice_preview()
+	_clear_dice_preview()
+	_spawn_dice_preview()
 
 func _try_show_adventure_prompt(card: Node3D) -> void:
 	if phase_index != 1:
@@ -885,14 +1075,15 @@ func _hide_adventure_prompt() -> void:
 		adventure_prompt_panel.visible = false
 	pending_adventure_card = null
 
-func _show_action_prompt(card_data: Dictionary, is_magic: bool) -> void:
+func _show_action_prompt(card_data: Dictionary, is_magic: bool, source_card: Node3D = null) -> void:
 	if action_prompt_panel == null:
 		return
 	pending_action_card_data = card_data
 	pending_action_is_magic = is_magic
+	pending_action_source_card = source_card
 	var name := str(card_data.get("name", "Carta"))
 	if action_prompt_label != null:
-		action_prompt_label.text = "Vuoi usare %s?" % name
+		action_prompt_label.text = _ui_text("Vuoi usare %s?" % name)
 	action_prompt_panel.visible = true
 	_center_action_prompt()
 
@@ -901,6 +1092,7 @@ func _hide_action_prompt() -> void:
 		action_prompt_panel.visible = false
 	pending_action_card_data = {}
 	pending_action_is_magic = false
+	pending_action_source_card = null
 
 func _center_action_prompt() -> void:
 	if action_prompt_panel == null:
@@ -917,7 +1109,13 @@ func _confirm_action_prompt() -> void:
 	if pending_action_card_data.is_empty():
 		_hide_action_prompt()
 		return
+	var effects: Array = pending_action_card_data.get("effects", [])
+	if not _validate_roll_selection_for_effects(effects):
+		return
 	_use_card_effects(pending_action_card_data)
+	if not pending_action_is_magic and pending_action_source_card != null and is_instance_valid(pending_action_source_card):
+		if effects.has("return_to_hand"):
+			_force_return_equipped_to_hand(pending_action_source_card)
 	if pending_action_is_magic:
 		player_hand.erase(pending_action_card_data)
 		_refresh_hand_ui()
@@ -927,12 +1125,165 @@ func _use_card_effects(card_data: Dictionary) -> void:
 	var effects: Array = card_data.get("effects", [])
 	if effects.is_empty():
 		return
-	# allow reroll / modification
 	_hide_outcome()
+	var selected_values := _get_selected_roll_values()
+	if selected_values.is_empty():
+		selected_values = last_roll_values.duplicate()
+	var reroll_indices: Array[int] = []
+	for effect in effects:
+		var effect_name := str(effect).strip_edges()
+		if effect_name.is_empty():
+			continue
+		post_roll_effects.append(effect_name)
+		_collect_reroll_indices(effect_name, reroll_indices)
+		_apply_post_roll_effect(effect_name, selected_values)
+		AbilityRegistry.apply(effect_name, {
+			"main": self,
+			"card_data": card_data,
+			"phase_index": phase_index,
+			"roll_total": last_roll_total,
+			"roll_values": last_roll_values,
+			"selected_roll_values": selected_values
+		})
+	if reroll_indices.is_empty():
+		_recalculate_last_roll_total()
+	else:
+		_start_visual_reroll(reroll_indices)
+	# Keep the comparison step active after using equipment/magic.
 	roll_trigger_reset = true
-	roll_pending_apply = false
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
-		hand_ui.call("set_phase_button_enabled", true)
+		hand_ui.call("set_phase_button_enabled", false)
+
+func _apply_post_roll_effect(effect_name: String, selected_values: Array[int]) -> void:
+	if last_roll_values.is_empty():
+		return
+	match effect_name:
+		"after_roll_minus_1_all_dice":
+			for i in last_roll_values.size():
+				last_roll_values[i] = max(1, int(last_roll_values[i]) - 1)
+		"halve_even_dice":
+			for i in last_roll_values.size():
+				var v := int(last_roll_values[i])
+				if v % 2 == 0:
+					last_roll_values[i] = max(1, int(v / 2))
+		"after_roll_set_one_die_to_1":
+			var target := _get_first_selected_die_index()
+			if target >= 0:
+				last_roll_values[target] = 1
+		"lowest_die_applies_to_all":
+			if selected_values.is_empty():
+				return
+			var low := selected_values[0]
+			for v in selected_values:
+				low = min(low, int(v))
+			for i in last_roll_values.size():
+				last_roll_values[i] = int(low)
+		_:
+			pass
+
+func _get_first_selected_die_index() -> int:
+	for idx in selected_roll_dice:
+		var i := int(idx)
+		if i >= 0 and i < last_roll_values.size():
+			return i
+	if not last_roll_values.is_empty():
+		return 0
+	return -1
+
+func _recalculate_last_roll_total() -> void:
+	var total := 0
+	for v in last_roll_values:
+		total += int(v)
+	last_roll_total = total
+
+func _collect_reroll_indices(effect_name: String, target: Array[int]) -> void:
+	match effect_name:
+		"reroll_5_or_6":
+			for i in last_roll_values.size():
+				var v := int(last_roll_values[i])
+				if (v == 5 or v == 6) and not target.has(i):
+					target.append(i)
+		"reroll_same_dice":
+			for idx in selected_roll_dice:
+				var i := int(idx)
+				if i < 0 or i >= last_roll_values.size():
+					continue
+				if not target.has(i):
+					target.append(i)
+		_:
+			pass
+
+func _start_visual_reroll(indices: Array[int]) -> void:
+	if indices.is_empty():
+		return
+	roll_pending_apply = false
+	roll_in_progress = true
+	for idx in indices:
+		var i := int(idx)
+		if i < 0 or i >= active_dice.size():
+			continue
+		var dice := active_dice[i]
+		if dice == null or not is_instance_valid(dice):
+			continue
+		dice.freeze = false
+		dice.sleeping = false
+		dice.linear_velocity = Vector3.ZERO
+		dice.angular_velocity = Vector3.ZERO
+		var impulse := Vector3(
+			randf_range(-1.2, 1.2),
+			randf_range(2.8, 4.2),
+			randf_range(-1.2, 1.2)
+		)
+		var torque := Vector3(
+			randf_range(-1.2, 1.2),
+			randf_range(-1.2, 1.2),
+			randf_range(-1.2, 1.2)
+		)
+		dice.apply_central_impulse(impulse)
+		dice.apply_torque_impulse(torque)
+	_finish_visual_reroll_after_settle()
+
+func _finish_visual_reroll_after_settle() -> void:
+	await _wait_for_dice_settle(active_dice)
+	_rebuild_roll_values_from_active_dice()
+	roll_in_progress = false
+	roll_pending_apply = true
+
+func _rebuild_roll_values_from_active_dice() -> void:
+	last_roll_values.clear()
+	selected_roll_dice.clear()
+	var names: Array[String] = []
+	var total := 0
+	for i in active_dice.size():
+		var dice := active_dice[i]
+		if dice == null or not is_instance_valid(dice):
+			continue
+		var value := _get_top_face_value(dice)
+		last_roll_values.append(value)
+		total += value
+		names.append(_get_top_face_name(dice))
+		selected_roll_dice.append(last_roll_values.size() - 1)
+	last_roll_total = total
+	if sum_label != null:
+		sum_label.text = "Risultati: %s | Colori: %s | Attuale: %d" % [", ".join(roll_history), " | ".join(roll_color_history), last_roll_total]
+
+func _validate_roll_selection_for_effects(effects: Array) -> bool:
+	if not roll_pending_apply:
+		return true
+	if effects.has("after_roll_set_one_die_to_1") and selected_roll_dice.size() != 1:
+		_set_selection_error("Seleziona esattamente 1 dado per questa abilita.")
+		return false
+	if effects.has("reroll_same_dice") and selected_roll_dice.is_empty():
+		_set_selection_error("Seleziona almeno 1 dado da rilanciare.")
+		return false
+	if effects.has("lowest_die_applies_to_all") and selected_roll_dice.is_empty():
+		_set_selection_error("Seleziona almeno 1 dado per applicare il valore minimo.")
+		return false
+	return true
+
+func _set_selection_error(message: String) -> void:
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", message)
 
 func _confirm_adventure_prompt() -> void:
 	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
@@ -942,7 +1293,7 @@ func _confirm_adventure_prompt() -> void:
 		_hide_adventure_prompt()
 		_show_battlefield_warning()
 		return
-	var target_pos_adv := battlefield_pos
+	var target_pos_adv := _get_battlefield_target_pos()
 	pending_adventure_card.set_meta("in_adventure_stack", false)
 	var card_data: Dictionary = pending_adventure_card.get_meta("card_data", {})
 	var base_hearts := 1
@@ -979,6 +1330,36 @@ func _confirm_adventure_prompt() -> void:
 		_spawn_battlefield_hearts(pending_adventure_card, base_hearts)
 		pending_adventure_card.call("flip_to_side", target_pos_adv)
 	_hide_adventure_prompt()
+
+func _get_battlefield_target_pos() -> Vector3:
+	var pos := battlefield_pos
+	if character_card != null and is_instance_valid(character_card):
+		# Align to the actual on-screen center of the character card.
+		var rect := _get_card_screen_rect(character_card)
+		var target_screen_x := 0.0
+		var adv_half_w := 0.0
+		if rect.size.x > 0.0:
+			target_screen_x = rect.position.x + rect.size.x * 0.5
+			adv_half_w = rect.size.x * 0.5
+		else:
+			var character_center := character_card.global_position + Vector3(CARD_CENTER_X_OFFSET, 0.0, 0.0)
+			target_screen_x = camera.unproject_position(character_center).x
+		target_screen_x += adv_half_w
+		pos.x = _solve_world_x_for_screen_x(target_screen_x, pos)
+	return pos
+
+func _solve_world_x_for_screen_x(target_screen_x: float, sample_pos: Vector3) -> float:
+	var left := sample_pos.x - 20.0
+	var right := sample_pos.x + 20.0
+	for _i in 24:
+		var mid := (left + right) * 0.5
+		var p := Vector3(mid, sample_pos.y, sample_pos.z)
+		var sx := camera.unproject_position(p).x
+		if sx < target_screen_x:
+			left = mid
+		else:
+			right = mid
+	return (left + right) * 0.5
 
 func _spawn_battlefield_hearts(card: Node3D, hearts: int) -> void:
 	if card == null or hearts <= 0:
@@ -1217,19 +1598,19 @@ func _spawn_sum_label() -> void:
 	ui.layer = 20
 	add_child(ui)
 	sum_label = Label.new()
-	sum_label.text = "Somma: -"
+	sum_label.text = _ui_text("Somma: -")
 	sum_label.position = Vector2(20, 20)
 	ui.add_child(sum_label)
 	y_label = Label.new()
-	y_label.text = "Y carta: -"
+	y_label.text = _ui_text("Y carta: -")
 	y_label.position = Vector2(20, 50)
 	ui.add_child(y_label)
 	camera_label = Label.new()
-	camera_label.text = "Camera: -"
+	camera_label.text = _ui_text("Camera: -")
 	camera_label.position = Vector2(20, 80)
 	ui.add_child(camera_label)
 	regno_reward_label = Label.new()
-	regno_reward_label.text = "Regno: -"
+	regno_reward_label.text = _ui_text("Regno: -")
 	regno_reward_label.position = Vector2(20, 110)
 	ui.add_child(regno_reward_label)
 	_create_outcome_banner(ui)
@@ -1344,7 +1725,7 @@ func _create_adventure_value_box(ui_layer: CanvasLayer) -> void:
 	adventure_value_label.add_theme_font_override("font", UI_FONT)
 	adventure_value_label.add_theme_font_size_override("font_size", 38)
 	adventure_value_label.add_theme_constant_override("font_spacing/space", 8)
-	adventure_value_label.text = "Mostro: -"
+	adventure_value_label.text = _ui_text("Mostro: -")
 	adventure_value_label.custom_minimum_size = Vector2(260, 90)
 	monster_panel.add_child(adventure_value_label)
 
@@ -1365,16 +1746,26 @@ func _create_adventure_value_box(ui_layer: CanvasLayer) -> void:
 
 	player_value_panel = PanelContainer.new()
 	player_value_panel.add_theme_stylebox_override("panel", value_style)
+	player_value_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(player_value_panel)
+	var player_box := VBoxContainer.new()
+	player_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	player_box.set("theme_override_constants/separation", 8)
+	player_value_panel.add_child(player_box)
 	player_value_label = Label.new()
 	player_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	player_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	player_value_label.add_theme_font_override("font", UI_FONT)
 	player_value_label.add_theme_font_size_override("font_size", 38)
 	player_value_label.add_theme_constant_override("font_spacing/space", 8)
-	player_value_label.text = "Tuo tiro: -"
-	player_value_label.custom_minimum_size = Vector2(260, 90)
-	player_value_panel.add_child(player_value_label)
+	player_value_label.text = _ui_text("Tuo tiro: -")
+	player_value_label.custom_minimum_size = Vector2(260, 54)
+	player_box.add_child(player_value_label)
+	player_dice_buttons_row = HBoxContainer.new()
+	player_dice_buttons_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	player_dice_buttons_row.set("theme_override_constants/separation", 6)
+	player_dice_buttons_row.mouse_filter = Control.MOUSE_FILTER_PASS
+	player_box.add_child(player_dice_buttons_row)
 	_center_adventure_value_box()
 
 func _create_outcome_banner(ui_layer: CanvasLayer) -> void:
@@ -1429,7 +1820,10 @@ func _update_camera_label() -> void:
 	if camera_label == null:
 		return
 	var pos := camera.global_position
-	camera_label.text = "Camera: x=%.2f y=%.2f z=%.2f" % [pos.x, pos.y, pos.z]
+	var rot := camera.rotation_degrees
+	camera_label.text = _ui_text("Cam x=%.2f y=%.2f z=%.2f | Rot x=%.1f y=%.1f z=%.1f | ZoomY=%.2f | FOV=%.1f" % [
+		pos.x, pos.y, pos.z, rot.x, rot.y, rot.z, pos.y, camera.fov
+	])
 
 func _create_purchase_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -1655,6 +2049,8 @@ func _spawn_hand_ui() -> void:
 		hand_root.connect("phase_changed", Callable(self, "_on_phase_changed"))
 	if hand_root.has_signal("request_use_magic"):
 		hand_root.connect("request_use_magic", Callable(self, "_on_hand_request_use_magic"))
+	if hand_root.has_signal("request_discard_card"):
+		hand_root.connect("request_discard_card", Callable(self, "_on_hand_request_discard_card"))
 
 	var view_size := get_viewport().get_visible_rect().size
 	var card_height := view_size.y * 0.2
@@ -1662,6 +2058,8 @@ func _spawn_hand_ui() -> void:
 		hand_root.call("populate", player_hand, card_height)
 	if hand_root.has_method("set_gold"):
 		hand_root.call("set_gold", player_gold)
+	if hand_root.has_method("set_tokens"):
+		hand_root.call("set_tokens", player_tombstones)
 	_update_hand_ui_stats()
 
 
@@ -1714,6 +2112,10 @@ func _track_dice_sum() -> void:
 	var total := 0
 	for v in values:
 		total += v
+	last_roll_values = values.duplicate()
+	selected_roll_dice.clear()
+	for i in last_roll_values.size():
+		selected_roll_dice.append(i)
 	last_roll_total = total
 	roll_pending_apply = true
 	last_roll_success = false
@@ -1755,6 +2157,9 @@ func _clear_dice() -> void:
 	active_dice.clear()
 	pending_dice.clear()
 	roll_pending_apply = false
+	last_roll_values.clear()
+	selected_roll_dice.clear()
+	post_roll_effects.clear()
 
 func _get_top_face_value(dice: RigidBody3D) -> int:
 	if dice.has_method("get_top_value"):
@@ -1773,6 +2178,10 @@ func _get_effective_difficulty(card_data: Dictionary) -> Dictionary:
 	for effect in effects:
 		var name := str(effect)
 		if name == "next_roll_plus_3":
+			modifier -= 3
+	for effect in post_roll_effects:
+		var effect_name := str(effect)
+		if effect_name == "next_roll_plus_3":
 			modifier -= 3
 	var effective := base + modifier
 	return {
@@ -1797,17 +2206,62 @@ func _update_adventure_value_box() -> void:
 	var modifier := int(diff_info.get("modifier", 0))
 	var effective := int(diff_info.get("effective", 0))
 	if modifier != 0:
-		adventure_value_label.text = "Mostro: %d\n(mod %d)" % [effective, modifier]
+		adventure_value_label.text = _ui_text("Mostro: %d\n(mod %d)" % [effective, modifier])
 	else:
-		adventure_value_label.text = "Mostro: %d" % base
+		adventure_value_label.text = _ui_text("Mostro: %d" % base)
 	if player_value_label != null:
 		if roll_pending_apply:
-			player_value_label.text = "Tuo tiro: %d" % last_roll_total
+			player_value_label.text = _ui_text("Tuo tiro: %d" % last_roll_total)
 		else:
-			player_value_label.text = "Tuo tiro: -"
+			player_value_label.text = _ui_text("Tuo tiro: -")
+	_refresh_roll_dice_buttons()
 	if compare_button != null:
 		compare_button.disabled = not roll_pending_apply
 	adventure_value_panel.visible = true
+
+func _refresh_roll_dice_buttons() -> void:
+	if player_dice_buttons_row == null:
+		return
+	var selected := selected_roll_dice.duplicate()
+	selected.sort()
+	var key := "%s|%s|%s" % [str(roll_pending_apply), str(last_roll_values), str(selected)]
+	if key == player_dice_buttons_key:
+		return
+	player_dice_buttons_key = key
+	for child in player_dice_buttons_row.get_children():
+		child.queue_free()
+	if not roll_pending_apply:
+		return
+	for i in last_roll_values.size():
+		var idx := i
+		var value := last_roll_values[idx]
+		var btn := Button.new()
+		btn.toggle_mode = true
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size = Vector2(36, 30)
+		btn.text = str(value)
+		btn.add_theme_font_override("font", UI_FONT)
+		btn.add_theme_font_size_override("font_size", 24)
+		btn.button_pressed = selected_roll_dice.has(idx)
+		btn.pressed.connect(func() -> void:
+			_on_roll_die_button_pressed(idx)
+		)
+		player_dice_buttons_row.add_child(btn)
+
+func _on_roll_die_button_pressed(index: int) -> void:
+	if selected_roll_dice.has(index):
+		selected_roll_dice.erase(index)
+	else:
+		selected_roll_dice.append(index)
+
+func _get_selected_roll_values() -> Array[int]:
+	var out: Array[int] = []
+	for idx in selected_roll_dice:
+		var i := int(idx)
+		if i < 0 or i >= last_roll_values.size():
+			continue
+		out.append(last_roll_values[i])
+	return out
 
 func _on_compare_pressed() -> void:
 	if not roll_pending_apply:
@@ -1827,15 +2281,18 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
 	if card_type == "maledizione":
 		if total <= difficulty:
-			card.queue_free()
+			_move_adventure_to_discard(card)
 			last_roll_success = true
 			_show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
 		else:
 			_apply_curse(card_data)
-			card.queue_free()
+			_move_adventure_to_discard(card)
 			last_roll_penalty = true
 			_show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
 		roll_pending_apply = false
+		last_roll_values.clear()
+		selected_roll_dice.clear()
+		post_roll_effects.clear()
 		if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 			hand_ui.call("set_phase_button_enabled", true)
 		return
@@ -1843,21 +2300,25 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		hearts -= 1
 		card.set_meta("battlefield_hearts", hearts)
 		if hearts <= 0:
+			var defeated_pos := card.global_position
 			if card_type == "scontro":
 				enemies_defeated_total += 1
-			_spawn_defeat_explosion(card.global_position)
-			card.queue_free()
-		_report_battlefield_reward(card_data, total, difficulty)
+			_report_battlefield_reward(card_data, total, difficulty)
+			_spawn_defeat_explosion(defeated_pos)
+			_move_adventure_to_discard(card)
 		last_roll_success = true
 		if total == difficulty:
 			_show_outcome("SUCCESSO PERFETTO", Color(1.0, 0.9, 0.2))
 		else:
 			_show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
 	else:
-		_apply_failure_penalty()
+		_apply_failure_penalty(card_data, total)
 		last_roll_penalty = true
 		_show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
 	roll_pending_apply = false
+	last_roll_values.clear()
+	selected_roll_dice.clear()
+	post_roll_effects.clear()
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 		hand_ui.call("set_phase_button_enabled", true)
 	if adventure_value_panel != null:
@@ -1867,10 +2328,150 @@ func _apply_player_heart_loss(amount: int) -> void:
 	player_current_hearts = max(0, player_current_hearts - amount)
 	_update_hand_ui_stats()
 
-func _apply_failure_penalty() -> void:
-	_apply_player_heart_loss(1)
-	blue_dice += 1
-	dice_count = _get_total_dice()
+func _apply_failure_penalty(card_data: Dictionary, total: int) -> void:
+	var penalties: Array = card_data.get("penalty_violet", [])
+	if penalties.is_empty():
+		return
+	var applied: Array[String] = []
+	for penalty in penalties:
+		var code := str(penalty).strip_edges()
+		if code.is_empty():
+			continue
+		if code.begins_with("lose_heart_"):
+			var amount := int(code.get_slice("_", 2))
+			_apply_player_heart_loss(max(1, amount))
+			applied.append("-%d cuore" % max(1, amount))
+			continue
+		if code.begins_with("lose_coins_"):
+			var coins := int(code.get_slice("_", 2))
+			_apply_coin_penalty(max(0, coins))
+			applied.append("-%d monete" % max(0, coins))
+			continue
+		if code == "add_green_die":
+			green_dice += 1
+			dice_count = _get_total_dice()
+			applied.append("+1 dado verde")
+			continue
+		if code == "discard_hand_card_1":
+			if _discard_one_card_for_penalty():
+				applied.append("scarta 1 carta")
+			continue
+		if code == "flip_equipment":
+			if _discard_one_equipped_card():
+				applied.append("rimuovi 1 equip")
+			continue
+		if code.begins_with("fail_even_lose_3_coins_or_odd_lose_heart"):
+			if int(total) % 2 == 0:
+				_apply_coin_penalty(3)
+				applied.append("-3 monete")
+			else:
+				_apply_player_heart_loss(1)
+				applied.append("-1 cuore")
+			continue
+		if code.begins_with("fail_even_discard_or_odd_lose_heart"):
+			if int(total) % 2 == 0:
+				if _discard_one_card_for_penalty():
+					applied.append("scarta 1 carta")
+			else:
+				_apply_player_heart_loss(1)
+				applied.append("-1 cuore")
+			continue
+		if code.begins_with("fail_even_flip_or_odd_lose_heart"):
+			if int(total) % 2 == 0:
+				if _discard_one_equipped_card():
+					applied.append("rimuovi 1 equip")
+			else:
+				_apply_player_heart_loss(1)
+				applied.append("-1 cuore")
+			continue
+		if code.begins_with("fail_even_poison_or_odd_lose_heart"):
+			# Poison is not modeled yet; fallback to heart loss to keep gameplay consistent.
+			_apply_player_heart_loss(1)
+			applied.append("-1 cuore")
+			continue
+	if pending_penalty_discards > 0:
+		return
+	if hand_ui != null and hand_ui.has_method("set_info") and not applied.is_empty():
+		hand_ui.call("set_info", "Penalita applicata:\n- %s" % "\n- ".join(applied))
+
+func _apply_coin_penalty(amount: int) -> void:
+	if amount <= 0:
+		return
+	player_gold = max(0, player_gold - amount)
+	if hand_ui != null and hand_ui.has_method("set_gold"):
+		hand_ui.call("set_gold", player_gold)
+
+func _discard_one_hand_card() -> bool:
+	if player_hand.is_empty():
+		return false
+	player_hand.remove_at(player_hand.size() - 1)
+	_refresh_hand_ui()
+	return true
+
+func _discard_one_card_for_penalty() -> bool:
+	# If there are multiple cards, let the player choose.
+	if player_hand.size() > 1:
+		pending_penalty_discards += 1
+		_set_hand_discard_mode(true, "penalty")
+		return true
+	# Prefer hand discard; if hand is empty fallback to one equipped card.
+	if _discard_one_hand_card():
+		return true
+	return _discard_one_equipped_card()
+
+func _set_hand_discard_mode(active: bool, reason: String = "") -> void:
+	if hand_ui == null or not hand_ui.has_method("set_discard_mode"):
+		return
+	pending_discard_reason = reason if active else ""
+	hand_ui.call("set_discard_mode", active)
+	if hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", not active)
+	if active and hand_ui.has_method("set_info"):
+		if pending_discard_reason == "hand_limit":
+			hand_ui.call("set_info", "Fine turno: scegli carte dalla mano da scartare.")
+		else:
+			hand_ui.call("set_info", "Penalita: scegli 1 carta dalla mano da scartare.")
+
+func _on_hand_request_discard_card(card: Dictionary) -> void:
+	if pending_penalty_discards <= 0:
+		return
+	var idx := player_hand.find(card)
+	if idx < 0:
+		return
+	player_hand.remove_at(idx)
+	pending_penalty_discards = max(0, pending_penalty_discards - 1)
+	_refresh_hand_ui()
+	if pending_penalty_discards <= 0:
+		var finished_reason := pending_discard_reason
+		_set_hand_discard_mode(false)
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			if finished_reason == "hand_limit":
+				hand_ui.call("set_info", "Limite mano rispettato.")
+			else:
+				hand_ui.call("set_info", "Penalita applicata:\n- scarta 1 carta")
+
+func _discard_one_equipped_card() -> bool:
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not slot.has_meta("occupied") or not slot.get_meta("occupied", false):
+			continue
+		var equipped := slot.get_meta("equipped_card", null) as Node3D
+		slot.set_meta("occupied", false)
+		slot.set_meta("equipped_card", null)
+		if equipped == null:
+			return true
+		var card_data: Dictionary = equipped.get_meta("card_data", {})
+		if card_data.is_empty():
+			card_data = {"image": ""}
+		var extra := int(equipped.get_meta("extra_slots", 0))
+		if extra > 0:
+			_remove_equipment_slots(extra)
+		player_hand.append(card_data)
+		equipped.queue_free()
+		_refresh_hand_ui()
+		return true
+	return false
 
 func _spawn_defeat_explosion(world_pos: Vector3) -> void:
 	var quad := QuadMesh.new()
@@ -1910,9 +2511,9 @@ func _report_battlefield_reward(card_data: Dictionary, total: int, difficulty: i
 		text = "Premio:\n- %s" % "\n- ".join(rewards)
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", text)
-	_spawn_battlefield_rewards(rewards)
+	_spawn_battlefield_rewards(rewards, _get_next_coin_pile_center())
 
-func _spawn_battlefield_rewards(rewards: Array) -> void:
+func _spawn_battlefield_rewards(rewards: Array, coin_pile_center: Vector3) -> void:
 	if rewards.is_empty():
 		return
 	for reward in rewards:
@@ -1920,17 +2521,24 @@ func _spawn_battlefield_rewards(rewards: Array) -> void:
 		if code.begins_with("reward_coin_"):
 			var count := int(code.get_slice("_", 2))
 			if count > 0:
-				spawn_reward_coins(count, battlefield_pos)
+				spawn_reward_coins_stack(count, coin_pile_center)
 			continue
 		match code:
 			"reward_group_vaso_di_coccio":
-				spawn_reward_tokens(1, TOKEN_VASO, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_VASO, code, battlefield_pos)
 			"reward_group_chest":
-				spawn_reward_tokens(1, TOKEN_CHEST, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_CHEST, code, battlefield_pos)
 			"reward_group_teca":
-				spawn_reward_tokens(1, TOKEN_TECA, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_TECA, code, battlefield_pos)
 			"reward_token_tombstone":
-				spawn_reward_tokens(1, TOKEN_TOMBSTONE, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_TOMBSTONE, code, battlefield_pos)
+
+func _get_next_coin_pile_center() -> Vector3:
+	var idx := coin_pile_count
+	coin_pile_count += 1
+	var row := int(idx / COIN_PILE_COLUMNS)
+	var col := int(idx % COIN_PILE_COLUMNS)
+	return battlefield_pos + Vector3(float(col) * COIN_PILE_SPACING_X, 0.0, float(row) * COIN_PILE_SPACING_Z)
 
 func _update_all_card_sorting_offsets(released_card: Node3D) -> void:
 	# Raccogli tutte le carte (esclusa quella rilasciata)
@@ -2012,11 +2620,28 @@ func spawn_reward_coins(count: int, center: Vector3 = battlefield_pos) -> void:
 	if reward_spawner.has_method("spawn_coins"):
 		reward_spawner.call("spawn_coins", count, center)
 
-func spawn_reward_tokens(count: int, texture_path: String, center: Vector3 = battlefield_pos) -> void:
+func spawn_reward_coins_stack(count: int, center: Vector3 = battlefield_pos) -> void:
 	if reward_spawner == null:
 		return
+	if reward_spawner.has_method("spawn_coin_stack"):
+		reward_spawner.call("spawn_coin_stack", count, center)
+		return
+	spawn_reward_coins(count, center)
+
+func spawn_reward_tokens(count: int, texture_path: String, center: Vector3 = battlefield_pos) -> Array:
+	if reward_spawner == null:
+		return []
 	if reward_spawner.has_method("spawn_tokens"):
-		reward_spawner.call("spawn_tokens", count, texture_path, center)
+		return reward_spawner.call("spawn_tokens", count, texture_path, center)
+	return []
+
+func _spawn_reward_tokens_with_code(count: int, texture_path: String, reward_code: String, center: Vector3) -> void:
+	var spawned := spawn_reward_tokens(count, texture_path, center)
+	for node in spawned:
+		if not (node is Node3D):
+			continue
+		var token := node as Node3D
+		token.set_meta("reward_code", reward_code)
 
 func _spawn_character_hearts(card: Node3D) -> void:
 	var hearts := _get_character_hearts()
@@ -2395,6 +3020,9 @@ func _update_hand_ui_stats() -> void:
 func _return_equipped_to_hand(card: Node3D) -> void:
 	if phase_index != 0:
 		return
+	_force_return_equipped_to_hand(card)
+
+func _force_return_equipped_to_hand(card: Node3D) -> void:
 	if not card.has_meta("equipped_slot"):
 		return
 	var slot := card.get_meta("equipped_slot") as Area3D
@@ -2421,7 +3049,7 @@ func _on_hand_request_use_magic(card: Dictionary) -> void:
 	var card_type := str(card.get("type", "")).strip_edges().to_lower()
 	if card_type != "istantaneo":
 		return
-	_show_action_prompt(card, true)
+	_show_action_prompt(card, true, null)
 
 func _spawn_regno_del_male() -> void:
 	var card := CARD_SCENE.instantiate()
@@ -2507,10 +3135,10 @@ func _update_regno_reward_label() -> void:
 	if regno_reward_label == null:
 		return
 	if regno_track_rewards.is_empty() or regno_track_index < 0 or regno_track_index >= regno_track_rewards.size():
-		regno_reward_label.text = "Regno: -"
+		regno_reward_label.text = _ui_text("Regno: -")
 		return
 	var code := str(regno_track_rewards[regno_track_index])
-	regno_reward_label.text = "Regno: %s" % _format_regno_reward(code)
+	regno_reward_label.text = _ui_text("Regno: %s" % _format_regno_reward(code))
 
 func _get_card_screen_rect(card: Node3D) -> Rect2:
 	var mesh := card.get_node_or_null("Pivot/Mesh") as MeshInstance3D

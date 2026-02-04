@@ -10,6 +10,9 @@ const _MAX_SETTLE_TIME := 2.0
 const _MAX_LINEAR := 0.3
 const _MAX_ANGULAR := 0.3
 
+func _ready() -> void:
+	add_to_group("reward_tokens")
+
 func _physics_process(delta: float) -> void:
 	if sleeping:
 		return

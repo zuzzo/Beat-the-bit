@@ -9,6 +9,8 @@ extends Node3D
 @export var token_offset: Vector3 = Vector3(0.9, 0.0, 0.3)
 @export var coin_spacing_multiplier: float = 1.6
 @export var coin_impulse_multiplier: float = 0.4
+@export var coin_stack_step: float = 0.018
+@export var coin_stack_jitter: float = 0.012
 
 func spawn_coins(count: int, center: Vector3, spacing: float = -1.0) -> Array[RigidBody3D]:
 	var use_spacing := spacing
@@ -19,6 +21,35 @@ func spawn_coins(count: int, center: Vector3, spacing: float = -1.0) -> Array[Ri
 func spawn_tokens(count: int, texture_path: String, center: Vector3, spacing: float = -1.0) -> Array[RigidBody3D]:
 	var items := _spawn_items(count, token_scene, center + token_offset, spacing, texture_path, 1.0)
 	return items
+
+func spawn_coin_stack(count: int, center: Vector3) -> Array[RigidBody3D]:
+	var spawned: Array[RigidBody3D] = []
+	if count <= 0 or coin_scene == null:
+		return spawned
+	var base := center + coin_offset
+	for i in count:
+		var item := coin_scene.instantiate()
+		add_child(item)
+		if item is RigidBody3D:
+			var body := item as RigidBody3D
+			body.continuous_cd = true
+			body.contact_monitor = true
+			body.max_contacts_reported = 4
+			body.collision_layer = 1
+			body.collision_mask = 1
+			body.global_position = Vector3(
+				base.x + randf_range(-coin_stack_jitter, coin_stack_jitter),
+				base.y + spawn_height + float(i) * coin_stack_step,
+				base.z + randf_range(-coin_stack_jitter, coin_stack_jitter)
+			)
+			body.global_rotation = Vector3(0.0, randf_range(0.0, TAU), 0.0)
+			body.apply_central_impulse(Vector3(
+				randf_range(-0.03, 0.03),
+				randf_range(0.01, 0.03),
+				randf_range(-0.03, 0.03)
+			))
+			spawned.append(body)
+	return spawned
 
 func _spawn_items(count: int, scene: PackedScene, center: Vector3, spacing: float, texture_path: String, impulse_multiplier: float) -> Array[RigidBody3D]:
 	var spawned: Array[RigidBody3D] = []

@@ -34,10 +34,15 @@ var _right_preview_active: bool = false
 var _right_preview_panel: Control
 var _right_preview_texture: Texture2D
 var _right_preview_size: Vector2
+var _discard_mode: bool = false
 
 signal request_place_equipment(card: Dictionary, screen_pos: Vector2)
 signal phase_changed(phase_index: int, turn_index: int)
 signal request_use_magic(card: Dictionary)
+signal request_discard_card(card: Dictionary)
+
+func _ui_text(text: String) -> String:
+	return text.replace(" ", "  ")
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -98,6 +103,13 @@ func populate(hand_cards: Array, card_height: float) -> void:
 		empty_style.border_width_left = 0
 		empty_style.border_width_right = 0
 		panel.add_theme_stylebox_override("panel", empty_style)
+		var discard_style := StyleBoxFlat.new()
+		discard_style.bg_color = Color(1.0, 0.9, 0.2, 0.12)
+		discard_style.border_width_top = 2
+		discard_style.border_width_bottom = 2
+		discard_style.border_width_left = 2
+		discard_style.border_width_right = 2
+		discard_style.border_color = Color(1.0, 0.9, 0.2, 0.9)
 
 		var tex_rect := TextureRect.new()
 		tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -118,14 +130,20 @@ func populate(hand_cards: Array, card_height: float) -> void:
 		hover_style.border_width_right = 0
 
 		panel.mouse_entered.connect(func() -> void:
-			panel.add_theme_stylebox_override("panel", hover_style)
+			if _discard_mode:
+				panel.add_theme_stylebox_override("panel", discard_style)
+			else:
+				panel.add_theme_stylebox_override("panel", hover_style)
 			panel.clip_contents = false
 			clip_contents = false
 			tex_rect.visible = false
 			_show_hover_preview(tex_rect.texture, full_size * 1.5, panel)
 		)
 		panel.mouse_exited.connect(func() -> void:
-			panel.add_theme_stylebox_override("panel", empty_style)
+			if _discard_mode:
+				panel.add_theme_stylebox_override("panel", discard_style)
+			else:
+				panel.add_theme_stylebox_override("panel", empty_style)
 			panel.clip_contents = true
 			clip_contents = true
 			tex_rect.visible = true
@@ -135,20 +153,27 @@ func populate(hand_cards: Array, card_height: float) -> void:
 			_handle_panel_input(event, card, full_size, tex_rect)
 		)
 		_hand_bar.add_child(panel)
+		if _discard_mode:
+			panel.add_theme_stylebox_override("panel", discard_style)
 
 func set_money(value: int) -> void:
 	if _money_label != null:
-		_money_label.text = "Monete: %d" % value
+		_money_label.text = _ui_text("Monete: %d" % value)
 
 func set_tokens(value: int) -> void:
 	if _token_label != null:
-		_token_label.text = "Token: %d" % value
+		_token_label.text = _ui_text("Token: %d" % value)
 
 func set_phase(phase_index: int, turn_index: int) -> void:
 	_phase_index = clamp(phase_index, 0, 2)
 	_turn_index = max(turn_index, 1)
 	_refresh_player_info()
 	phase_changed.emit(_phase_index, _turn_index)
+
+func set_phase_silent(phase_index: int, turn_index: int) -> void:
+	_phase_index = clamp(phase_index, 0, 2)
+	_turn_index = max(turn_index, 1)
+	_refresh_player_info()
 
 func set_phase_button_enabled(value: bool) -> void:
 	if _next_phase_button != null:
@@ -168,22 +193,46 @@ func set_gold(value: int) -> void:
 	_gold = max(value, 0)
 	_refresh_player_info()
 
+func set_discard_mode(active: bool) -> void:
+	_discard_mode = active
+	if _hand_bar == null:
+		return
+	for child in _hand_bar.get_children():
+		if not (child is PanelContainer):
+			continue
+		var panel := child as PanelContainer
+		var style := StyleBoxFlat.new()
+		if _discard_mode:
+			style.bg_color = Color(1.0, 0.9, 0.2, 0.12)
+			style.border_width_top = 2
+			style.border_width_bottom = 2
+			style.border_width_left = 2
+			style.border_width_right = 2
+			style.border_color = Color(1.0, 0.9, 0.2, 0.9)
+		else:
+			style.bg_color = Color(0, 0, 0, 0)
+			style.border_width_top = 0
+			style.border_width_bottom = 0
+			style.border_width_left = 0
+			style.border_width_right = 0
+		panel.add_theme_stylebox_override("panel", style)
+
 func _refresh_player_info() -> void:
 	var phase_names := ["Organizzazione", "Avventura", "Recupero"]
 	if _phase_label != null:
-		_phase_label.text = "  Fase di gioco: %s" % phase_names[_phase_index]
+		_phase_label.text = _ui_text("  Fase di gioco: %s" % phase_names[_phase_index])
 	if _turn_label != null:
-		_turn_label.text = "  Turno: %d" % _turn_index
+		_turn_label.text = _ui_text("  Turno: %d" % _turn_index)
 	if _hearts_label != null:
-		_hearts_label.text = "  Cuori: %d/%d" % [_current_hearts, _max_hearts]
+		_hearts_label.text = _ui_text("  Cuori: %d/%d" % [_current_hearts, _max_hearts])
 	if _cards_label != null:
-		_cards_label.text = "  Carte: %d/%d" % [_current_cards, _max_cards]
+		_cards_label.text = _ui_text("  Carte: %d/%d" % [_current_cards, _max_cards])
 	if _gold_label != null:
-		_gold_label.text = "  Oro: %d" % _gold
+		_gold_label.text = _ui_text("  Oro: %d" % _gold)
 
 func set_info(text: String) -> void:
 	if _info_label != null:
-		_info_label.text = text
+		_info_label.text = _ui_text(text)
 
 func _apply_ui_font(control: Control) -> void:
 	if control == null:
@@ -204,6 +253,9 @@ func _advance_phase() -> void:
 func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2, tex_rect: TextureRect) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			if _discard_mode:
+				request_discard_card.emit(card)
+				return
 			if _phase_index == 0:
 				request_place_equipment.emit(card, get_viewport().get_mouse_position())
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
@@ -320,7 +372,7 @@ func _create_hand_bar() -> void:
 	left_content.add_spacer(true)
 
 	_next_phase_button = Button.new()
-	_next_phase_button.text = "Fase successiva"
+	_next_phase_button.text = _ui_text("Fase successiva")
 	_next_phase_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_next_phase_button.pressed.connect(_advance_phase)
 	_apply_player_panel_font(_next_phase_button)
@@ -414,10 +466,12 @@ func _show_hover_preview(texture: Texture2D, size: Vector2, panel: Control) -> v
 	_hover_preview.size = size
 	_hover_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hover_overlay.add_child(_hover_preview)
+	var panel_rect := panel.get_global_rect()
 	var view_h := get_viewport().get_visible_rect().size.y
-	var desired_global_y := view_h - size.y + 200.0
-	var panel_global := panel.get_global_rect().position
-	_hover_preview.position = Vector2(panel_global.x, desired_global_y)
+	# Keep the enlarged card anchored on the same bottom edge as the hand row.
+	var target_x := panel_rect.position.x - (size.x - panel_rect.size.x) * 0.5
+	var target_y := panel_rect.end.y - size.y + (view_h * 0.30)
+	_hover_preview.position = Vector2(target_x, target_y)
 
 func _hide_hover_preview() -> void:
 	if _hover_preview != null:
