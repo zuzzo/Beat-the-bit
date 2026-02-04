@@ -38,8 +38,14 @@ func load_cards() -> void:
 		cards.append(entry)
 		var ctype := str(entry.get("type", ""))
 		match ctype:
-			"scontro", "concatenamento", "maledizione", "evento":
+			"scontro", "concatenamento", "maledizione":
 				deck_adventure.append(entry)
+			"evento":
+				# Shared board events (e.g. Regno del male) are not adventure-deck cards.
+				if str(entry.get("id", "")) == "shared_regno_del_male":
+					cards_shared.append(entry)
+				else:
+					deck_adventure.append(entry)
 			"equipaggiamento", "istantaneo", "missione":
 				deck_treasures.append(entry)
 			"boss":

@@ -135,7 +135,7 @@ var adventure_deck_pos := Vector3(4, 0.02, 0)
 var adventure_reveal_pos := Vector3(2, 0.2, 0)
 var battlefield_pos := Vector3(0, 0.02, 0)
 var adventure_discard_pos := Vector3(6.1, 0.026, 0.35)
-var event_row_pos := Vector3(0, 0.02, 1.6)
+var event_row_pos := Vector3(-5, 0.02, 2.5)
 var revealed_adventure_count: int = 0
 var mission_side_count: int = 0
 var event_row_count: int = 0
@@ -159,7 +159,7 @@ const ASTAROTH_FRONT := "res://assets/cards/ghost_n_goblins/singles/astaroth.png
 var boss_deck_pos := Vector3(-3, 0.0389999970793724, -2.5)
 var character_pos := Vector3(0, 0.0240000002086163, 2.5)
 var regno_pos := Vector3(-3, 0.0359999984502792, 2.5)
-var astaroth_pos := Vector3(-5, 0.0359999984502792, 2.5)
+var astaroth_pos := Vector3(-5, 0.0389999970793724, -2.5)
 const HEART_TEXTURE := "res://assets/Token/cuore.png"
 var character_card: Node3D
 var regno_card: Node3D
@@ -224,7 +224,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_clear_dice()
 			roll_history.clear()
 			roll_color_history.clear()
-			sum_label.text = "Risultati: - | Colori: -"
+			sum_label.text = _ui_text("Risultati: - | Colori: -")
 		elif event.keycode == KEY_PAGEUP:
 			_adjust_selected_card_y(0.02)
 			_adjust_equipment_slots_y(0.02)
@@ -255,13 +255,19 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				if phase_index == 0 and card.has_meta("in_mission_side") and card.get_meta("in_mission_side", false):
 					_try_claim_mission(card)
 					return
+				if phase_index == 0 and _try_spend_tombstone_on_regno(card):
+					return
 				if phase_index == 0:
 					var top_market_left := _get_top_market_card()
 					if top_market_left != null and card == top_market_left:
 						_try_show_purchase_prompt(card, false)
 						return
-				if phase_index == 1 and roll_pending_apply and card.has_meta("equipped_slot"):
-					_show_action_prompt(card.get_meta("card_data", {}), false, card)
+				if phase_index == 1 and card.has_meta("equipped_slot"):
+					var eq_data: Dictionary = card.get_meta("card_data", {})
+					if _is_card_activation_allowed_now(eq_data):
+						_show_action_prompt(eq_data, false, card)
+					else:
+						_show_card_timing_hint(eq_data)
 					return
 				if phase_index == 0 and card.has_meta("equipped_slot"):
 					_return_equipped_to_hand(card)
@@ -785,7 +791,7 @@ func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 	if require_gold and player_gold < cost:
 		return false
 	purchase_card = card
-	purchase_label.text = "Vuoi  aggiungerla  alla  tua  mano  per  il  prezzo  di  %d  monete?" % cost
+	purchase_label.text = _ui_text("Vuoi aggiungerla alla tua mano per il prezzo di %d monete?" % cost)
 	purchase_panel.visible = true
 	_resize_purchase_prompt()
 	_update_purchase_prompt_position()
@@ -1033,6 +1039,34 @@ func _try_advance_regno_track() -> void:
 	regno_track_index += 1
 	_update_regno_reward_label()
 
+func _try_spend_tombstone_on_regno(card: Node3D) -> bool:
+	if regno_card == null or not is_instance_valid(regno_card):
+		return false
+	if card != regno_card:
+		return false
+	if player_tombstones <= 0:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Non hai token Tombstone da spendere."))
+		return true
+	if regno_track_rewards.is_empty():
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Tracciato Regno non disponibile."))
+		return true
+	var max_index := regno_track_rewards.size() - 1
+	if regno_track_index >= max_index:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Il Regno del Male e gia al massimo."))
+		return true
+	player_tombstones -= 1
+	regno_track_index += 1
+	_update_regno_reward_label()
+	if hand_ui != null and hand_ui.has_method("set_tokens"):
+		hand_ui.call("set_tokens", player_tombstones)
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		var reward_code := str(regno_track_rewards[regno_track_index])
+		hand_ui.call("set_info", _ui_text("Speso 1 Tombstone: Regno avanza a %s." % _format_regno_reward(reward_code)))
+	return true
+
 func _reset_dice_for_rest() -> void:
 	_clear_dice()
 	roll_pending_apply = false
@@ -1046,16 +1080,6 @@ func _reset_dice_for_rest() -> void:
 func _try_show_adventure_prompt(card: Node3D) -> void:
 	if phase_index != 1:
 		return
-	var card_data: Dictionary = card.get_meta("card_data", {})
-	var card_type := ""
-	if not card_data.is_empty():
-		card_type = str(card_data.get("type", "")).strip_edges().to_lower()
-	if card_type == "evento":
-		_reveal_event_card(card, card_data)
-		return
-	if card_type == "missione":
-		_reveal_mission_card(card, card_data)
-		return
 	if _get_blocking_adventure_card() != null:
 		_show_battlefield_warning()
 		return
@@ -1065,7 +1089,7 @@ func _try_show_adventure_prompt(card: Node3D) -> void:
 		return
 	pending_adventure_card = card
 	if adventure_prompt_label != null:
-		adventure_prompt_label.text = "Vuoi intraprendere una nuova avventura?"
+		adventure_prompt_label.text = _ui_text("Vuoi intraprendere una nuova avventura?")
 	adventure_prompt_panel.visible = true
 	_resize_adventure_prompt()
 	_update_adventure_prompt_position()
@@ -1109,20 +1133,26 @@ func _confirm_action_prompt() -> void:
 	if pending_action_card_data.is_empty():
 		_hide_action_prompt()
 		return
-	var effects: Array = pending_action_card_data.get("effects", [])
+	var action_window := _get_current_card_action_window(pending_action_card_data)
+	var effects := _get_effects_for_window(pending_action_card_data, action_window)
+	if effects.is_empty():
+		_hide_action_prompt()
+		return
 	if not _validate_roll_selection_for_effects(effects):
 		return
-	_use_card_effects(pending_action_card_data)
+	_use_card_effects(pending_action_card_data, effects, action_window)
 	if not pending_action_is_magic and pending_action_source_card != null and is_instance_valid(pending_action_source_card):
 		if effects.has("return_to_hand"):
 			_force_return_equipped_to_hand(pending_action_source_card)
 	if pending_action_is_magic:
-		player_hand.erase(pending_action_card_data)
-		_refresh_hand_ui()
+		if not effects.has("return_to_hand"):
+			player_hand.erase(pending_action_card_data)
+			_refresh_hand_ui()
 	_hide_action_prompt()
 
-func _use_card_effects(card_data: Dictionary) -> void:
-	var effects: Array = card_data.get("effects", [])
+func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window: String = "") -> void:
+	if effects.is_empty():
+		effects = card_data.get("effects", [])
 	if effects.is_empty():
 		return
 	_hide_outcome()
@@ -1133,6 +1163,17 @@ func _use_card_effects(card_data: Dictionary) -> void:
 	for effect in effects:
 		var effect_name := str(effect).strip_edges()
 		if effect_name.is_empty():
+			continue
+		if effect_name == "discard_hand_card_1":
+			if not _discard_one_hand_card_for_effect(card_data if pending_action_is_magic else {}):
+				if hand_ui != null and hand_ui.has_method("set_info"):
+					hand_ui.call("set_info", _ui_text("Costo non pagato: scarta 1 carta dalla mano."))
+				return
+			continue
+		if _apply_direct_card_effect(effect_name, card_data, action_window):
+			continue
+		if effect_name == "lowest_die_applies_to_all" and action_window == "before_roll" and not roll_pending_apply:
+			post_roll_effects.append("next_roll_lowest_die_applies_to_all")
 			continue
 		post_roll_effects.append(effect_name)
 		_collect_reroll_indices(effect_name, reroll_indices)
@@ -1154,6 +1195,84 @@ func _use_card_effects(card_data: Dictionary) -> void:
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 		hand_ui.call("set_phase_button_enabled", false)
 
+func _discard_one_hand_card_for_effect(exclude_card: Dictionary = {}) -> bool:
+	if player_hand.is_empty():
+		return false
+	var remove_idx := -1
+	for i in player_hand.size():
+		if not exclude_card.is_empty() and player_hand[i] == exclude_card:
+			continue
+		remove_idx = i
+		break
+	if remove_idx < 0:
+		return false
+	player_hand.remove_at(remove_idx)
+	_refresh_hand_ui()
+	return true
+
+func _apply_direct_card_effect(effect_name: String, _card_data: Dictionary, _action_window: String) -> bool:
+	match effect_name:
+		"add_red_die":
+			red_dice += 1
+			dice_count = _get_total_dice()
+			if not roll_pending_apply and not roll_in_progress:
+				_clear_dice_preview()
+				_spawn_dice_preview()
+			return true
+		"deal_1_damage":
+			_apply_direct_damage_to_battlefield(1)
+			return true
+		"discard_revealed_adventure":
+			_discard_revealed_adventure_card()
+			return true
+		"regno_del_male_portal", "sacrifice_open_portal":
+			_try_advance_regno_track()
+			_update_regno_reward_label()
+			return true
+		"reset_hearts_and_dice":
+			player_current_hearts = player_max_hearts
+			blue_dice = base_dice_count
+			green_dice = 0
+			red_dice = 0
+			dice_count = _get_total_dice()
+			_update_hand_ui_stats()
+			if not roll_pending_apply and not roll_in_progress:
+				_clear_dice_preview()
+				_spawn_dice_preview()
+			return true
+		_:
+			return false
+
+func _apply_direct_damage_to_battlefield(amount: int) -> void:
+	if amount <= 0:
+		return
+	var battlefield := _get_battlefield_card()
+	if battlefield == null:
+		return
+	var hearts := int(battlefield.get_meta("battlefield_hearts", 1))
+	hearts -= amount
+	battlefield.set_meta("battlefield_hearts", hearts)
+	if hearts > 0:
+		return
+	var card_data: Dictionary = battlefield.get_meta("card_data", {})
+	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
+	if card_type == "scontro":
+		enemies_defeated_total += 1
+	_report_battlefield_reward(card_data, last_roll_total, int(card_data.get("difficulty", 0)))
+	_spawn_defeat_explosion(battlefield.global_position)
+	_move_adventure_to_discard(battlefield)
+
+func _discard_revealed_adventure_card() -> void:
+	var battlefield := _get_battlefield_card()
+	if battlefield != null:
+		_move_adventure_to_discard(battlefield)
+		return
+	var top := _get_top_adventure_card()
+	if top == null:
+		return
+	top.set_meta("in_adventure_stack", false)
+	_move_adventure_to_discard(top)
+
 func _apply_post_roll_effect(effect_name: String, selected_values: Array[int]) -> void:
 	if last_roll_values.is_empty():
 		return
@@ -1169,7 +1288,7 @@ func _apply_post_roll_effect(effect_name: String, selected_values: Array[int]) -
 		"after_roll_set_one_die_to_1":
 			var target := _get_first_selected_die_index()
 			if target >= 0:
-				last_roll_values[target] = 1
+				last_roll_values[target] = max(1, int(last_roll_values[target]) - 1)
 		"lowest_die_applies_to_all":
 			if selected_values.is_empty():
 				return
@@ -1270,8 +1389,8 @@ func _rebuild_roll_values_from_active_dice() -> void:
 func _validate_roll_selection_for_effects(effects: Array) -> bool:
 	if not roll_pending_apply:
 		return true
-	if effects.has("after_roll_set_one_die_to_1") and selected_roll_dice.size() != 1:
-		_set_selection_error("Seleziona esattamente 1 dado per questa abilita.")
+	if effects.has("after_roll_set_one_die_to_1") and selected_roll_dice.is_empty():
+		_set_selection_error("Seleziona almeno 1 dado per questa abilita.")
 		return false
 	if effects.has("reroll_same_dice") and selected_roll_dice.is_empty():
 		_set_selection_error("Seleziona almeno 1 dado da rilanciare.")
@@ -1553,7 +1672,7 @@ func _create_battlefield_warning() -> void:
 	button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button_row.set("theme_override_constants/separation", 20)
 	battlefield_warning_ok = Button.new()
-	battlefield_warning_ok.text = "Ok"
+	battlefield_warning_ok.text = _ui_text("Ok")
 	battlefield_warning_ok.add_theme_font_override("font", UI_FONT)
 	battlefield_warning_ok.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	battlefield_warning_ok.add_theme_constant_override("font_spacing/space", 8)
@@ -1564,7 +1683,7 @@ func _create_battlefield_warning() -> void:
 func _show_battlefield_warning() -> void:
 	if battlefield_warning_panel == null:
 		return
-	battlefield_warning_label.text = "C'e un nemico nel campo di battaglia.\nSe passi al turno successivo i premi restano sul tavolo e non potrai riscattarli."
+	battlefield_warning_label.text = _ui_text("C'e un nemico nel campo di battaglia.\nSe passi al turno successivo i premi restano sul tavolo e non potrai riscattarli.")
 	battlefield_warning_panel.visible = true
 	_center_battlefield_warning()
 
@@ -1591,7 +1710,7 @@ func _adjust_selected_card_y(delta: float) -> void:
 	pos.y += delta
 	selected_card.global_position = pos
 	if y_label != null:
-		y_label.text = "Y carta: %.3f" % pos.y
+		y_label.text = _ui_text("Y carta: %.3f" % pos.y)
 
 func _spawn_sum_label() -> void:
 	var ui := CanvasLayer.new()
@@ -1734,7 +1853,7 @@ func _create_adventure_value_box(ui_layer: CanvasLayer) -> void:
 		compare_button.icon = fight_icon
 	compare_button.text = ""
 	compare_button.expand_icon = true
-	compare_button.tooltip_text = "Confronta"
+	compare_button.tooltip_text = _ui_text("Confronta")
 	compare_button.custom_minimum_size = Vector2(64, 64)
 	compare_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	compare_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1877,13 +1996,13 @@ func _create_purchase_prompt() -> void:
 	button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button_row.set("theme_override_constants/separation", 20)
 	purchase_yes_button = Button.new()
-	purchase_yes_button.text = "Si"
+	purchase_yes_button.text = _ui_text("Si")
 	purchase_yes_button.add_theme_font_override("font", UI_FONT)
 	purchase_yes_button.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	purchase_yes_button.add_theme_constant_override("font_spacing/space", 8)
 	purchase_yes_button.pressed.connect(_confirm_purchase)
 	purchase_no_button = Button.new()
-	purchase_no_button.text = "No"
+	purchase_no_button.text = _ui_text("No")
 	purchase_no_button.add_theme_font_override("font", UI_FONT)
 	purchase_no_button.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	purchase_no_button.add_theme_constant_override("font_spacing/space", 8)
@@ -1947,13 +2066,13 @@ func _create_action_prompt() -> void:
 	button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button_row.set("theme_override_constants/separation", 16)
 	action_prompt_yes = Button.new()
-	action_prompt_yes.text = "Si"
+	action_prompt_yes.text = _ui_text("Si")
 	action_prompt_yes.add_theme_font_override("font", UI_FONT)
 	action_prompt_yes.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	action_prompt_yes.add_theme_constant_override("font_spacing/space", 8)
 	action_prompt_yes.pressed.connect(_confirm_action_prompt)
 	action_prompt_no = Button.new()
-	action_prompt_no.text = "No"
+	action_prompt_no.text = _ui_text("No")
 	action_prompt_no.add_theme_font_override("font", UI_FONT)
 	action_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	action_prompt_no.add_theme_constant_override("font_spacing/space", 8)
@@ -1999,7 +2118,7 @@ func _create_adventure_prompt() -> void:
 	adventure_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	adventure_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	adventure_prompt_label.custom_minimum_size = Vector2(420, 0)
-	adventure_prompt_label.text = "Vuoi affrontare una nuova avventura?"
+	adventure_prompt_label.text = _ui_text("Vuoi affrontare una nuova avventura?")
 	adventure_prompt_label.add_theme_font_override("font", UI_FONT)
 	adventure_prompt_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	adventure_prompt_label.add_theme_constant_override("font_spacing/space", 8)
@@ -2009,13 +2128,13 @@ func _create_adventure_prompt() -> void:
 	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	button_row.set("theme_override_constants/separation", 20)
 	adventure_prompt_yes = Button.new()
-	adventure_prompt_yes.text = "Si"
+	adventure_prompt_yes.text = _ui_text("Si")
 	adventure_prompt_yes.add_theme_font_override("font", UI_FONT)
 	adventure_prompt_yes.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	adventure_prompt_yes.add_theme_constant_override("font_spacing/space", 8)
 	adventure_prompt_yes.pressed.connect(_confirm_adventure_prompt)
 	adventure_prompt_no = Button.new()
-	adventure_prompt_no.text = "No"
+	adventure_prompt_no.text = _ui_text("No")
 	adventure_prompt_no.add_theme_font_override("font", UI_FONT)
 	adventure_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	adventure_prompt_no.add_theme_constant_override("font_spacing/space", 8)
@@ -2109,6 +2228,7 @@ func _track_dice_sum() -> void:
 		names.append(_get_top_face_name(dice))
 	pending_dice.clear()
 	roll_in_progress = false
+	_consume_next_roll_effects(values)
 	var total := 0
 	for v in values:
 		total += v
@@ -2123,9 +2243,49 @@ func _track_dice_sum() -> void:
 	roll_trigger_reset = false
 	roll_history.append(total)
 	roll_color_history.append(", ".join(names))
-	sum_label.text = "Risultati: %s | Colori: %s" % [", ".join(roll_history), " | ".join(roll_color_history)]
+	sum_label.text = _ui_text("Risultati: %s | Colori: %s" % [", ".join(roll_history), " | ".join(roll_color_history)])
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 		hand_ui.call("set_phase_button_enabled", false)
+
+func _consume_next_roll_effects(values: Array[int]) -> void:
+	if values.is_empty() or post_roll_effects.is_empty():
+		return
+	var consumed: Array[String] = []
+	for effect in post_roll_effects:
+		var name := str(effect).strip_edges()
+		match name:
+			"next_roll_minus_2_all_dice":
+				for i in values.size():
+					values[i] = max(1, int(values[i]) - 2)
+				consumed.append(name)
+			"next_roll_double_then_remove_half":
+				for i in values.size():
+					values[i] = max(1, int(values[i]) * 2)
+				if values.size() > 1:
+					var order: Array[int] = []
+					for i in values.size():
+						order.append(i)
+					order.sort_custom(func(a, b):
+						return int(values[int(a)]) < int(values[int(b)])
+					)
+					var remove_count := int(floor(values.size() * 0.5))
+					for i in remove_count:
+						var idx := int(order[i])
+						values[idx] = 1
+				consumed.append(name)
+			"next_roll_lowest_die_applies_to_all":
+				var low := int(values[0])
+				for v in values:
+					low = min(low, int(v))
+				for i in values.size():
+					values[i] = low
+				consumed.append(name)
+			_:
+				pass
+	if consumed.is_empty():
+		return
+	for name in consumed:
+		post_roll_effects.erase(name)
 
 func _wait_for_dice_settle(dice_list: Array[RigidBody3D]) -> void:
 	var elapsed := 0.0
@@ -2279,6 +2439,8 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 	var difficulty := int(diff_info.get("effective", card_data.get("difficulty", 0)))
 	var hearts := int(card.get_meta("battlefield_hearts", 1))
 	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
+	if card_type == "maledizione" and _has_equipped_effect("ignore_fatigue_if_all_different") and _are_all_roll_values_different(last_roll_values):
+		total = min(total, difficulty)
 	if card_type == "maledizione":
 		if total <= difficulty:
 			_move_adventure_to_discard(card)
@@ -2298,6 +2460,8 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		return
 	if total <= difficulty:
 		hearts -= 1
+		if hearts > 0 and _has_equipped_effect("bonus_damage_multiheart"):
+			hearts -= 1
 		card.set_meta("battlefield_hearts", hearts)
 		if hearts <= 0:
 			var defeated_pos := card.global_position
@@ -2325,8 +2489,104 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		adventure_value_panel.visible = false
 
 func _apply_player_heart_loss(amount: int) -> void:
-	player_current_hearts = max(0, player_current_hearts - amount)
+	if amount <= 0:
+		return
+	var remaining := amount
+	if _consume_equipped_prevent_heart_loss() and remaining > 0:
+		remaining -= 1
+	if _consume_hand_reactive_heart_guard() and remaining > 0:
+		remaining -= 1
+	if _has_equipped_effect("on_heart_loss_destroy_fatigue"):
+		_discard_one_fatigue_from_battlefield()
+	player_current_hearts = max(0, player_current_hearts - max(0, remaining))
 	_update_hand_ui_stats()
+
+func _consume_equipped_prevent_heart_loss() -> bool:
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not slot.has_meta("occupied") or not slot.get_meta("occupied", false):
+			continue
+		var equipped := slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		var data: Dictionary = equipped.get_meta("card_data", {})
+		if not _card_has_timed_effect(data, "sacrifice_prevent_heart_loss", "on_heart_loss"):
+			continue
+		slot.set_meta("occupied", false)
+		slot.set_meta("equipped_card", null)
+		var extra := int(equipped.get_meta("extra_slots", 0))
+		if extra > 0:
+			_remove_equipment_slots(extra)
+		equipped.queue_free()
+		return true
+	return false
+
+func _consume_hand_reactive_heart_guard() -> bool:
+	for i in player_hand.size():
+		var card := player_hand[i]
+		if not (card is Dictionary):
+			continue
+		var data := card as Dictionary
+		if str(data.get("type", "")).strip_edges().to_lower() != "istantaneo":
+			continue
+		if not _card_has_timed_effect(data, "reflect_damage_poison", "on_heart_loss"):
+			continue
+		player_hand.remove_at(i)
+		_refresh_hand_ui()
+		return true
+	return false
+
+func _discard_one_fatigue_from_battlefield() -> void:
+	var battlefield := _get_battlefield_card()
+	if battlefield == null:
+		return
+	var card_data: Dictionary = battlefield.get_meta("card_data", {})
+	if str(card_data.get("type", "")).strip_edges().to_lower() != "maledizione":
+		return
+	_move_adventure_to_discard(battlefield)
+
+func _has_equipped_effect(effect_name: String) -> bool:
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not slot.has_meta("occupied") or not slot.get_meta("occupied", false):
+			continue
+		var equipped := slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		var data: Dictionary = equipped.get_meta("card_data", {})
+		var effects: Array = data.get("effects", [])
+		if effects.has(effect_name):
+			return true
+	return false
+
+func _card_has_timed_effect(card_data: Dictionary, effect_name: String, when: String = "") -> bool:
+	var timed_effects: Array = card_data.get("timed_effects", [])
+	for entry in timed_effects:
+		if not (entry is Dictionary):
+			continue
+		var data := entry as Dictionary
+		var name := str(data.get("effect", "")).strip_edges()
+		if name != effect_name:
+			continue
+		if when.is_empty():
+			return true
+		var effect_when := str(data.get("when", "")).strip_edges().to_lower()
+		if effect_when == when.strip_edges().to_lower():
+			return true
+	return false
+
+func _are_all_roll_values_different(values: Array[int]) -> bool:
+	if values.size() <= 1:
+		return true
+	var seen: Dictionary = {}
+	for v in values:
+		var value := int(v)
+		if seen.has(value):
+			return false
+		seen[value] = true
+	return true
 
 func _apply_failure_penalty(card_data: Dictionary, total: int) -> void:
 	var penalties: Array = card_data.get("penalty_violet", [])
@@ -2601,7 +2861,7 @@ func _show_outcome(text: String, color: Color) -> void:
 		return
 	outcome_token += 1
 	var token := outcome_token
-	outcome_label.text = text
+	outcome_label.text = _ui_text(text)
 	outcome_label.add_theme_color_override("font_color", color)
 	outcome_panel.visible = true
 	_center_outcome_banner()
@@ -3044,12 +3304,97 @@ func _force_return_equipped_to_hand(card: Node3D) -> void:
 func _on_hand_request_use_magic(card: Dictionary) -> void:
 	if phase_index != 1:
 		return
-	if not roll_pending_apply:
-		return
 	var card_type := str(card.get("type", "")).strip_edges().to_lower()
 	if card_type != "istantaneo":
 		return
+	if not _is_card_activation_allowed_now(card):
+		_show_card_timing_hint(card)
+		return
 	_show_action_prompt(card, true, null)
+
+func _is_card_activation_allowed_now(card_data: Dictionary) -> bool:
+	if phase_index != 1:
+		return false
+	if roll_in_progress:
+		return false
+	var action_window := _get_current_card_action_window(card_data)
+	if action_window.is_empty():
+		return false
+	var effects := _get_effects_for_window(card_data, action_window)
+	return not effects.is_empty()
+
+func _get_current_card_action_window(card_data: Dictionary) -> String:
+	var windows := _get_card_activation_windows(card_data)
+	var battlefield := _get_battlefield_card()
+	if battlefield == null:
+		if windows.has("before_adventure") and _get_top_adventure_card() != null:
+			return "before_adventure"
+		if windows.has("any_time"):
+			return "any_time"
+		if windows.has("on_play"):
+			return "on_play"
+		return ""
+	if roll_pending_apply:
+		if windows.has("after_roll"):
+			return "after_roll"
+		if windows.has("after_damage"):
+			return "after_damage"
+		if windows.has("any_time"):
+			return "any_time"
+		return ""
+	if windows.has("before_roll") or windows.has("next_roll"):
+		return "before_roll"
+	if windows.has("any_time"):
+		return "any_time"
+	if windows.has("on_play"):
+		return "on_play"
+	return ""
+
+func _get_effects_for_window(card_data: Dictionary, action_window: String) -> Array:
+	var out: Array = []
+	var timed_effects: Array = card_data.get("timed_effects", [])
+	if timed_effects.is_empty():
+		return card_data.get("effects", []).duplicate()
+	for entry in timed_effects:
+		if not (entry is Dictionary):
+			continue
+		var data := entry as Dictionary
+		var effect_name := str(data.get("effect", "")).strip_edges()
+		var when := str(data.get("when", "")).strip_edges().to_lower()
+		if effect_name.is_empty():
+			continue
+		var matches := (when == action_window)
+		if action_window == "before_roll" and when == "next_roll":
+			matches = true
+		if not matches:
+			continue
+		if not out.has(effect_name):
+			out.append(effect_name)
+	return out
+
+func _get_card_activation_windows(card_data: Dictionary) -> Array[String]:
+	var out: Array[String] = []
+	var timed_effects: Array = card_data.get("timed_effects", [])
+	for entry in timed_effects:
+		if not (entry is Dictionary):
+			continue
+		var when := str((entry as Dictionary).get("when", "")).strip_edges().to_lower()
+		if when.is_empty():
+			continue
+		if not out.has(when):
+			out.append(when)
+	# Fallback for older cards without timed metadata.
+	if out.is_empty():
+		out.append("after_roll")
+	return out
+
+func _show_card_timing_hint(card_data: Dictionary) -> void:
+	if hand_ui == null or not hand_ui.has_method("set_info"):
+		return
+	var name := str(card_data.get("name", "Carta"))
+	var windows := _get_card_activation_windows(card_data)
+	var readable := " / ".join(windows)
+	hand_ui.call("set_info", _ui_text("%s: attivabile in %s." % [name, readable]))
 
 func _spawn_regno_del_male() -> void:
 	var card := CARD_SCENE.instantiate()
@@ -3171,6 +3516,11 @@ func _get_card_screen_rect(card: Node3D) -> Rect2:
 	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
 
 func _get_regno_track_nodes() -> Array:
+	for entry in CardDatabase.cards_shared:
+		if str(entry.get("id", "")) == "shared_regno_del_male":
+			var nodes: Array = entry.get("track_nodes", [])
+			if nodes is Array:
+				return nodes
 	for entry in CardDatabase.deck_adventure:
 		if str(entry.get("id", "")) == "shared_regno_del_male":
 			var nodes: Array = entry.get("track_nodes", [])
@@ -3179,6 +3529,11 @@ func _get_regno_track_nodes() -> Array:
 	return []
 
 func _get_regno_track_rewards() -> Array:
+	for entry in CardDatabase.cards_shared:
+		if str(entry.get("id", "")) == "shared_regno_del_male":
+			var rewards: Array = entry.get("track_rewards", [])
+			if rewards is Array:
+				return rewards
 	for entry in CardDatabase.deck_adventure:
 		if str(entry.get("id", "")) == "shared_regno_del_male":
 			var rewards: Array = entry.get("track_rewards", [])

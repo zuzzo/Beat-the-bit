@@ -13,6 +13,8 @@ var _turn_label: Label
 var _hearts_label: Label
 var _cards_label: Label
 var _gold_label: Label
+var _tokens_label: Label
+var _token_icons_row: HBoxContainer
 var _next_phase_button: Button
 var _phase_index := 0
 var _turn_index := 1
@@ -21,7 +23,9 @@ var _max_hearts := 0
 var _current_cards := 0
 var _max_cards := 0
 var _gold := 0
+var _tokens := 0
 const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
+const TOMBSTONE_ICON := preload("res://assets/Token/tombstone.png")
 const PLAYER_PANEL_FONT_SIZE := 32
 var _base_anchor_top := 0.7
 var _hover_anchor_top := 0.6
@@ -161,8 +165,20 @@ func set_money(value: int) -> void:
 		_money_label.text = _ui_text("Monete: %d" % value)
 
 func set_tokens(value: int) -> void:
-	if _token_label != null:
-		_token_label.text = _ui_text("Token: %d" % value)
+	_tokens = max(value, 0)
+	if _tokens_label != null:
+		_tokens_label.text = _ui_text("Token Tombstone: %d" % _tokens)
+	if _token_icons_row != null:
+		for child in _token_icons_row.get_children():
+			child.queue_free()
+		for i in _tokens:
+			var icon := TextureRect.new()
+			icon.texture = TOMBSTONE_ICON
+			icon.custom_minimum_size = Vector2(26, 26)
+			icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_token_icons_row.add_child(icon)
 
 func set_phase(phase_index: int, turn_index: int) -> void:
 	_phase_index = clamp(phase_index, 0, 2)
@@ -348,26 +364,36 @@ func _create_hand_bar() -> void:
 	_hearts_label = Label.new()
 	_cards_label = Label.new()
 	_gold_label = Label.new()
+	_tokens_label = Label.new()
 	_phase_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hearts_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cards_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_gold_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tokens_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_hearts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_cards_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_tokens_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	left_content.add_child(_phase_label)
 	left_content.add_child(_turn_label)
 	left_content.add_child(_hearts_label)
 	left_content.add_child(_cards_label)
 	left_content.add_child(_gold_label)
+	left_content.add_child(_tokens_label)
+	_token_icons_row = HBoxContainer.new()
+	_token_icons_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_token_icons_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	_token_icons_row.set("theme_override_constants/separation", 4)
+	left_content.add_child(_token_icons_row)
 	_apply_ui_font(_phase_label)
 	_apply_player_panel_font(_turn_label)
 	_apply_player_panel_font(_hearts_label)
 	_apply_player_panel_font(_cards_label)
 	_apply_player_panel_font(_gold_label)
+	_apply_player_panel_font(_tokens_label)
 
 	left_content.add_spacer(true)
 
@@ -440,6 +466,7 @@ func _create_hand_bar() -> void:
 	_info_label.add_theme_font_size_override("font_size", 24)
 	_right_panel.add_child(_info_label)
 	add_child(_right_panel)
+	set_tokens(_tokens)
 
 func _create_hover_overlay() -> void:
 	_hover_overlay = Control.new()
