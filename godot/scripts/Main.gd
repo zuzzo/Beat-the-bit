@@ -16,6 +16,18 @@ const TOKEN_TECA := "res://assets/Token/teca.png"
 const TOKEN_TOMBSTONE := "res://assets/Token/tombstone.png"
 const EXPLOSION_SHEET := "res://assets/Animation/explosion.png"
 const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
+const CARD_TIMING := preload("res://scripts/core/CardTiming.gd")
+const DICE_FLOW := preload("res://scripts/core/DiceFlow.gd")
+const ACTION_PROMPT := preload("res://scripts/core/ActionPrompt.gd")
+const ADVENTURE_PROMPT := preload("res://scripts/core/AdventurePrompt.gd")
+const BATTLEFIELD_WARNING := preload("res://scripts/core/BattlefieldWarning.gd")
+const PURCHASE_PROMPT := preload("res://scripts/core/PurchasePrompt.gd")
+const CORE_UI := preload("res://scripts/core/CoreUI.gd")
+const BOARD_CORE := preload("res://scripts/core/BoardCore.gd")
+const SPAWN_CORE := preload("res://scripts/core/SpawnCore.gd")
+const GNG_SPAWN := preload("res://scripts/decks/ghost_n_goblins/Spawn.gd")
+const GNG_RULES := preload("res://scripts/decks/ghost_n_goblins/DeckRules.gd")
+const EFFECTS_REGISTRY := preload("res://scripts/effects/EffectsRegistry.gd")
 
 @onready var camera: Camera3D = $Camera
 @onready var reward_spawner: Node3D = $RewardSpawner
@@ -225,8 +237,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			blue_dice = base_dice_count
 			green_dice = 0
 			red_dice = 0
-			dice_count = _get_total_dice()
-			_clear_dice()
+			dice_count = DICE_FLOW.get_total_dice(self)
+			DICE_FLOW.clear_dice(self)
 			roll_history.clear()
 			roll_color_history.clear()
 			sum_label.text = _ui_text("Risultati: - | Colori: -")
@@ -239,7 +251,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_ESCAPE:
 			get_tree().quit()
 		elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-			_launch_dice_at(Vector3(0.0, TABLE_Y, 0.0), Vector3.ZERO)
+			DICE_FLOW.launch_dice_at(self, Vector3(0.0, TABLE_Y, 0.0), Vector3.ZERO)
 		elif event.keycode == KEY_1:
 			spawn_reward_tokens(1, HEART_TEXTURE, battlefield_pos)
 		elif event.keycode == KEY_2:
@@ -254,7 +266,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if card == null and phase_index == 1:
 				card = _get_adventure_stack_card_at(event.position)
 			if card == null and phase_index == 1 and _get_battlefield_card() != null:
-				_start_dice_hold(event.position)
+				DICE_FLOW.start_dice_hold(self, event.position)
 				return
 			if card != null:
 				if phase_index == 0 and card.has_meta("in_mission_side") and card.get_meta("in_mission_side", false):
@@ -269,10 +281,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						return
 				if phase_index == 1 and card.has_meta("equipped_slot"):
 					var eq_data: Dictionary = card.get_meta("card_data", {})
-					if _is_card_activation_allowed_now(eq_data):
+					if CARD_TIMING.is_card_activation_allowed_now(self, eq_data):
 						_show_action_prompt(eq_data, false, card)
 					else:
-						_show_card_timing_hint(eq_data)
+						CARD_TIMING.show_card_timing_hint(self, eq_data)
 					return
 				if phase_index == 0 and card.has_meta("equipped_slot"):
 					_return_equipped_to_hand(card)
@@ -296,7 +308,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				# dragging disabled
 		else:
 			if dice_hold_active:
-				_release_dice_hold(event.position)
+				DICE_FLOW.release_dice_hold(self, event.position)
 				return
 			dragged_card = null
 			var moved := mouse_down_pos.distance_to(event.position) > CLICK_DRAG_THRESHOLD
@@ -375,7 +387,7 @@ func _release_launch(mouse_pos: Vector2) -> void:
 	var hit: Vector3 = _ray_to_plane(mouse_pos)
 	if hit == Vector3.INF:
 		return
-	_launch_dice_at(hit, Vector3.ZERO)
+	DICE_FLOW.launch_dice_at(self, hit, Vector3.ZERO)
 
 func _process(_delta: float) -> void:
 	if dragged_card != null:
@@ -387,9 +399,9 @@ func _process(_delta: float) -> void:
 		_sync_equipment_slots_root()
 		return
 	if dice_hold_active:
-		_update_dice_hold(last_mouse_pos)
+		DICE_FLOW.update_dice_hold(self, last_mouse_pos)
 		return
-	_ensure_idle_dice_preview()
+	DICE_FLOW.ensure_idle_dice_preview(self)
 	_sync_equipment_slots_root()
 	_update_hover(last_mouse_pos)
 	_update_purchase_prompt_position()
@@ -400,147 +412,40 @@ func _process(_delta: float) -> void:
 	_update_coin_total_label()
 
 func _launch_dice_at(spawn_pos: Vector3, launch_dir: Vector3) -> void:
-	_clear_dice()
-	_hide_outcome()
-	post_roll_effects.clear()
-	roll_in_progress = true
-	dice_count = _get_total_dice()
-	_spawn_dice(spawn_pos, launch_dir)
-	blue_dice += 1
-	dice_count = _get_total_dice()
-	_track_dice_sum()
+	DICE_FLOW.launch_dice_at(self, spawn_pos, launch_dir)
 
 func _start_dice_hold(mouse_pos: Vector2) -> void:
-	if dice_hold_active:
-		return
-	if not _can_start_roll():
-		return
-	dice_hold_active = true
-	dice_hold_start_ms = Time.get_ticks_msec()
-	_clear_dice_preview()
-	_spawn_dice_preview()
-	_update_dice_hold(mouse_pos)
+	DICE_FLOW.start_dice_hold(self, mouse_pos)
 
 func _release_dice_hold(mouse_pos: Vector2) -> void:
-	if not dice_hold_active:
-		return
-	dice_hold_active = false
-	_clear_dice_preview()
-	var hit_start: Vector3 = _ray_to_plane(mouse_down_pos)
-	var hit_end: Vector3 = _ray_to_plane(mouse_pos)
-	if hit_end == Vector3.INF or hit_start == Vector3.INF:
-		return
-	var launch_dir := hit_end - hit_start
-	launch_dir.y = 0.0
-	if launch_dir.length() > 0.001:
-		launch_dir = launch_dir.normalized()
-	_launch_dice_at(hit_end, launch_dir)
+	DICE_FLOW.release_dice_hold(self, mouse_pos)
 
 func _can_start_roll() -> bool:
-	if roll_pending_apply:
-		return false
-	if roll_in_progress:
-		return false
-	# allow reroll only if unlocked by success, penalty or reset
-	if last_roll_success or last_roll_penalty or roll_trigger_reset:
-		return true
-	# first roll of the encounter
-	if roll_history.is_empty():
-		return true
-	return false
+	return DICE_FLOW.can_start_roll(self)
 
 func _reset_roll_trigger() -> void:
-	roll_trigger_reset = true
+	DICE_FLOW.reset_roll_trigger(self)
 
 func _spawn_dice_preview() -> void:
-	var count := _get_total_dice()
-	var center := adventure_deck_pos + DICE_PREVIEW_OFFSET
-	for i in count:
-		var dice: RigidBody3D = DICE_SCENE.instantiate() as RigidBody3D
-		add_child(dice)
-		dice.freeze = true
-		dice.global_position = center + Vector3(i * 0.5, 0.3, 0.0)
-		dice_preview.append(dice)
+	DICE_FLOW.spawn_dice_preview(self)
 
 func _ensure_idle_dice_preview() -> void:
-	if dice_hold_active:
-		return
-	if roll_pending_apply:
-		return
-	if not active_dice.is_empty():
-		return
-	var desired := _get_total_dice()
-	if dice_preview.size() == desired:
-		return
-	_clear_dice_preview()
-	_spawn_dice_preview()
+	DICE_FLOW.ensure_idle_dice_preview(self)
 
 func _update_dice_hold(mouse_pos: Vector2) -> void:
-	if dice_preview.is_empty():
-		return
-	var hit := _ray_to_plane(mouse_pos)
-	if hit == Vector3.INF:
-		return
-	var radius := 0.8
-	var t := Time.get_ticks_msec() / 1000.0
-	var count := dice_preview.size()
-	for i in count:
-		var dice := dice_preview[i]
-		if not is_instance_valid(dice):
-			continue
-		var angle: float = t * 2.5 + (TAU * float(i) / max(count, 1))
-		var pos: Vector3 = hit + Vector3(cos(angle) * radius, 0.3, sin(angle) * radius)
-		dice.global_position = pos
-		dice.global_rotation = Vector3(0.0, angle, 0.0)
+	DICE_FLOW.update_dice_hold(self, mouse_pos)
 
 func _clear_dice_preview() -> void:
-	for dice in dice_preview:
-		if is_instance_valid(dice):
-			dice.queue_free()
-	dice_preview.clear()
+	DICE_FLOW.clear_dice_preview(self)
 
 func _spawn_dice(spawn_pos: Vector3, launch_dir: Vector3) -> void:
-	var hold_scale: float = 1.0
-	var offset_index: int = 0
-	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, launch_dir, blue_dice, "blue", offset_index)
-	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, launch_dir, green_dice, "green", offset_index)
-	offset_index = _spawn_dice_batch(spawn_pos, hold_scale, launch_dir, red_dice, "red", offset_index)
+	DICE_FLOW.spawn_dice(self, spawn_pos, launch_dir)
 
 func _spawn_dice_batch(spawn_pos: Vector3, hold_scale: float, launch_dir: Vector3, count: int, dice_type: String, start_index: int) -> int:
-	for i in count:
-		var dice: RigidBody3D = DICE_SCENE.instantiate() as RigidBody3D
-		add_child(dice)
-		var idx := start_index + i
-		dice.global_position = spawn_pos + Vector3(idx * 0.6, 2.0, 0.0)
-		dice.global_rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
-		var lateral_strength := randf_range(1.2, 2.0) * hold_scale
-		var lateral_angle := randf() * TAU
-		var dir_boost := launch_dir * 1.2
-		var impulse: Vector3 = Vector3(
-			cos(lateral_angle) * lateral_strength,
-			randf_range(4.0, 5.0) * hold_scale,
-			sin(lateral_angle) * lateral_strength
-		) + Vector3(dir_boost.x, 0.0, dir_boost.z)
-		var torque: Vector3 = Vector3(
-			randf_range(-1.1, 1.1) * hold_scale,
-			randf_range(-1.1, 1.1) * hold_scale,
-			randf_range(-1.1, 1.1) * hold_scale
-		)
-		dice.apply_central_impulse(impulse)
-		dice.apply_torque_impulse(torque)
-		dice.angular_velocity = Vector3(
-			randf_range(-1.5, 1.5) * hold_scale,
-			randf_range(-1.5, 1.5) * hold_scale,
-			randf_range(-1.5, 1.5) * hold_scale
-		)
-		if dice.has_method("set_dice_type"):
-			dice.call("set_dice_type", dice_type)
-		pending_dice.append(dice)
-		active_dice.append(dice)
-	return start_index + count
+	return DICE_FLOW.spawn_dice_batch(self, spawn_pos, hold_scale, launch_dir, count, dice_type, start_index)
 
 func _get_total_dice() -> int:
-	return max(1, blue_dice + green_dice + red_dice)
+	return DICE_FLOW.get_total_dice(self)
 
 func _ray_to_plane(mouse_pos: Vector2) -> Vector3:
 	var _viewport := get_viewport()
@@ -581,225 +486,49 @@ func _get_card_under_mouse(mouse_pos: Vector2) -> Node3D:
 	return null
 
 func _get_top_treasure_card() -> Node3D:
-	var top_card: Node3D = null
-	var top_index := -1
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("in_treasure_stack"):
-			continue
-		if not child.get_meta("in_treasure_stack", false):
-			continue
-		var idx: int = int(child.get_meta("stack_index", -1))
-		if idx > top_index:
-			top_index = idx
-			top_card = child
-	return top_card
+	return BOARD_CORE.get_top_treasure_card(self)
 
 func _get_top_treasure_discard_card() -> Node3D:
-	var top_card: Node3D = null
-	var top_index := -1
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if child.has_meta("in_treasure_discard") and not child.get_meta("in_treasure_discard", false):
-			continue
-		if not child.has_meta("discard_index"):
-			continue
-		var idx: int = int(child.get_meta("discard_index", -1))
-		if idx > top_index:
-			top_index = idx
-			top_card = child
-	return top_card
+	return BOARD_CORE.get_top_treasure_discard_card(self)
 
 func _discard_revealed_treasure_cards() -> void:
-	var discarded_any := false
-	for child in get_children():
-		if not child.has_meta("in_treasure_market"):
-			continue
-		if not child.get_meta("in_treasure_market", false):
-			continue
-		child.set_meta("discard_index", discarded_treasure_count)
-		child.set_meta("in_treasure_discard", true)
-		child.set_meta("in_treasure_market", false)
-		discarded_treasure_count += 1
-		discarded_any = true
-	if discarded_any:
-		revealed_treasure_count = 0
-	_reposition_discard_stack()
+	BOARD_CORE.discard_revealed_treasure_cards(self)
 
 func _update_treasure_stack_position(new_pos: Vector3) -> void:
-	var base := Vector3(new_pos.x, treasure_deck_pos.y, new_pos.z)
-	treasure_deck_pos = base
-	treasure_reveal_pos = treasure_deck_pos + TREASURE_REVEAL_OFFSET
-	treasure_discard_pos = treasure_deck_pos + TREASURE_DISCARD_OFFSET
-	_reposition_stack("in_treasure_stack", treasure_deck_pos)
-	_reposition_market_stack()
-	_reposition_discard_stack()
+	BOARD_CORE.update_treasure_stack_position(self, new_pos)
 
 func _update_adventure_stack_position(new_pos: Vector3) -> void:
-	var base := Vector3(new_pos.x, adventure_deck_pos.y, new_pos.z)
-	adventure_deck_pos = base
-	adventure_reveal_pos = adventure_deck_pos + ADVENTURE_REVEAL_OFFSET
-	adventure_discard_pos = adventure_deck_pos + ADVENTURE_DISCARD_OFFSET
-	_reposition_stack("in_adventure_stack", adventure_deck_pos)
-	_reposition_adventure_discard_stack()
+	BOARD_CORE.update_adventure_stack_position(self, new_pos)
 
 func _update_boss_stack_position(new_pos: Vector3) -> void:
-	var base := Vector3(new_pos.x, boss_deck_pos.y, new_pos.z)
-	boss_deck_pos = base + BOSS_STACK_OFFSET
-	_reposition_stack("in_boss_stack", boss_deck_pos)
+	BOARD_CORE.update_boss_stack_position(self, new_pos)
 
 func _reposition_stack(meta_key: String, base_pos: Vector3) -> void:
-	var cards: Array = []
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta(meta_key):
-			continue
-		if not child.get_meta(meta_key, false):
-			continue
-		cards.append(child)
-	cards.sort_custom(func(a, b):
-		var a_idx := int(a.get_meta("stack_index", -1))
-		var b_idx := int(b.get_meta("stack_index", -1))
-		return a_idx < b_idx
-	)
-	for card in cards:
-		var idx: int = int(card.get_meta("stack_index", 0))
-		var pos := base_pos + Vector3(0.0, idx * REVEALED_Y_STEP, 0.0)
-		card.global_position = pos
+	BOARD_CORE.reposition_stack(self, meta_key, base_pos)
 
 func _reposition_market_stack() -> void:
-	var cards: Array = []
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("in_treasure_market"):
-			continue
-		if not child.get_meta("in_treasure_market", false):
-			continue
-		cards.append(child)
-	if cards.is_empty():
-		return
-	cards.sort_custom(func(a, b):
-		var a_idx := int(a.get_meta("market_index", -1))
-		var b_idx := int(b.get_meta("market_index", -1))
-		if a_idx == -1 or b_idx == -1:
-			return (a as Node3D).global_position.y < (b as Node3D).global_position.y
-		return a_idx < b_idx
-	)
-	for i in cards.size():
-		var card: Node3D = cards[i]
-		if int(card.get_meta("market_index", -1)) < 0:
-			card.set_meta("market_index", i)
-		var pos := treasure_reveal_pos + Vector3(0.0, i * TREASURE_REVEALED_Y_STEP, 0.0)
-		card.global_position = pos
+	BOARD_CORE.reposition_market_stack(self)
 
 func _reposition_discard_stack() -> void:
-	var cards: Array = []
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("discard_index"):
-			continue
-		cards.append(child)
-	if cards.is_empty():
-		return
-	cards.sort_custom(func(a, b):
-		var a_idx := int(a.get_meta("discard_index", -1))
-		var b_idx := int(b.get_meta("discard_index", -1))
-		return a_idx < b_idx
-	)
-	for i in cards.size():
-		var card: Node3D = cards[i]
-		var pos := treasure_discard_pos + Vector3(0.0, i * TREASURE_REVEALED_Y_STEP, 0.0)
-		card.global_position = pos
+	BOARD_CORE.reposition_discard_stack(self)
 
 func _reposition_adventure_discard_stack() -> void:
-	var cards: Array = []
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("adventure_discard_index"):
-			continue
-		cards.append(child)
-	if cards.is_empty():
-		return
-	cards.sort_custom(func(a, b):
-		var a_idx := int(a.get_meta("adventure_discard_index", -1))
-		var b_idx := int(b.get_meta("adventure_discard_index", -1))
-		return a_idx < b_idx
-	)
-	for i in cards.size():
-		var card: Node3D = cards[i]
-		card.global_position = adventure_discard_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
+	BOARD_CORE.reposition_adventure_discard_stack(self)
 
 func _move_adventure_to_discard(card: Node3D) -> void:
-	if card == null or not is_instance_valid(card):
-		return
-	card.set_meta("in_battlefield", false)
-	card.set_meta("adventure_blocking", false)
-	card.set_meta("in_mission_side", false)
-	card.set_meta("in_event_row", false)
-	card.set_meta("in_adventure_discard", true)
-	card.set_meta("adventure_discard_index", discarded_adventure_count)
-	discarded_adventure_count += 1
-	card.global_position = adventure_discard_pos + Vector3(0.0, (discarded_adventure_count - 1) * REVEALED_Y_STEP, 0.0)
+	BOARD_CORE.move_adventure_to_discard(self, card)
 
 func _get_top_adventure_card() -> Node3D:
-	var top_card: Node3D = null
-	var top_index := -1
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("in_adventure_stack"):
-			continue
-		if not child.get_meta("in_adventure_stack", false):
-			continue
-		var idx: int = int(child.get_meta("stack_index", -1))
-		if idx > top_index:
-			top_index = idx
-			top_card = child
-	return top_card
+	return BOARD_CORE.get_top_adventure_card(self)
 
 func _get_top_market_card() -> Node3D:
-	var top_card: Node3D = null
-	var top_y := -INF
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("in_treasure_market"):
-			continue
-		if not child.get_meta("in_treasure_market", false):
-			continue
-		var y := (child as Node3D).global_position.y
-		if y > top_y:
-			top_y = y
-			top_card = child
-	return top_card
+	return BOARD_CORE.get_top_market_card(self)
 
 func _get_battlefield_card() -> Node3D:
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("in_battlefield"):
-			continue
-		if not child.get_meta("in_battlefield", false):
-			continue
-		return child
-	return null
+	return BOARD_CORE.get_battlefield_card(self)
 
 func _get_blocking_adventure_card() -> Node3D:
-	for child in get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("adventure_blocking"):
-			continue
-		if not child.get_meta("adventure_blocking", false):
-			continue
-		return child
-	return null
+	return BOARD_CORE.get_blocking_adventure_card(self)
 
 func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 	if not card.has_meta("in_treasure_market"):
@@ -808,68 +537,19 @@ func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 		return false
 	if not card.has_meta("card_data"):
 		return false
-	if purchase_panel == null:
-		return false
-	var card_data: Dictionary = card.get_meta("card_data", {})
-	var cost := int(card_data.get("cost", 0))
-	if cost <= 0:
-		return false
-	if require_gold and player_gold < cost:
-		return false
-	purchase_card = card
-	purchase_label.text = _ui_text("Vuoi aggiungerla alla tua mano per il prezzo di %d monete?" % cost)
-	purchase_panel.visible = true
-	_resize_purchase_prompt()
-	_update_purchase_prompt_position()
-	return true
+	return PURCHASE_PROMPT.show(self, card, require_gold)
 
 func _hide_purchase_prompt() -> void:
-	if purchase_panel != null:
-		purchase_panel.visible = false
-	purchase_card = null
+	PURCHASE_PROMPT.hide(self)
 
 func _update_purchase_prompt_position() -> void:
-	if purchase_panel == null or not purchase_panel.visible:
-		return
-	if purchase_card == null or not is_instance_valid(purchase_card):
-		_hide_purchase_prompt()
-		return
-	var screen_pos := camera.unproject_position(purchase_card.global_position)
-	var size := purchase_panel.size
-	purchase_panel.position = screen_pos + Vector2(-size.x * 0.5, -size.y - 16.0)
+	PURCHASE_PROMPT.update_position(self)
 
 func _resize_purchase_prompt() -> void:
-	if purchase_panel == null:
-		return
-	purchase_panel.custom_minimum_size = Vector2.ZERO
-	purchase_panel.reset_size()
-	if purchase_content != null:
-		purchase_panel.custom_minimum_size = purchase_content.get_combined_minimum_size()
-	else:
-		purchase_panel.custom_minimum_size = purchase_panel.get_combined_minimum_size()
-	purchase_panel.reset_size()
+	PURCHASE_PROMPT.resize(self)
 
 func _confirm_purchase() -> void:
-	if phase_index != 0:
-		_hide_purchase_prompt()
-		return
-	if purchase_card == null or not is_instance_valid(purchase_card):
-		_hide_purchase_prompt()
-		return
-	var card_data: Dictionary = purchase_card.get_meta("card_data", {})
-	var cost := int(card_data.get("cost", 0))
-	if cost <= 0 or player_gold < cost:
-		_hide_purchase_prompt()
-		return
-	player_gold -= cost
-	player_hand.append(card_data)
-	if revealed_treasure_count > 0:
-		revealed_treasure_count -= 1
-	purchase_card.queue_free()
-	_refresh_hand_ui()
-	if hand_ui != null and hand_ui.has_method("set_gold"):
-		hand_ui.call("set_gold", player_gold)
-	_hide_purchase_prompt()
+	PURCHASE_PROMPT.confirm(self)
 
 func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 	if new_phase_index == 0 and _block_turn_pass_if_hand_exceeds_limit(_turn_index):
@@ -1053,56 +733,20 @@ func _on_end_turn_with_battlefield() -> void:
 	battlefield.set_meta("battlefield_hearts", hearts + 1)
 
 func _try_advance_regno_track() -> void:
-	# Advance only when leaving adventure with no unresolved blocking enemy.
-	if _get_blocking_adventure_card() != null:
-		return
-	if regno_card == null or not is_instance_valid(regno_card):
-		return
-	if regno_track_rewards.is_empty():
-		return
-	var max_index := regno_track_rewards.size() - 1
-	if regno_track_index >= max_index:
-		return
-	regno_track_index += 1
-	_update_regno_reward_label()
+	GNG_RULES.try_advance_regno_track(self)
 
 func _try_spend_tombstone_on_regno(card: Node3D) -> bool:
-	if regno_card == null or not is_instance_valid(regno_card):
-		return false
-	if card != regno_card:
-		return false
-	if player_tombstones <= 0:
-		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Non hai token Tombstone da spendere."))
-		return true
-	if regno_track_rewards.is_empty():
-		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Tracciato Regno non disponibile."))
-		return true
-	var max_index := regno_track_rewards.size() - 1
-	if regno_track_index >= max_index:
-		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Il Regno del Male e gia al massimo."))
-		return true
-	player_tombstones -= 1
-	regno_track_index += 1
-	_update_regno_reward_label()
-	if hand_ui != null and hand_ui.has_method("set_tokens"):
-		hand_ui.call("set_tokens", player_tombstones)
-	if hand_ui != null and hand_ui.has_method("set_info"):
-		var reward_code := str(regno_track_rewards[regno_track_index])
-		hand_ui.call("set_info", _ui_text("Speso 1 Tombstone: Regno avanza a %s." % _format_regno_reward(reward_code)))
-	return true
+	return GNG_RULES.try_spend_tombstone_on_regno(self, card)
 
 func _reset_dice_for_rest() -> void:
-	_clear_dice()
+	DICE_FLOW.clear_dice(self)
 	roll_pending_apply = false
 	blue_dice = base_dice_count + green_dice + red_dice
 	green_dice = 0
 	red_dice = 0
-	dice_count = _get_total_dice()
-	_clear_dice_preview()
-	_spawn_dice_preview()
+	dice_count = DICE_FLOW.get_total_dice(self)
+	DICE_FLOW.clear_dice_preview(self)
+	DICE_FLOW.spawn_dice_preview(self)
 
 func _try_show_adventure_prompt(card: Node3D) -> void:
 	if phase_index != 1:
@@ -1114,73 +758,22 @@ func _try_show_adventure_prompt(card: Node3D) -> void:
 		pending_adventure_card = card
 		_confirm_adventure_prompt()
 		return
-	pending_adventure_card = card
-	if adventure_prompt_label != null:
-		adventure_prompt_label.text = _ui_text("Vuoi intraprendere una nuova avventura?")
-	adventure_prompt_panel.visible = true
-	_resize_adventure_prompt()
-	_update_adventure_prompt_position()
+	ADVENTURE_PROMPT.show(self, card)
 
 func _hide_adventure_prompt() -> void:
-	if adventure_prompt_panel != null:
-		adventure_prompt_panel.visible = false
-	pending_adventure_card = null
+	ADVENTURE_PROMPT.hide(self)
 
 func _show_action_prompt(card_data: Dictionary, is_magic: bool, source_card: Node3D = null) -> void:
-	if action_prompt_panel == null:
-		return
-	pending_action_card_data = card_data
-	pending_action_is_magic = is_magic
-	pending_action_source_card = source_card
-	var action_window := _get_current_card_action_window(card_data)
-	var effects := _get_effects_for_window(card_data, action_window)
-	if effects.has("after_roll_set_one_die_to_1") and roll_pending_apply:
-		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Seleziona 1 dado da impostare a 1 e poi conferma."))
-	var name := str(card_data.get("name", "Carta"))
-	if action_prompt_label != null:
-		action_prompt_label.text = _ui_text("Vuoi usare %s?" % name)
-	action_prompt_panel.visible = true
-	_center_action_prompt()
+	ACTION_PROMPT.show(self, card_data, is_magic, source_card)
 
 func _hide_action_prompt() -> void:
-	if action_prompt_panel != null:
-		action_prompt_panel.visible = false
-	pending_action_card_data = {}
-	pending_action_is_magic = false
-	pending_action_source_card = null
+	ACTION_PROMPT.hide(self)
 
 func _center_action_prompt() -> void:
-	if action_prompt_panel == null:
-		return
-	action_prompt_panel.custom_minimum_size = Vector2.ZERO
-	action_prompt_panel.reset_size()
-	action_prompt_panel.custom_minimum_size = action_prompt_panel.get_combined_minimum_size()
-	action_prompt_panel.reset_size()
-	var view_size := get_viewport().get_visible_rect().size
-	var size: Vector2 = action_prompt_panel.size
-	action_prompt_panel.position = (view_size - size) * 0.5
+	ACTION_PROMPT.center(self)
 
 func _confirm_action_prompt() -> void:
-	if pending_action_card_data.is_empty():
-		_hide_action_prompt()
-		return
-	var action_window := _get_current_card_action_window(pending_action_card_data)
-	var effects := _get_effects_for_window(pending_action_card_data, action_window)
-	if effects.is_empty():
-		_hide_action_prompt()
-		return
-	if not _validate_roll_selection_for_effects(effects):
-		return
-	_use_card_effects(pending_action_card_data, effects, action_window)
-	if not pending_action_is_magic and pending_action_source_card != null and is_instance_valid(pending_action_source_card):
-		if effects.has("return_to_hand"):
-			_force_return_equipped_to_hand(pending_action_source_card)
-	if pending_action_is_magic:
-		if not effects.has("return_to_hand"):
-			player_hand.erase(pending_action_card_data)
-			_refresh_hand_ui()
-	_hide_action_prompt()
+	ACTION_PROMPT.confirm(self)
 
 func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window: String = "") -> void:
 	if effects.is_empty():
@@ -1188,7 +781,7 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 	if effects.is_empty():
 		return
 	_hide_outcome()
-	var selected_values := _get_selected_roll_values()
+	var selected_values := DICE_FLOW.get_selected_roll_values(self)
 	if selected_values.is_empty():
 		selected_values = last_roll_values.duplicate()
 	var reroll_indices: Array[int] = []
@@ -1202,14 +795,14 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 					hand_ui.call("set_info", _ui_text("Costo non pagato: scarta 1 carta dalla mano."))
 				return
 			continue
-		if _apply_direct_card_effect(effect_name, card_data, action_window):
+		if EFFECTS_REGISTRY.apply_direct_card_effect(self, effect_name, card_data, action_window):
 			continue
 		if effect_name == "lowest_die_applies_to_all" and action_window == "before_roll" and not roll_pending_apply:
 			post_roll_effects.append("next_roll_lowest_die_applies_to_all")
 			continue
 		post_roll_effects.append(effect_name)
-		_collect_reroll_indices(effect_name, reroll_indices)
-		_apply_post_roll_effect(effect_name, selected_values)
+		EFFECTS_REGISTRY.collect_reroll_indices(self, effect_name, reroll_indices)
+		EFFECTS_REGISTRY.apply_post_roll_effect(self, effect_name, selected_values)
 		AbilityRegistry.apply(effect_name, {
 			"main": self,
 			"card_data": card_data,
@@ -1219,7 +812,7 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 			"selected_roll_values": selected_values
 		})
 	if reroll_indices.is_empty():
-		_recalculate_last_roll_total()
+		DICE_FLOW.recalculate_last_roll_total(self)
 	else:
 		_start_visual_reroll(reroll_indices)
 	# Keep the comparison step active after using equipment/magic.
@@ -1242,58 +835,6 @@ func _discard_one_hand_card_for_effect(exclude_card: Dictionary = {}) -> bool:
 	_refresh_hand_ui()
 	return true
 
-func _apply_direct_card_effect(effect_name: String, _card_data: Dictionary, _action_window: String) -> bool:
-	match effect_name:
-		"add_red_die":
-			red_dice += 1
-			dice_count = _get_total_dice()
-			if not roll_pending_apply and not roll_in_progress:
-				_clear_dice_preview()
-				_spawn_dice_preview()
-			return true
-		"deal_1_damage":
-			_apply_direct_damage_to_battlefield(1)
-			return true
-		"discard_revealed_adventure":
-			_discard_revealed_adventure_card()
-			return true
-		"regno_del_male_portal", "sacrifice_open_portal":
-			_try_advance_regno_track()
-			_update_regno_reward_label()
-			return true
-		"reset_hearts_and_dice":
-			player_current_hearts = player_max_hearts
-			blue_dice = base_dice_count
-			green_dice = 0
-			red_dice = 0
-			dice_count = _get_total_dice()
-			_update_hand_ui_stats()
-			if not roll_pending_apply and not roll_in_progress:
-				_clear_dice_preview()
-				_spawn_dice_preview()
-			return true
-		_:
-			return false
-
-func _apply_direct_damage_to_battlefield(amount: int) -> void:
-	if amount <= 0:
-		return
-	var battlefield := _get_battlefield_card()
-	if battlefield == null:
-		return
-	var hearts := int(battlefield.get_meta("battlefield_hearts", 1))
-	hearts -= amount
-	battlefield.set_meta("battlefield_hearts", hearts)
-	if hearts > 0:
-		return
-	var card_data: Dictionary = battlefield.get_meta("card_data", {})
-	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
-	if card_type == "scontro":
-		enemies_defeated_total += 1
-	_report_battlefield_reward(card_data, last_roll_total, int(card_data.get("difficulty", 0)))
-	_spawn_defeat_explosion(battlefield.global_position)
-	_move_adventure_to_discard(battlefield)
-
 func _discard_revealed_adventure_card() -> void:
 	var battlefield := _get_battlefield_card()
 	if battlefield != null:
@@ -1305,64 +846,8 @@ func _discard_revealed_adventure_card() -> void:
 	top.set_meta("in_adventure_stack", false)
 	_move_adventure_to_discard(top)
 
-func _apply_post_roll_effect(effect_name: String, selected_values: Array[int]) -> void:
-	if last_roll_values.is_empty():
-		return
-	match effect_name:
-		"after_roll_minus_1_all_dice":
-			for i in last_roll_values.size():
-				last_roll_values[i] = max(1, int(last_roll_values[i]) - 1)
-		"halve_even_dice":
-			for i in last_roll_values.size():
-				var v := int(last_roll_values[i])
-				if v % 2 == 0:
-					last_roll_values[i] = max(1, int(v / 2))
-		"after_roll_set_one_die_to_1":
-			var target := _get_first_selected_die_index()
-			if target >= 0:
-				last_roll_values[target] = 1
-		"lowest_die_applies_to_all":
-			if selected_values.is_empty():
-				return
-			var low := selected_values[0]
-			for v in selected_values:
-				low = min(low, int(v))
-			for i in last_roll_values.size():
-				last_roll_values[i] = int(low)
-		_:
-			pass
-
-func _get_first_selected_die_index() -> int:
-	for idx in selected_roll_dice:
-		var i := int(idx)
-		if i >= 0 and i < last_roll_values.size():
-			return i
-	if not last_roll_values.is_empty():
-		return 0
-	return -1
-
 func _recalculate_last_roll_total() -> void:
-	var total := 0
-	for v in last_roll_values:
-		total += int(v)
-	last_roll_total = total
-
-func _collect_reroll_indices(effect_name: String, target: Array[int]) -> void:
-	match effect_name:
-		"reroll_5_or_6":
-			for i in last_roll_values.size():
-				var v := int(last_roll_values[i])
-				if (v == 5 or v == 6) and not target.has(i):
-					target.append(i)
-		"reroll_same_dice":
-			for idx in selected_roll_dice:
-				var i := int(idx)
-				if i < 0 or i >= last_roll_values.size():
-					continue
-				if not target.has(i):
-					target.append(i)
-		_:
-			pass
+	DICE_FLOW.recalculate_last_roll_total(self)
 
 func _start_visual_reroll(indices: Array[int]) -> void:
 	if indices.is_empty():
@@ -1395,28 +880,13 @@ func _start_visual_reroll(indices: Array[int]) -> void:
 	_finish_visual_reroll_after_settle()
 
 func _finish_visual_reroll_after_settle() -> void:
-	await _wait_for_dice_settle(active_dice)
-	_rebuild_roll_values_from_active_dice()
+	await DICE_FLOW.wait_for_dice_settle(self, active_dice)
+	DICE_FLOW.rebuild_roll_values_from_active_dice(self)
 	roll_in_progress = false
 	roll_pending_apply = true
 
 func _rebuild_roll_values_from_active_dice() -> void:
-	last_roll_values.clear()
-	selected_roll_dice.clear()
-	var names: Array[String] = []
-	var total := 0
-	for i in active_dice.size():
-		var dice := active_dice[i]
-		if dice == null or not is_instance_valid(dice):
-			continue
-		var value := _get_top_face_value(dice)
-		last_roll_values.append(value)
-		total += value
-		names.append(_get_top_face_name(dice))
-		selected_roll_dice.append(last_roll_values.size() - 1)
-	last_roll_total = total
-	if sum_label != null:
-		sum_label.text = "Risultati: %s | Colori: %s | Attuale: %d" % [", ".join(roll_history), " | ".join(roll_color_history), last_roll_total]
+	DICE_FLOW.rebuild_roll_values_from_active_dice(self)
 
 func _validate_roll_selection_for_effects(effects: Array) -> bool:
 	if not roll_pending_apply:
@@ -1500,18 +970,10 @@ func _schedule_adventure_discard(card: Node3D) -> void:
 		_move_adventure_to_discard(card)
 
 func _get_next_chain_pos() -> Vector3:
-	var base := battlefield_pos + CHAIN_ROW_OFFSET
-	var pos := base + Vector3(chain_row_count * CHAIN_ROW_SPACING, 0.0, 0.0)
-	chain_row_count += 1
-	return pos
+	return GNG_RULES.get_next_chain_pos(self)
 
 func _schedule_next_chain_reveal() -> void:
-	await get_tree().create_timer(1.0).timeout
-	var top := _get_top_adventure_card()
-	if top == null or not is_instance_valid(top):
-		return
-	pending_adventure_card = top
-	_confirm_adventure_prompt()
+	await GNG_RULES.schedule_next_chain_reveal(self)
 
 func _get_battlefield_target_pos() -> Vector3:
 	var pos := battlefield_pos
@@ -1563,207 +1025,49 @@ func _spawn_battlefield_hearts(card: Node3D, hearts: int) -> void:
 			token.call_deferred("set_token_texture", HEART_TEXTURE)
 
 func _get_next_mission_side_pos() -> Vector3:
-	var base := Vector3(character_pos.x + MISSION_SIDE_OFFSET.x, adventure_reveal_pos.y, character_pos.z + MISSION_SIDE_OFFSET.z)
-	var pos := base + Vector3(0.0, mission_side_count * REVEALED_Y_STEP, 0.0)
-	mission_side_count += 1
-	return pos
+	return GNG_RULES.get_next_mission_side_pos(self)
 
 func _get_next_event_pos() -> Vector3:
-	var pos := event_row_pos + Vector3(event_row_count * EVENT_ROW_SPACING, 0.0, 0.0)
-	event_row_count += 1
-	return pos
+	return GNG_RULES.get_next_event_pos(self)
 
 func _reveal_event_card(card: Node3D, card_data: Dictionary) -> void:
-	if card == null or not is_instance_valid(card):
-		return
-	card.set_meta("in_adventure_stack", false)
-	card.set_meta("in_event_row", true)
-	card.set_meta("adventure_type", "evento")
-	var target_pos := _get_next_event_pos()
-	card.call("flip_to_side", target_pos)
+	GNG_RULES.reveal_event_card(self, card, card_data)
 
 func _reveal_mission_card(card: Node3D, card_data: Dictionary) -> void:
-	if card == null or not is_instance_valid(card):
-		return
-	card.set_meta("in_adventure_stack", false)
-	card.set_meta("in_mission_side", true)
-	card.set_meta("adventure_type", "missione")
-	var target_pos := _get_next_mission_side_pos()
-	card.call("flip_to_side", target_pos)
+	GNG_RULES.reveal_mission_card(self, card, card_data)
 
 func _try_claim_mission(card: Node3D) -> void:
-	if card == null or not is_instance_valid(card):
-		return
-	if phase_index != 0:
-		return
-	var card_data: Dictionary = card.get_meta("card_data", {})
-	if card_data.is_empty():
-		return
-	if not _is_mission_completed(card_data):
-		_report_mission_status(card_data, false)
-		return
-	_apply_mission_cost(card_data)
-	_report_mission_status(card_data, true)
-	card.queue_free()
+	GNG_RULES.try_claim_mission(self, card)
 
 func _is_mission_completed(card_data: Dictionary) -> bool:
-	var req := _get_mission_requirements(card_data)
-	var enemies_required := int(req.get("defeat_enemies", 0))
-	var coins_required := int(req.get("pay_coins", 0))
-	if enemies_required <= 0 and coins_required <= 0:
-		return false
-	if enemies_required > 0 and enemies_defeated_total < enemies_required:
-		return false
-	if coins_required > 0 and player_gold < coins_required:
-		return false
-	return true
+	return GNG_RULES.is_mission_completed(self, card_data)
 
 func _apply_mission_cost(card_data: Dictionary) -> void:
-	var req := _get_mission_requirements(card_data)
-	var coins_required := int(req.get("pay_coins", 0))
-	if coins_required <= 0:
-		return
-	player_gold = max(0, player_gold - coins_required)
-	if hand_ui != null and hand_ui.has_method("set_gold"):
-		hand_ui.call("set_gold", player_gold)
+	GNG_RULES.apply_mission_cost(self, card_data)
 
 func _get_mission_requirements(card_data: Dictionary) -> Dictionary:
-	var req := {
-		"defeat_enemies": 0,
-		"pay_coins": 0
-	}
-	if card_data.has("mission") and card_data.get("mission", {}) is Dictionary:
-		var mission: Dictionary = card_data.get("mission", {})
-		var mtype := str(mission.get("type", "")).strip_edges().to_lower()
-		if mtype == "defeat_enemies":
-			req["defeat_enemies"] = int(mission.get("count", 0))
-		elif mtype == "pay_coins":
-			req["pay_coins"] = int(mission.get("cost", 0))
-		elif mtype == "defeat_enemies_and_pay_coins":
-			req["defeat_enemies"] = int(mission.get("count", 0))
-			req["pay_coins"] = int(mission.get("cost", 0))
-	if card_data.has("mission_defeat_enemies"):
-		req["defeat_enemies"] = max(req["defeat_enemies"], int(card_data.get("mission_defeat_enemies", 0)))
-	if card_data.has("mission_pay_coins"):
-		req["pay_coins"] = max(req["pay_coins"], int(card_data.get("mission_pay_coins", 0)))
-	return req
+	return GNG_RULES.get_mission_requirements(self, card_data)
 
 func _report_mission_status(card_data: Dictionary, completed: bool) -> void:
-	if hand_ui == null or not hand_ui.has_method("set_info"):
-		return
-	var name := str(card_data.get("name", "Missione"))
-	if not completed:
-		hand_ui.call("set_info", "%s non completata." % name)
-		return
-	var rewards: Array = card_data.get("reward_brown", [])
-	var silver: Array = card_data.get("reward_silver", [])
-	if not silver.is_empty():
-		rewards = rewards.duplicate()
-		rewards.append_array(silver)
-	var text := "%s completata!\nPremio:\n-" % name
-	if not rewards.is_empty():
-		text = "%s completata!\nPremio:\n- %s" % [name, "\n- ".join(rewards)]
-	hand_ui.call("set_info", text)
+	GNG_RULES.report_mission_status(self, card_data, completed)
 
 func _resize_adventure_prompt() -> void:
-	if adventure_prompt_panel == null:
-		return
-	adventure_prompt_panel.custom_minimum_size = Vector2.ZERO
-	adventure_prompt_panel.reset_size()
-	adventure_prompt_panel.custom_minimum_size = adventure_prompt_panel.get_combined_minimum_size()
-	adventure_prompt_panel.reset_size()
+	ADVENTURE_PROMPT.resize(self)
 
 func _update_adventure_prompt_position() -> void:
-	if adventure_prompt_panel == null or not adventure_prompt_panel.visible:
-		return
-	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
-		_hide_adventure_prompt()
-		return
-	var screen_pos := camera.unproject_position(pending_adventure_card.global_position)
-	var size := adventure_prompt_panel.size
-	adventure_prompt_panel.position = screen_pos + Vector2(-size.x * 0.5, -size.y - 16.0)
+	ADVENTURE_PROMPT.update_position(self)
 
 func _create_battlefield_warning() -> void:
-	var prompt_layer := CanvasLayer.new()
-	prompt_layer.layer = 11
-	add_child(prompt_layer)
-	battlefield_warning_panel = PanelContainer.new()
-	battlefield_warning_panel.visible = false
-	battlefield_warning_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	battlefield_warning_panel.z_index = 210
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0, 0, 0, 0.8)
-	panel_style.border_width_top = 2
-	panel_style.border_width_bottom = 2
-	panel_style.border_width_left = 2
-	panel_style.border_width_right = 2
-	panel_style.border_color = Color(1, 1, 1, 0.35)
-	battlefield_warning_panel.add_theme_stylebox_override("panel", panel_style)
-	prompt_layer.add_child(battlefield_warning_panel)
-
-	var content := VBoxContainer.new()
-	content.anchor_left = 0.0
-	content.anchor_right = 1.0
-	content.anchor_top = 0.0
-	content.anchor_bottom = 1.0
-	content.offset_left = 16.0
-	content.offset_right = -16.0
-	content.offset_top = 12.0
-	content.offset_bottom = -12.0
-	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	content.set("theme_override_constants/separation", 10)
-	content.mouse_filter = Control.MOUSE_FILTER_PASS
-	battlefield_warning_panel.add_child(content)
-
-	battlefield_warning_label = Label.new()
-	battlefield_warning_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	battlefield_warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	battlefield_warning_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	battlefield_warning_label.custom_minimum_size = Vector2(460, 0)
-	battlefield_warning_label.add_theme_font_override("font", UI_FONT)
-	battlefield_warning_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
-	battlefield_warning_label.add_theme_constant_override("font_spacing/space", 8)
-	battlefield_warning_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	battlefield_warning_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	battlefield_warning_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	content.add_child(battlefield_warning_label)
-
-	var button_row := HBoxContainer.new()
-	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	button_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	button_row.set("theme_override_constants/separation", 20)
-	battlefield_warning_ok = Button.new()
-	battlefield_warning_ok.text = _ui_text("Ok")
-	battlefield_warning_ok.add_theme_font_override("font", UI_FONT)
-	battlefield_warning_ok.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
-	battlefield_warning_ok.add_theme_constant_override("font_spacing/space", 8)
-	battlefield_warning_ok.pressed.connect(_hide_battlefield_warning)
-	button_row.add_child(battlefield_warning_ok)
-	content.add_child(button_row)
+	BATTLEFIELD_WARNING.create(self)
 
 func _show_battlefield_warning() -> void:
-	if battlefield_warning_panel == null:
-		return
-	battlefield_warning_label.text = _ui_text("C'e un nemico nel campo di battaglia.\nSe passi al turno successivo i premi restano sul tavolo e non potrai riscattarli.")
-	battlefield_warning_panel.visible = true
-	_center_battlefield_warning()
+	BATTLEFIELD_WARNING.show(self)
 
 func _hide_battlefield_warning() -> void:
-	if battlefield_warning_panel != null:
-		battlefield_warning_panel.visible = false
+	BATTLEFIELD_WARNING.hide(self)
 
 func _center_battlefield_warning() -> void:
-	if battlefield_warning_panel == null:
-		return
-	battlefield_warning_panel.custom_minimum_size = Vector2.ZERO
-	battlefield_warning_panel.reset_size()
-	battlefield_warning_panel.custom_minimum_size = battlefield_warning_panel.get_combined_minimum_size()
-	battlefield_warning_panel.reset_size()
-	var view_size: Vector2 = get_viewport().get_visible_rect().size
-	var size: Vector2 = battlefield_warning_panel.size
-	battlefield_warning_panel.position = (view_size - size) * 0.5
+	BATTLEFIELD_WARNING.center(self)
 
 
 func _adjust_selected_card_y(delta: float) -> void:
@@ -1791,10 +1095,7 @@ func _spawn_sum_label() -> void:
 	camera_label.text = _ui_text("Camera: -")
 	camera_label.position = Vector2(20, 80)
 	ui.add_child(camera_label)
-	regno_reward_label = Label.new()
-	regno_reward_label.text = _ui_text("Regno: -")
-	regno_reward_label.position = Vector2(20, 110)
-	ui.add_child(regno_reward_label)
+	GNG_RULES.create_regno_reward_label(self, ui)
 	_create_outcome_banner(ui)
 	_create_adventure_value_box(ui)
 	_create_music_toggle(ui)
@@ -1802,27 +1103,7 @@ func _spawn_sum_label() -> void:
 	_create_action_prompt()
 
 func _create_music_toggle(ui_layer: CanvasLayer) -> void:
-	music_toggle_button = TextureButton.new()
-	music_toggle_button.texture_normal = MUSIC_ON_ICON
-	music_toggle_button.texture_pressed = MUSIC_ON_ICON
-	music_toggle_button.texture_hover = MUSIC_ON_ICON
-	music_toggle_button.toggle_mode = true
-	music_toggle_button.button_pressed = true
-	var size := Vector2(218, 197)
-	if FIGHT_ICON != null:
-		size = FIGHT_ICON.get_size()
-	size *= 0.1
-	music_toggle_button.ignore_texture_size = true
-	music_toggle_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	music_toggle_button.custom_minimum_size = size
-	music_toggle_button.size = size
-	music_toggle_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	music_toggle_button.offset_right = -10.0
-	music_toggle_button.offset_left = music_toggle_button.offset_right - size.x
-	music_toggle_button.offset_top = 10.0
-	music_toggle_button.offset_bottom = music_toggle_button.offset_top + size.y
-	music_toggle_button.pressed.connect(_toggle_music)
-	ui_layer.add_child(music_toggle_button)
+	CORE_UI.create_music_toggle(self, ui_layer)
 
 func _toggle_music() -> void:
 	if music_player == null or music_toggle_button == null:
@@ -1838,165 +1119,25 @@ func _toggle_music() -> void:
 		music_toggle_button.texture_hover = MUSIC_OFF_ICON
 
 func _create_coin_total_label() -> void:
-	coin_total_label = Label3D.new()
-	coin_total_label.font = UI_FONT
-	coin_total_label.font_size = 64
-	coin_total_label.modulate = Color(1, 1, 1, 1)
-	coin_total_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	coin_total_label.pixel_size = 0.01
-	coin_total_label.text = "0"
-	add_child(coin_total_label)
-	_position_coin_total_label()
+	CORE_UI.create_coin_total_label(self)
 
 func _position_coin_total_label() -> void:
-	if coin_total_label == null:
-		return
-	var spawner := get_node_or_null("RewardSpawner") as Node3D
-	if spawner == null:
-		return
-	var offset := Vector3(-0.9, 0.0, -0.3)
-	if spawner.has_method("get"):
-		offset = spawner.get("coin_offset")
-	coin_total_label.global_position = spawner.global_position + offset + Vector3(0.45, 0.15, 0.0)
+	CORE_UI.position_coin_total_label(self)
 
 func _update_coin_total_label() -> void:
-	if coin_total_label == null:
-		return
-	var count := get_tree().get_nodes_in_group("coins").size()
-	if count <= 0:
-		coin_total_label.visible = false
-		return
-	coin_total_label.visible = true
-	coin_total_label.text = "%d" % count
-	_position_coin_total_label()
+	CORE_UI.update_coin_total_label(self)
 
 func _create_adventure_value_box(ui_layer: CanvasLayer) -> void:
-	adventure_value_panel = PanelContainer.new()
-	adventure_value_panel.visible = false
-	adventure_value_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	adventure_value_panel.z_index = 300
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0, 0, 0, 0)
-	panel_style.border_width_top = 0
-	panel_style.border_width_bottom = 0
-	panel_style.border_width_left = 0
-	panel_style.border_width_right = 0
-	panel_style.border_color = Color(1, 1, 1, 0)
-	adventure_value_panel.add_theme_stylebox_override("panel", panel_style)
-	ui_layer.add_child(adventure_value_panel)
-
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.set("theme_override_constants/separation", 14)
-	adventure_value_panel.add_child(row)
-
-	var value_style := StyleBoxFlat.new()
-	value_style.bg_color = Color(0.1, 0.2, 0.4, 0.85)
-	value_style.border_width_top = 2
-	value_style.border_width_bottom = 2
-	value_style.border_width_left = 2
-	value_style.border_width_right = 2
-	value_style.border_color = Color(1, 1, 1, 0.5)
-
-	var monster_panel := PanelContainer.new()
-	monster_panel.add_theme_stylebox_override("panel", value_style)
-	row.add_child(monster_panel)
-	adventure_value_label = Label.new()
-	adventure_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	adventure_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	adventure_value_label.add_theme_font_override("font", UI_FONT)
-	adventure_value_label.add_theme_font_size_override("font_size", 38)
-	adventure_value_label.add_theme_constant_override("font_spacing/space", 8)
-	adventure_value_label.text = _ui_text("Mostro: -")
-	adventure_value_label.custom_minimum_size = Vector2(260, 90)
-	monster_panel.add_child(adventure_value_label)
-
-	compare_button = Button.new()
-	if fight_icon != null:
-		compare_button.icon = fight_icon
-	compare_button.text = ""
-	compare_button.expand_icon = true
-	compare_button.tooltip_text = _ui_text("Confronta")
-	compare_button.custom_minimum_size = Vector2(64, 64)
-	compare_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	compare_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	compare_button.mouse_filter = Control.MOUSE_FILTER_STOP
-	compare_button.focus_mode = Control.FOCUS_NONE
-	compare_button.disabled = true
-	compare_button.pressed.connect(_on_compare_pressed)
-	row.add_child(compare_button)
-
-	player_value_panel = PanelContainer.new()
-	player_value_panel.add_theme_stylebox_override("panel", value_style)
-	player_value_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	row.add_child(player_value_panel)
-	var player_box := VBoxContainer.new()
-	player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	player_box.set("theme_override_constants/separation", 8)
-	player_value_panel.add_child(player_box)
-	player_value_label = Label.new()
-	player_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	player_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	player_value_label.add_theme_font_override("font", UI_FONT)
-	player_value_label.add_theme_font_size_override("font_size", 38)
-	player_value_label.add_theme_constant_override("font_spacing/space", 8)
-	player_value_label.text = _ui_text("Tuo tiro: -")
-	player_value_label.custom_minimum_size = Vector2(260, 54)
-	player_box.add_child(player_value_label)
-	player_dice_buttons_row = HBoxContainer.new()
-	player_dice_buttons_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	player_dice_buttons_row.set("theme_override_constants/separation", 6)
-	player_dice_buttons_row.mouse_filter = Control.MOUSE_FILTER_PASS
-	player_box.add_child(player_dice_buttons_row)
-	_center_adventure_value_box()
+	CORE_UI.create_adventure_value_box(self, ui_layer)
 
 func _create_outcome_banner(ui_layer: CanvasLayer) -> void:
-	outcome_panel = PanelContainer.new()
-	outcome_panel.visible = false
-	outcome_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	outcome_panel.z_index = 500
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0, 0, 0, 0.85)
-	panel_style.border_width_top = 3
-	panel_style.border_width_bottom = 3
-	panel_style.border_width_left = 3
-	panel_style.border_width_right = 3
-	panel_style.border_color = Color(1, 1, 1, 0.6)
-	outcome_panel.add_theme_stylebox_override("panel", panel_style)
-	ui_layer.add_child(outcome_panel)
-
-	outcome_label = Label.new()
-	outcome_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	outcome_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	outcome_label.add_theme_font_override("font", UI_FONT)
-	outcome_label.add_theme_font_size_override("font_size", 96)
-	outcome_label.add_theme_constant_override("font_spacing/space", 10)
-	outcome_label.text = ""
-	outcome_label.custom_minimum_size = Vector2(900, 180)
-	outcome_panel.add_child(outcome_label)
-	_center_outcome_banner()
+	CORE_UI.create_outcome_banner(self, ui_layer)
 
 func _center_outcome_banner() -> void:
-	if outcome_panel == null:
-		return
-	outcome_panel.custom_minimum_size = Vector2.ZERO
-	outcome_panel.reset_size()
-	outcome_panel.custom_minimum_size = outcome_panel.get_combined_minimum_size()
-	outcome_panel.reset_size()
-	var view_size := get_viewport().get_visible_rect().size
-	var size := outcome_panel.size
-	outcome_panel.position = Vector2((view_size.x - size.x) * 0.5, 260.0)
+	CORE_UI.center_outcome_banner(self)
 
 func _center_adventure_value_box() -> void:
-	if adventure_value_panel == null:
-		return
-	adventure_value_panel.custom_minimum_size = Vector2.ZERO
-	adventure_value_panel.reset_size()
-	adventure_value_panel.custom_minimum_size = adventure_value_panel.get_combined_minimum_size()
-	adventure_value_panel.reset_size()
-	var view_size := get_viewport().get_visible_rect().size
-	var size := adventure_value_panel.size
-	adventure_value_panel.position = Vector2((view_size.x - size.x) * 0.5, 60.0)
+	CORE_UI.center_adventure_value_box(self)
 
 func _update_camera_label() -> void:
 	if camera_label == null:
@@ -2290,121 +1431,22 @@ func _update_discard_stack_highlight() -> void:
 
 
 func _track_dice_sum() -> void:
-	if pending_dice.is_empty():
-		return
-	await _wait_for_dice_settle(pending_dice)
-	var values: Array[int] = []
-	var names: Array[String] = []
-	for dice in pending_dice:
-		if not is_instance_valid(dice):
-			continue
-		var value := _get_top_face_value(dice)
-		values.append(value)
-		names.append(_get_top_face_name(dice))
-	pending_dice.clear()
-	roll_in_progress = false
-	_consume_next_roll_effects(values)
-	var total := 0
-	for v in values:
-		total += v
-	last_roll_values = values.duplicate()
-	selected_roll_dice.clear()
-	for i in last_roll_values.size():
-		selected_roll_dice.append(i)
-	last_roll_total = total
-	roll_pending_apply = true
-	last_roll_success = false
-	last_roll_penalty = false
-	roll_trigger_reset = false
-	roll_history.append(total)
-	roll_color_history.append(", ".join(names))
-	sum_label.text = _ui_text("Risultati: %s | Colori: %s" % [", ".join(roll_history), " | ".join(roll_color_history)])
-	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
-		hand_ui.call("set_phase_button_enabled", false)
+	await DICE_FLOW.track_dice_sum(self)
 
 func _consume_next_roll_effects(values: Array[int]) -> void:
-	if values.is_empty() or post_roll_effects.is_empty():
-		return
-	var consumed: Array[String] = []
-	for effect in post_roll_effects:
-		var name := str(effect).strip_edges()
-		match name:
-			"next_roll_minus_2_all_dice":
-				for i in values.size():
-					values[i] = max(1, int(values[i]) - 2)
-				consumed.append(name)
-			"next_roll_double_then_remove_half":
-				for i in values.size():
-					values[i] = max(1, int(values[i]) * 2)
-				if values.size() > 1:
-					var order: Array[int] = []
-					for i in values.size():
-						order.append(i)
-					order.sort_custom(func(a, b):
-						return int(values[int(a)]) < int(values[int(b)])
-					)
-					var remove_count := int(floor(values.size() * 0.5))
-					for i in remove_count:
-						var idx := int(order[i])
-						values[idx] = 1
-				consumed.append(name)
-			"next_roll_lowest_die_applies_to_all":
-				var low := int(values[0])
-				for v in values:
-					low = min(low, int(v))
-				for i in values.size():
-					values[i] = low
-				consumed.append(name)
-			_:
-				pass
-	if consumed.is_empty():
-		return
-	for name in consumed:
-		post_roll_effects.erase(name)
+	EFFECTS_REGISTRY.consume_next_roll_effects(self, values)
 
 func _wait_for_dice_settle(dice_list: Array[RigidBody3D]) -> void:
-	var elapsed := 0.0
-	var timeout := 5.0
-	var stable_time := 0.0
-	while elapsed < timeout:
-		var all_settled := true
-		for dice in dice_list:
-			if not is_instance_valid(dice):
-				continue
-			if dice.sleeping:
-				continue
-			if dice.linear_velocity.length() > 0.05 or dice.angular_velocity.length() > 0.05:
-				all_settled = false
-				break
-		if all_settled:
-			stable_time += 0.1
-			if stable_time >= 0.3:
-				return
-		else:
-			stable_time = 0.0
-		await get_tree().create_timer(0.1).timeout
-		elapsed += 0.1
+	await DICE_FLOW.wait_for_dice_settle(self, dice_list)
 
 func _clear_dice() -> void:
-	for dice in active_dice:
-		if is_instance_valid(dice):
-			dice.queue_free()
-	active_dice.clear()
-	pending_dice.clear()
-	roll_pending_apply = false
-	last_roll_values.clear()
-	selected_roll_dice.clear()
-	post_roll_effects.clear()
+	DICE_FLOW.clear_dice(self)
 
 func _get_top_face_value(dice: RigidBody3D) -> int:
-	if dice.has_method("get_top_value"):
-		return dice.get_top_value()
-	return 1
+	return DICE_FLOW.get_top_face_value(self, dice)
 
 func _get_top_face_name(dice: RigidBody3D) -> String:
-	if dice.has_method("get_top_name"):
-		return dice.get_top_name()
-	return "?"
+	return DICE_FLOW.get_top_face_name(self, dice)
 
 func _get_effective_difficulty(card_data: Dictionary) -> Dictionary:
 	var base := int(card_data.get("difficulty", 0))
@@ -2449,71 +1491,19 @@ func _update_adventure_value_box() -> void:
 			player_value_label.text = _ui_text("Tuo tiro: %d" % last_roll_total)
 		else:
 			player_value_label.text = _ui_text("Tuo tiro: -")
-	_refresh_roll_dice_buttons()
+	DICE_FLOW.refresh_roll_dice_buttons(self)
 	if compare_button != null:
 		compare_button.disabled = not roll_pending_apply
 	adventure_value_panel.visible = true
 
 func _refresh_roll_dice_buttons() -> void:
-	if player_dice_buttons_row == null:
-		return
-	var selected := selected_roll_dice.duplicate()
-	selected.sort()
-	var key := "%s|%s|%s" % [str(roll_pending_apply), str(last_roll_values), str(selected)]
-	if key == player_dice_buttons_key:
-		return
-	player_dice_buttons_key = key
-	for child in player_dice_buttons_row.get_children():
-		child.queue_free()
-	if not roll_pending_apply:
-		return
-	for i in last_roll_values.size():
-		var idx := i
-		var value := last_roll_values[idx]
-		var btn := Button.new()
-		btn.toggle_mode = true
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.custom_minimum_size = Vector2(36, 30)
-		btn.text = str(value)
-		btn.add_theme_font_override("font", UI_FONT)
-		btn.add_theme_font_size_override("font_size", 24)
-		btn.button_pressed = selected_roll_dice.has(idx)
-		btn.pressed.connect(func() -> void:
-			_on_roll_die_button_pressed(idx)
-		)
-		player_dice_buttons_row.add_child(btn)
+	DICE_FLOW.refresh_roll_dice_buttons(self)
 
 func _on_roll_die_button_pressed(index: int) -> void:
-	if selected_roll_dice.has(index):
-		selected_roll_dice.erase(index)
-	else:
-		selected_roll_dice.append(index)
-	if action_prompt_panel != null and action_prompt_panel.visible:
-		var action_window := _get_current_card_action_window(pending_action_card_data)
-		var effects := _get_effects_for_window(pending_action_card_data, action_window)
-		if roll_pending_apply and effects.has("after_roll_set_one_die_to_1"):
-			selected_roll_dice.clear()
-			selected_roll_dice.append(index)
-			last_roll_values[index] = 1
-			_recalculate_last_roll_total()
-			_refresh_roll_dice_buttons()
-			if not pending_action_is_magic and pending_action_source_card != null and is_instance_valid(pending_action_source_card):
-				if effects.has("return_to_hand"):
-					_force_return_equipped_to_hand(pending_action_source_card)
-			if pending_action_is_magic:
-				if not effects.has("return_to_hand"):
-					player_hand.erase(pending_action_card_data)
-					_refresh_hand_ui()
-			_hide_action_prompt()
+	DICE_FLOW.on_roll_die_button_pressed(self, index)
 
 func _get_selected_roll_values() -> Array[int]:
-	var out: Array[int] = []
-	for idx in selected_roll_dice:
-		var i := int(idx)
-		if i < 0 or i >= last_roll_values.size():
-			continue
-		out.append(last_roll_values[i])
-	return out
+	return DICE_FLOW.get_selected_roll_values(self)
 
 func _on_compare_pressed() -> void:
 	if not roll_pending_apply:
@@ -2702,7 +1692,7 @@ func _apply_failure_penalty(card_data: Dictionary, total: int) -> void:
 			continue
 		if code == "add_green_die":
 			green_dice += 1
-			dice_count = _get_total_dice()
+			dice_count = DICE_FLOW.get_total_dice(self)
 			applied.append("+1 dado verde")
 			continue
 		if code == "discard_hand_card_1":
@@ -2938,38 +1928,10 @@ func _update_all_card_sorting_offsets(released_card: Node3D) -> void:
 
 
 func _spawn_placeholders() -> void:
-	pass
+	SPAWN_CORE.spawn_placeholders(self)
 
 func _spawn_treasure_cards() -> void:
-	var treasures: Array = []
-	for entry in CardDatabase.deck_treasures:
-		if str(entry.get("set", "")) != "GnG":
-			continue
-		treasures.append(entry)
-	DECK_UTILS.shuffle_deck(treasures)
-
-	var stack_step := REVEALED_Y_STEP
-	for i in treasures.size():
-		var card := CARD_SCENE.instantiate()
-		card.color = Color(0.2, 0.2, 0.4, 1.0)
-		add_child(card)
-		card.global_position = treasure_deck_pos + Vector3(0.0, i * stack_step, 0.0)
-		card.rotate_x(-PI / 2.0)
-		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
-		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
-		card.set_meta("in_treasure_stack", true)
-		card.set_meta("card_data", treasures[i])
-		card.set_meta("in_treasure_market", false)
-		card.set_meta("stack_index", i)
-		var image_path := str(treasures[i].get("image", ""))
-		if not image_path.is_empty() and card.has_method("set_card_texture"):
-			card.call_deferred("set_card_texture", image_path)
-		if card.has_method("set_back_texture"):
-			card.call_deferred("set_back_texture", "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png")
-		if card.has_method("set_face_up"):
-			card.call_deferred("set_face_up", false)
-		if card.has_method("set_sorting_offset"):
-			card.call_deferred("set_sorting_offset", i)
+	GNG_SPAWN.spawn_treasure_cards(self)
 
 func _spawn_tokens() -> void:
 	pass
@@ -2993,25 +1955,13 @@ func _hide_outcome() -> void:
 		outcome_panel.visible = false
 
 func spawn_reward_coins(count: int, center: Vector3 = battlefield_pos) -> void:
-	if reward_spawner == null:
-		return
-	if reward_spawner.has_method("spawn_coins"):
-		reward_spawner.call("spawn_coins", count, center)
+	SPAWN_CORE.spawn_reward_coins(self, count, center)
 
 func spawn_reward_coins_stack(count: int, center: Vector3 = battlefield_pos) -> void:
-	if reward_spawner == null:
-		return
-	if reward_spawner.has_method("spawn_coin_stack"):
-		reward_spawner.call("spawn_coin_stack", count, center)
-		return
-	spawn_reward_coins(count, center)
+	SPAWN_CORE.spawn_reward_coins_stack(self, count, center)
 
 func spawn_reward_tokens(count: int, texture_path: String, center: Vector3 = battlefield_pos) -> Array:
-	if reward_spawner == null:
-		return []
-	if reward_spawner.has_method("spawn_tokens"):
-		return reward_spawner.call("spawn_tokens", count, texture_path, center)
-	return []
+	return SPAWN_CORE.spawn_reward_tokens(self, count, texture_path, center)
 
 func _spawn_reward_tokens_with_code(count: int, texture_path: String, reward_code: String, center: Vector3) -> void:
 	var spawned := spawn_reward_tokens(count, texture_path, center)
@@ -3060,68 +2010,10 @@ func _get_character_stats() -> Dictionary:
 	return {}
 
 func _spawn_adventure_cards() -> void:
-	var adventures: Array = []
-	for entry in CardDatabase.deck_adventure:
-		if str(entry.get("set", "")) != "GnG":
-			continue
-		adventures.append(entry)
-	DECK_UTILS.shuffle_deck(adventures)
-
-	var stack_step := REVEALED_Y_STEP
-	for i in adventures.size():
-		var card := CARD_SCENE.instantiate()
-		card.color = Color(0.35, 0.15, 0.15, 1.0)
-		add_child(card)
-		card.global_position = adventure_deck_pos + Vector3(0.0, i * stack_step, 0.0)
-		card.rotate_x(-PI / 2.0)
-		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
-		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
-		card.set_meta("in_adventure_stack", true)
-		card.set_meta("card_data", adventures[i])
-		card.set_meta("stack_index", i)
-		var image_path := _get_adventure_image_path(adventures[i])
-		if card.has_method("set_texture_flip_x"):
-			card.call_deferred("set_texture_flip_x", false)
-		if image_path != "" and card.has_method("set_card_texture"):
-			card.call_deferred("set_card_texture", image_path)
-		if card.has_method("set_back_texture"):
-			card.call_deferred("set_back_texture", ADVENTURE_BACK)
-		if card.has_method("set_face_up"):
-			card.call_deferred("set_face_up", false)
-		if card.has_method("set_sorting_offset"):
-			card.call_deferred("set_sorting_offset", i)
+	GNG_SPAWN.spawn_adventure_cards(self)
 
 func _spawn_boss_cards() -> void:
-	var bosses: Array = []
-	for entry in CardDatabase.deck_boss:
-		if str(entry.get("set", "")) != "GnG":
-			continue
-		bosses.append(entry)
-	DECK_UTILS.shuffle_deck(bosses)
-
-	var stack_step := REVEALED_Y_STEP
-	var deck_pos := boss_deck_pos
-	for i in bosses.size():
-		var card := CARD_SCENE.instantiate()
-		card.color = Color(0.3, 0.2, 0.2, 1.0)
-		add_child(card)
-		card.global_position = deck_pos + Vector3(0.0, i * stack_step, 0.0)
-		card.rotate_x(-PI / 2.0)
-		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
-		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
-		card.set_meta("in_boss_stack", true)
-		card.set_meta("stack_index", i)
-		var image_path := str(bosses[i].get("image", ""))
-		if image_path.is_empty():
-			image_path = _find_boss_image(bosses[i])
-		if image_path != "" and card.has_method("set_card_texture"):
-			card.call_deferred("set_card_texture", image_path)
-		if card.has_method("set_back_texture"):
-			card.call_deferred("set_back_texture", BOSS_BACK)
-		if card.has_method("set_face_up"):
-			card.call_deferred("set_face_up", false)
-		if card.has_method("set_sorting_offset"):
-			card.call_deferred("set_sorting_offset", i)
+	GNG_SPAWN.spawn_boss_cards(self)
 
 func _find_boss_image(card: Dictionary) -> String:
 	var card_name := _normalize_name(str(card.get("name", "")))
@@ -3141,20 +2033,7 @@ func _find_boss_image(card: Dictionary) -> String:
 	return ""
 
 func _spawn_character_card() -> void:
-	var card := CARD_SCENE.instantiate()
-	add_child(card)
-	card.global_position = character_pos
-	card.rotate_x(-PI / 2.0)
-	if card.has_method("set_card_texture"):
-		card.call_deferred("set_card_texture", CHARACTER_FRONT)
-	if card.has_method("set_back_texture"):
-		card.call_deferred("set_back_texture", CHARACTER_BACK)
-	if card.has_method("set_face_up"):
-		card.call_deferred("set_face_up", true)
-	character_card = card
-	_init_character_stats()
-	_spawn_character_hearts(card)
-	_spawn_equipment_slots(card)
+	GNG_SPAWN.spawn_character_card(self)
 
 func _init_character_stats() -> void:
 	var stats := _get_character_stats()
@@ -3168,7 +2047,7 @@ func _init_character_stats() -> void:
 	blue_dice = base_dice_count
 	green_dice = 0
 	red_dice = 0
-	dice_count = _get_total_dice()
+	dice_count = DICE_FLOW.get_total_dice(self)
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
 
@@ -3436,185 +2315,25 @@ func _on_hand_request_use_magic(card: Dictionary) -> void:
 	var card_type := str(card.get("type", "")).strip_edges().to_lower()
 	if card_type != "istantaneo":
 		return
-	if not _is_card_activation_allowed_now(card):
-		_show_card_timing_hint(card)
+	if not CARD_TIMING.is_card_activation_allowed_now(self, card):
+		CARD_TIMING.show_card_timing_hint(self, card)
 		return
 	_show_action_prompt(card, true, null)
 
-func _is_card_activation_allowed_now(card_data: Dictionary) -> bool:
-	if phase_index != 1:
-		return false
-	if roll_in_progress:
-		return false
-	var action_window := _get_current_card_action_window(card_data)
-	if action_window.is_empty():
-		return false
-	var effects := _get_effects_for_window(card_data, action_window)
-	return not effects.is_empty()
-
-func _get_current_card_action_window(card_data: Dictionary) -> String:
-	var windows := _get_card_activation_windows(card_data)
-	var battlefield := _get_battlefield_card()
-	if battlefield == null:
-		if windows.has("before_adventure") and _get_top_adventure_card() != null:
-			return "before_adventure"
-		if windows.has("any_time"):
-			return "any_time"
-		if windows.has("on_play"):
-			return "on_play"
-		return ""
-	if roll_pending_apply:
-		if windows.has("after_roll"):
-			return "after_roll"
-		if windows.has("after_damage"):
-			return "after_damage"
-		if windows.has("any_time"):
-			return "any_time"
-		return ""
-	if windows.has("before_adventure"):
-		return "before_adventure"
-	if windows.has("before_roll") or windows.has("next_roll"):
-		return "before_roll"
-	if windows.has("any_time"):
-		return "any_time"
-	if windows.has("on_play"):
-		return "on_play"
-	return ""
-
-func _get_effects_for_window(card_data: Dictionary, action_window: String) -> Array:
-	var out: Array = []
-	var timed_effects: Array = card_data.get("timed_effects", [])
-	if timed_effects.is_empty():
-		return card_data.get("effects", []).duplicate()
-	for entry in timed_effects:
-		if not (entry is Dictionary):
-			continue
-		var data := entry as Dictionary
-		var effect_name := str(data.get("effect", "")).strip_edges()
-		var when := str(data.get("when", "")).strip_edges().to_lower()
-		if effect_name.is_empty():
-			continue
-		var matches := (when == action_window)
-		if action_window == "before_roll" and when == "next_roll":
-			matches = true
-		if not matches:
-			continue
-		if not out.has(effect_name):
-			out.append(effect_name)
-	return out
-
-func _get_card_activation_windows(card_data: Dictionary) -> Array[String]:
-	var out: Array[String] = []
-	var timed_effects: Array = card_data.get("timed_effects", [])
-	for entry in timed_effects:
-		if not (entry is Dictionary):
-			continue
-		var when := str((entry as Dictionary).get("when", "")).strip_edges().to_lower()
-		if when.is_empty():
-			continue
-		if not out.has(when):
-			out.append(when)
-	# Fallback for older cards without timed metadata.
-	if out.is_empty():
-		out.append("after_roll")
-	return out
-
-func _show_card_timing_hint(card_data: Dictionary) -> void:
-	if hand_ui == null or not hand_ui.has_method("set_info"):
-		return
-	var name := str(card_data.get("name", "Carta"))
-	var windows := _get_card_activation_windows(card_data)
-	var readable := " / ".join(windows)
-	hand_ui.call("set_info", _ui_text("%s: attivabile in %s." % [name, readable]))
-
 func _spawn_regno_del_male() -> void:
-	var card := CARD_SCENE.instantiate()
-	add_child(card)
-	card.global_position = regno_pos
-	card.rotate_x(-PI / 2.0)
-	if card.has_method("set_card_texture"):
-		card.call_deferred("set_card_texture", REGNO_FRONT)
-	if card.has_method("set_back_texture"):
-		card.call_deferred("set_back_texture", REGNO_BACK)
-	if card.has_method("set_face_up"):
-		card.call_deferred("set_face_up", true)
-	regno_card = card
+	GNG_RULES.spawn_regno_del_male(self)
 
 func _setup_regno_overlay() -> void:
-	regno_track_nodes = _get_regno_track_nodes()
-	regno_track_rewards = _get_regno_track_rewards()
-	if regno_track_nodes.is_empty():
-		return
-	if regno_overlay_layer != null and is_instance_valid(regno_overlay_layer):
-		regno_overlay_layer.queue_free()
-	regno_overlay_layer = CanvasLayer.new()
-	add_child(regno_overlay_layer)
-	regno_overlay = Control.new()
-	regno_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	regno_overlay_layer.add_child(regno_overlay)
-	regno_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	regno_overlay.offset_left = 0
-	regno_overlay.offset_top = 0
-	regno_overlay.offset_right = 0
-	regno_overlay.offset_bottom = 0
-	_build_regno_boxes()
+	GNG_RULES.setup_regno_overlay(self)
 
 func _build_regno_boxes() -> void:
-	for node in regno_node_boxes:
-		if node != null and node.is_inside_tree():
-			node.queue_free()
-	regno_node_boxes.clear()
-	for i in regno_track_nodes.size():
-		var box := PanelContainer.new()
-		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0, 0, 0, 0)
-		style.border_color = Color(1.0, 0.9, 0.2, 0.0)
-		style.set_border_width_all(3)
-		box.add_theme_stylebox_override("panel", style)
-		regno_overlay.add_child(box)
-		regno_node_boxes.append(box)
+	GNG_RULES.build_regno_boxes(self)
 
 func _update_regno_overlay() -> void:
-	if regno_overlay == null or regno_track_nodes.is_empty():
-		return
-	if regno_card == null or not is_instance_valid(regno_card):
-		return
-	var rect := _get_card_screen_rect(regno_card)
-	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
-		return
-	regno_blink_time = Time.get_ticks_msec() / 1000.0
-	for i in regno_track_nodes.size():
-		if i >= regno_node_boxes.size():
-			continue
-		var data: Dictionary = regno_track_nodes[i]
-		var x := float(data.get("x", 0.0))
-		var y := float(data.get("y", 0.0))
-		var w := float(data.get("w", 0.0))
-		var h := float(data.get("h", 0.0))
-		var box: PanelContainer = regno_node_boxes[i]
-		box.position = rect.position + Vector2(x * rect.size.x, y * rect.size.y)
-		var size: Vector2 = Vector2(w * rect.size.x, h * rect.size.y)
-		var side: float = max(size.x, size.y)
-		box.size = Vector2(side, side)
-		var style: StyleBoxFlat = box.get_theme_stylebox("panel") as StyleBoxFlat
-		if style != null:
-			if i == regno_track_index:
-				var alpha: float = 0.25 + 0.55 * abs(sin(regno_blink_time * 3.0))
-				style.border_color = Color(1.0, 0.9, 0.2, alpha)
-			else:
-				style.border_color = Color(1.0, 0.9, 0.2, 0.0)
-			box.add_theme_stylebox_override("panel", style)
-	_update_regno_reward_label()
+	GNG_RULES.update_regno_overlay(self)
 
 func _update_regno_reward_label() -> void:
-	if regno_reward_label == null:
-		return
-	if regno_track_rewards.is_empty() or regno_track_index < 0 or regno_track_index >= regno_track_rewards.size():
-		regno_reward_label.text = _ui_text("Regno: -")
-		return
-	var code := str(regno_track_rewards[regno_track_index])
-	regno_reward_label.text = _ui_text("Regno: %s" % _format_regno_reward(code))
+	GNG_RULES.update_regno_reward_label(self)
 
 func _get_card_screen_rect(card: Node3D) -> Rect2:
 	var mesh := card.get_node_or_null("Pivot/Mesh") as MeshInstance3D
@@ -3647,49 +2366,13 @@ func _get_card_screen_rect(card: Node3D) -> Rect2:
 	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
 
 func _get_regno_track_nodes() -> Array:
-	for entry in CardDatabase.cards_shared:
-		if str(entry.get("id", "")) == "shared_regno_del_male":
-			var nodes: Array = entry.get("track_nodes", [])
-			if nodes is Array:
-				return nodes
-	for entry in CardDatabase.deck_adventure:
-		if str(entry.get("id", "")) == "shared_regno_del_male":
-			var nodes: Array = entry.get("track_nodes", [])
-			if nodes is Array:
-				return nodes
-	return []
+	return GNG_RULES.get_regno_track_nodes(self)
 
 func _get_regno_track_rewards() -> Array:
-	for entry in CardDatabase.cards_shared:
-		if str(entry.get("id", "")) == "shared_regno_del_male":
-			var rewards: Array = entry.get("track_rewards", [])
-			if rewards is Array:
-				return rewards
-	for entry in CardDatabase.deck_adventure:
-		if str(entry.get("id", "")) == "shared_regno_del_male":
-			var rewards: Array = entry.get("track_rewards", [])
-			if rewards is Array:
-				return rewards
-	return []
+	return GNG_RULES.get_regno_track_rewards(self)
 
 func _format_regno_reward(code: String) -> String:
-	match code:
-		"start":
-			return "Partenza"
-		"reward_group_vaso_di_coccio":
-			return "Vaso di coccio"
-		"reward_group_chest":
-			return "Chest"
-		"reward_group_teca":
-			return "Teca"
-		"gain_heart":
-			return "Cuore"
-		"boss":
-			return "Boss"
-		"boss_finale":
-			return "Boss finale"
-		_:
-			return code
+	return GNG_RULES.format_regno_reward(code)
 
 func _load_texture(path: String) -> Texture2D:
 	var image := Image.new()
@@ -3698,16 +2381,7 @@ func _load_texture(path: String) -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 func _spawn_astaroth() -> void:
-	var card := CARD_SCENE.instantiate()
-	add_child(card)
-	card.global_position = astaroth_pos
-	card.rotate_x(-PI / 2.0)
-	if card.has_method("set_card_texture"):
-		card.call_deferred("set_card_texture", ASTAROTH_FRONT)
-	if card.has_method("set_back_texture"):
-		card.call_deferred("set_back_texture", BOSS_BACK)
-	if card.has_method("set_face_up"):
-		card.call_deferred("set_face_up", true)
+	GNG_RULES.spawn_astaroth(self)
 
 func _build_adventure_image_index() -> void:
 	adventure_image_index.clear()

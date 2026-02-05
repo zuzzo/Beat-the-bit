@@ -482,7 +482,7 @@ func _create_hover_overlay() -> void:
 	_hover_overlay.z_index = 200
 	add_child(_hover_overlay)
 
-func _show_hover_preview(texture: Texture2D, size: Vector2, panel: Control) -> void:
+func _show_hover_preview(texture: Texture2D, preview_size: Vector2, panel: Control) -> void:
 	_hide_hover_preview()
 	if texture == null or _hover_overlay == null:
 		return
@@ -490,14 +490,14 @@ func _show_hover_preview(texture: Texture2D, size: Vector2, panel: Control) -> v
 	_hover_preview.texture = texture
 	_hover_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_hover_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
-	_hover_preview.size = size
+	_hover_preview.size = preview_size
 	_hover_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hover_overlay.add_child(_hover_preview)
 	var panel_rect := panel.get_global_rect()
 	var view_h := get_viewport().get_visible_rect().size.y
 	# Keep the enlarged card anchored on the same bottom edge as the hand row.
-	var target_x := panel_rect.position.x - (size.x - panel_rect.size.x) * 0.5
-	var target_y := panel_rect.end.y - size.y + (view_h * 0.30)
+	var target_x := panel_rect.position.x - (preview_size.x - panel_rect.size.x) * 0.5
+	var target_y := panel_rect.end.y - preview_size.y + (view_h * 0.30)
 	_hover_preview.position = Vector2(target_x, target_y)
 
 func _hide_hover_preview() -> void:
