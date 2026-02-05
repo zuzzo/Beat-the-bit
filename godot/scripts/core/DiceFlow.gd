@@ -171,7 +171,8 @@ static func track_dice_sum(main: Node) -> void:
 	main.roll_trigger_reset = false
 	main.roll_history.append(total)
 	main.roll_color_history.append(", ".join(names))
-	main.sum_label.text = main._ui_text("Risultati: %s | Colori: %s" % [", ".join(main.roll_history), " | ".join(main.roll_color_history)])
+	if main.sum_label != null:
+		main.sum_label.text = main._ui_text("Risultati: %s | Colori: %s" % [", ".join(main.roll_history), " | ".join(main.roll_color_history)])
 	if main.hand_ui != null and main.hand_ui.has_method("set_phase_button_enabled"):
 		main.hand_ui.call("set_phase_button_enabled", false)
 

@@ -19,6 +19,9 @@ func set_dragging(active: bool) -> void:
 	outline.sorting_offset = offset
 
 func set_label(text_value: String) -> void:
+	if label == null:
+		set_meta("pos_box_label", text_value)
+		return
 	label.text = text_value
 
 func _update_label() -> void:

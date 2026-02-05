@@ -11,7 +11,7 @@ albedo_color = Color(0.1, 0.5, 0.1, 1)
 roughness = 0.95
 
 [sub_resource type="BoxShape3D" id="3"]
-size = Vector3(20, 0.1, 14)
+size = Vector3(20, 0.02, 14)
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1")
@@ -27,6 +27,7 @@ material_override = SubResource("2")
 
 [node name="TableCollision" type="CollisionShape3D" parent="Table"]
 shape = SubResource("3")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.01, 0)
 
 [node name="Camera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.0001, -1, 0, 1, 0, 0, 18, 0)

@@ -201,8 +201,6 @@ func set_sorting_offset(value: float) -> void:
 
 func set_face_up(value: bool) -> void:
 	is_face_up = value
-	if is_face_up:
-		mesh.rotation = Vector3.ZERO
 	_apply_face_materials()
 
 func is_face_up_now() -> bool:
@@ -217,9 +215,6 @@ func flip_to_side(target_position: Vector3) -> void:
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	var half := 1.2 * 0.5
 	tween.tween_property(pivot, "rotation:y", -PI * 0.5, half)
-	tween.tween_callback(func() -> void:
-		set_face_up(true)
-	)
 	tween.tween_property(pivot, "rotation:y", -PI, half)
 	tween.parallel().tween_property(self, "global_position", target_position, 1.2)
 	tween.tween_callback(func() -> void:
@@ -245,5 +240,9 @@ func _apply_face_materials() -> void:
 		return
 	if front_material == null or back_material == null:
 		return
-	mesh.set_surface_override_material(0, back_material)
-	mesh.set_surface_override_material(1, front_material)
+	if is_face_up:
+		mesh.set_surface_override_material(0, front_material)
+		mesh.set_surface_override_material(1, back_material)
+	else:
+		mesh.set_surface_override_material(0, back_material)
+		mesh.set_surface_override_material(1, front_material)

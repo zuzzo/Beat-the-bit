@@ -6,6 +6,7 @@ const TOKEN_SCENE := preload("res://scenes/Token.tscn")
 const TABLE_Y := 0.0
 const HAND_UI_SCRIPT := preload("res://scripts/HandUI.gd")
 const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
+const POSITION_BOX_SCENE := preload("res://scenes/PositionBox.tscn")
 const MUSIC_TRACK := preload("res://assets/music/Music.mp3")
 const MUSIC_ON_ICON := preload("res://assets/Music/sound_on.png")
 const MUSIC_OFF_ICON := preload("res://assets/Music/sound_off.png")
@@ -42,8 +43,7 @@ var pan_active := false
 var launch_start_time: float = -1.0
 var pending_dice: Array[RigidBody3D] = []
 var sum_label: Label
-var y_label: Label
-var camera_label: Label
+var coord_label: Label
 var adventure_value_panel: PanelContainer
 var adventure_value_label: Label
 var player_value_panel: PanelContainer
@@ -91,7 +91,7 @@ const DRAG_HEIGHT := 1.0
 var top_sorting_offset: float = 0.0
 var equipment_slots: Array[Area3D] = []
 var equipment_slots_root: Node3D
-var equipment_slots_y_offset: float = 0.2
+var equipment_slots_y_offset: float = 0.02
 var equipment_slots_z_offset: float = 1.2
 const CARD_CENTER_X_OFFSET := 0.7
 const EQUIP_SLOT_WIDTH := 1.4
@@ -115,7 +115,6 @@ var adventure_prompt_label: Label
 var adventure_prompt_yes: Button
 var adventure_prompt_no: Button
 var pending_adventure_card: Node3D
-var pending_chain_effects: Array = []
 var action_prompt_panel: PanelContainer
 var action_prompt_label: Label
 var action_prompt_yes: Button
@@ -123,6 +122,12 @@ var action_prompt_no: Button
 var pending_action_card_data: Dictionary = {}
 var pending_action_is_magic: bool = false
 var pending_action_source_card: Node3D
+var pending_chain_bonus: int = 0
+var pending_chain_choice_cards: Array[Node3D] = []
+var pending_chain_choice_active: bool = false
+var position_marker: Node3D
+var dragging_marker: bool = false
+var marker_drag_offset: Vector3 = Vector3.ZERO
 var battlefield_warning_panel: PanelContainer
 var battlefield_warning_label: Label
 var battlefield_warning_ok: Button
@@ -149,7 +154,7 @@ var adventure_deck_pos := Vector3(4, 0.02, 0)
 var adventure_reveal_pos := Vector3(2, 0.2, 0)
 var battlefield_pos := Vector3(0, 0.02, 0)
 var adventure_discard_pos := Vector3(6.1, 0.026, 0.35)
-var event_row_pos := Vector3(-5, 0.02, 2.5)
+var event_row_pos := Vector3(-4.601, 0.04, 2.330)
 var revealed_adventure_count: int = 0
 var mission_side_count: int = 0
 var event_row_count: int = 0
@@ -214,7 +219,8 @@ func _ready() -> void:
 	_spawn_character_card()
 	_spawn_regno_del_male()
 	_spawn_astaroth()
-	_spawn_sum_label()
+	_spawn_coord_label()
+	_spawn_position_marker()
 	_spawn_hand_ui()
 	_create_coin_total_label()
 	_update_phase_info()
@@ -241,7 +247,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			DICE_FLOW.clear_dice(self)
 			roll_history.clear()
 			roll_color_history.clear()
-			sum_label.text = _ui_text("Risultati: - | Colori: -")
+			if sum_label != null:
+				sum_label.text = _ui_text("Risultati: - | Colori: -")
 		elif event.keycode == KEY_PAGEUP:
 			_adjust_selected_card_y(0.02)
 			_adjust_equipment_slots_y(0.02)
@@ -253,9 +260,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 			DICE_FLOW.launch_dice_at(self, Vector3(0.0, TABLE_Y, 0.0), Vector3.ZERO)
 		elif event.keycode == KEY_1:
-			spawn_reward_tokens(1, HEART_TEXTURE, battlefield_pos)
+			spawn_reward_tokens(1, HEART_TEXTURE)
 		elif event.keycode == KEY_2:
-			spawn_reward_coins(1, battlefield_pos)
+			spawn_reward_coins(1)
+		elif event.keycode == KEY_UP:
+			_adjust_camera_pitch(-2.0)
+		elif event.keycode == KEY_DOWN:
+			_adjust_camera_pitch(2.0)
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
@@ -263,6 +274,21 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			last_mouse_pos = event.position
 			mouse_down_pos = event.position
 			var card := _get_card_under_mouse(event.position)
+			if card != null and card.has_meta("position_marker"):
+				selected_card = card
+				dragging_marker = true
+				var hit := _ray_to_plane(event.position)
+				if hit != Vector3.INF:
+					marker_drag_offset = card.global_position - hit
+				else:
+					marker_drag_offset = Vector3.ZERO
+				if card.has_method("set_dragging"):
+					card.call("set_dragging", true)
+				return
+			if pending_chain_choice_active:
+				if card != null and pending_chain_choice_cards.has(card):
+					selected_card = card
+				return
 			if card == null and phase_index == 1:
 				card = _get_adventure_stack_card_at(event.position)
 			if card == null and phase_index == 1 and _get_battlefield_card() != null:
@@ -310,8 +336,18 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if dice_hold_active:
 				DICE_FLOW.release_dice_hold(self, event.position)
 				return
+			if dragging_marker:
+				dragging_marker = false
+				if position_marker != null and is_instance_valid(position_marker) and position_marker.has_method("set_dragging"):
+					position_marker.call("set_dragging", false)
+				return
 			dragged_card = null
 			var moved := mouse_down_pos.distance_to(event.position) > CLICK_DRAG_THRESHOLD
+			if pending_chain_choice_active and not moved:
+				var card := _get_card_under_mouse(event.position)
+				if card != null and pending_chain_choice_cards.has(card):
+					_resolve_chain_choice(card)
+				return
 			if not moved and pending_flip_card != null and is_instance_valid(pending_flip_card):
 				if pending_flip_is_adventure:
 					_try_show_adventure_prompt(pending_flip_card)
@@ -379,6 +415,13 @@ func _zoom(direction: float) -> void:
 	pos.y = clamp(pos.y + direction, 3.0, 80.0)
 	camera.global_position = pos
 
+func _adjust_camera_pitch(delta: float) -> void:
+	if camera == null:
+		return
+	var rot := camera.rotation_degrees
+	rot.x = clamp(rot.x + delta, -89.0, -20.0)
+	camera.rotation_degrees = rot
+
 func _release_launch(mouse_pos: Vector2) -> void:
 	if launch_start_time < 0.0:
 		return
@@ -390,6 +433,12 @@ func _release_launch(mouse_pos: Vector2) -> void:
 	DICE_FLOW.launch_dice_at(self, hit, Vector3.ZERO)
 
 func _process(_delta: float) -> void:
+	if dragging_marker and position_marker != null and is_instance_valid(position_marker):
+		var hit := _ray_to_plane(last_mouse_pos)
+		if hit != Vector3.INF:
+			position_marker.global_position = hit + marker_drag_offset
+		_update_coord_label()
+		return
 	if dragged_card != null:
 		var hit := _ray_to_plane(last_mouse_pos)
 		if hit != Vector3.INF:
@@ -406,7 +455,7 @@ func _process(_delta: float) -> void:
 	_update_hover(last_mouse_pos)
 	_update_purchase_prompt_position()
 	_update_adventure_prompt_position()
-	_update_camera_label()
+	_update_coord_label()
 	_update_regno_overlay()
 	_update_adventure_value_box()
 	_update_coin_total_label()
@@ -754,10 +803,6 @@ func _try_show_adventure_prompt(card: Node3D) -> void:
 	if _get_blocking_adventure_card() != null:
 		_show_battlefield_warning()
 		return
-	if not pending_chain_effects.is_empty():
-		pending_adventure_card = card
-		_confirm_adventure_prompt()
-		return
 	ADVENTURE_PROMPT.show(self, card)
 
 func _hide_adventure_prompt() -> void:
@@ -928,9 +973,6 @@ func _confirm_adventure_prompt() -> void:
 		base_hearts = int(card_data.get("hearts", 1))
 		card_type = str(card_data.get("type", "")).strip_edges().to_lower()
 	pending_adventure_card.set_meta("adventure_type", card_type)
-	if not pending_chain_effects.is_empty():
-		pending_adventure_card.set_meta("chain_effects", pending_chain_effects.duplicate())
-		pending_chain_effects.clear()
 	if card_type == "scontro" or card_type == "maledizione":
 		pending_adventure_card.set_meta("adventure_blocking", true)
 		pending_adventure_card.set_meta("in_battlefield", true)
@@ -941,12 +983,13 @@ func _confirm_adventure_prompt() -> void:
 		var effects: Array = []
 		if not card_data.is_empty():
 			effects = card_data.get("effects", [])
-		pending_chain_effects = effects.duplicate()
-		var chain_pos := _get_next_chain_pos()
+		var chain_pos := _get_next_chain_pos(target_pos_adv)
 		pending_adventure_card.set_meta("in_battlefield", true)
 		pending_adventure_card.set_meta("adventure_blocking", false)
 		pending_adventure_card.call("flip_to_side", chain_pos)
-		_schedule_next_chain_reveal()
+		_apply_chain_card_effects(pending_adventure_card, effects)
+		_hide_adventure_prompt()
+		return
 	elif card_type == "evento":
 		_reveal_event_card(pending_adventure_card, card_data)
 		_hide_adventure_prompt()
@@ -969,8 +1012,8 @@ func _schedule_adventure_discard(card: Node3D) -> void:
 	if is_instance_valid(card):
 		_move_adventure_to_discard(card)
 
-func _get_next_chain_pos() -> Vector3:
-	return GNG_RULES.get_next_chain_pos(self)
+func _get_next_chain_pos(base_pos: Vector3) -> Vector3:
+	return GNG_RULES.get_next_chain_pos(self, base_pos)
 
 func _schedule_next_chain_reveal() -> void:
 	await GNG_RULES.schedule_next_chain_reveal(self)
@@ -1076,30 +1119,49 @@ func _adjust_selected_card_y(delta: float) -> void:
 	var pos := selected_card.global_position
 	pos.y += delta
 	selected_card.global_position = pos
-	if y_label != null:
-		y_label.text = _ui_text("Y carta: %.3f" % pos.y)
 
-func _spawn_sum_label() -> void:
+func _spawn_coord_label() -> void:
 	var ui := CanvasLayer.new()
 	ui.layer = 20
 	add_child(ui)
-	sum_label = Label.new()
-	sum_label.text = _ui_text("Somma: -")
-	sum_label.position = Vector2(20, 20)
-	ui.add_child(sum_label)
-	y_label = Label.new()
-	y_label.text = _ui_text("Y carta: -")
-	y_label.position = Vector2(20, 50)
-	ui.add_child(y_label)
-	camera_label = Label.new()
-	camera_label.text = _ui_text("Camera: -")
-	camera_label.position = Vector2(20, 80)
-	ui.add_child(camera_label)
+	coord_label = Label.new()
+	coord_label.text = _ui_text("Coord: -")
+	coord_label.position = Vector2(20, 20)
+	coord_label.add_theme_font_override("font", UI_FONT)
+	coord_label.add_theme_font_size_override("font_size", 18)
+	ui.add_child(coord_label)
 	GNG_RULES.create_regno_reward_label(self, ui)
 	_create_outcome_banner(ui)
 	_create_adventure_value_box(ui)
 	_create_music_toggle(ui)
 	_create_purchase_prompt()
+
+func _spawn_position_marker() -> void:
+	if POSITION_BOX_SCENE == null:
+		return
+	position_marker = POSITION_BOX_SCENE.instantiate()
+	if position_marker == null:
+		return
+	position_marker.set_meta("position_marker", true)
+	position_marker.global_position = Vector3(4.661, 0.04, 2.491)
+	add_child(position_marker)
+	if position_marker.has_method("set_label"):
+		position_marker.call_deferred("set_label", "Marker")
+	_update_coord_label()
+
+func _get_reward_drop_center() -> Vector3:
+	if position_marker != null and is_instance_valid(position_marker):
+		return position_marker.global_position
+	return battlefield_pos
+
+func _update_coord_label() -> void:
+	if coord_label == null:
+		return
+	if position_marker == null or not is_instance_valid(position_marker):
+		coord_label.text = _ui_text("Coord: -")
+		return
+	var pos := position_marker.global_position
+	coord_label.text = _ui_text("Coord: x=%.3f y=%.3f z=%.3f" % [pos.x, pos.y, pos.z])
 	_create_action_prompt()
 
 func _create_music_toggle(ui_layer: CanvasLayer) -> void:
@@ -1138,15 +1200,6 @@ func _center_outcome_banner() -> void:
 
 func _center_adventure_value_box() -> void:
 	CORE_UI.center_adventure_value_box(self)
-
-func _update_camera_label() -> void:
-	if camera_label == null:
-		return
-	var pos := camera.global_position
-	var rot := camera.rotation_degrees
-	camera_label.text = _ui_text("Cam x=%.2f y=%.2f z=%.2f | Rot x=%.1f y=%.1f z=%.1f | ZoomY=%.2f | FOV=%.1f" % [
-		pos.x, pos.y, pos.z, rot.x, rot.y, rot.z, pos.y, camera.fov
-	])
 
 func _create_purchase_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -1451,11 +1504,6 @@ func _get_top_face_name(dice: RigidBody3D) -> String:
 func _get_effective_difficulty(card_data: Dictionary) -> Dictionary:
 	var base := int(card_data.get("difficulty", 0))
 	var modifier := 0
-	var effects: Array = card_data.get("chain_effects", [])
-	for effect in effects:
-		var name := str(effect)
-		if name == "next_roll_plus_3":
-			modifier -= 3
 	for effect in post_roll_effects:
 		var effect_name := str(effect)
 		if effect_name == "next_roll_plus_3":
@@ -1466,6 +1514,117 @@ func _get_effective_difficulty(card_data: Dictionary) -> Dictionary:
 		"modifier": modifier,
 		"effective": effective
 	}
+
+func _apply_chain_card_effects(card: Node3D, effects: Array) -> void:
+	if card == null or effects.is_empty():
+		return
+	for effect in effects:
+		var name := str(effect).strip_edges()
+		if name.is_empty():
+			continue
+		match name:
+			"next_roll_plus_3":
+				pending_chain_bonus += 3
+				_update_adventure_value_box()
+				_hide_outcome()
+			"reveal_2_keep_1":
+				_reveal_two_adventures_for_choice()
+			_:
+				pass
+
+func _get_roll_total_with_chain_bonus() -> int:
+	var total := last_roll_total
+	if pending_chain_bonus != 0:
+		total += pending_chain_bonus
+	return total
+
+func _consume_chain_bonus() -> void:
+	if pending_chain_bonus == 0:
+		return
+	pending_chain_bonus = 0
+	_update_adventure_value_box()
+
+func _reveal_two_adventures_for_choice() -> void:
+	if pending_chain_choice_active:
+		return
+	var cards := _get_top_adventure_cards(2)
+	if cards.is_empty():
+		return
+	var base := _get_battlefield_target_pos()
+	var offset := CHAIN_ROW_SPACING * 0.55
+	for i in cards.size():
+		var card: Node3D = cards[i]
+		if card == null or not is_instance_valid(card):
+			continue
+		card.set_meta("in_adventure_stack", false)
+		card.set_meta("in_battlefield", true)
+		card.set_meta("adventure_blocking", false)
+		var pos := base + Vector3((i * 2 - 1) * offset, 0.0, 0.0)
+		card.call("flip_to_side", pos)
+	pending_chain_choice_cards = cards
+	pending_chain_choice_active = true
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Scala: scegli quale avventura affrontare. L'altra torna in fondo al mazzo."))
+
+func _get_top_adventure_cards(count: int) -> Array[Node3D]:
+	var cards: Array[Node3D] = []
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_adventure_stack"):
+			continue
+		if not child.get_meta("in_adventure_stack", false):
+			continue
+		cards.append(child)
+	cards.sort_custom(func(a, b):
+		var a_idx := int(a.get_meta("stack_index", -1))
+		var b_idx := int(b.get_meta("stack_index", -1))
+		return a_idx > b_idx
+	)
+	if cards.size() > count:
+		cards.resize(count)
+	return cards
+
+func _resolve_chain_choice(chosen: Node3D) -> void:
+	if chosen == null or not is_instance_valid(chosen):
+		return
+	var other: Node3D = null
+	for card in pending_chain_choice_cards:
+		if card == chosen:
+			continue
+		other = card
+		break
+	pending_chain_choice_cards.clear()
+	pending_chain_choice_active = false
+	if other != null and is_instance_valid(other):
+		_put_adventure_card_on_bottom(other)
+	_try_show_adventure_prompt(chosen)
+
+func _put_adventure_card_on_bottom(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var min_index := 0
+	var found := false
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_adventure_stack"):
+			continue
+		if not child.get_meta("in_adventure_stack", false):
+			continue
+		var idx := int(child.get_meta("stack_index", 0))
+		if not found or idx < min_index:
+			min_index = idx
+			found = true
+	if not found:
+		min_index = 0
+	card.set_meta("in_battlefield", false)
+	card.set_meta("adventure_blocking", false)
+	card.set_meta("in_adventure_stack", true)
+	card.set_meta("stack_index", min_index - 1)
+	if card.has_method("set_face_up"):
+		card.call("set_face_up", false)
+	BOARD_CORE.reposition_stack(self, "in_adventure_stack", adventure_deck_pos)
 
 func _update_adventure_value_box() -> void:
 	if adventure_value_panel == null or adventure_value_label == null:
@@ -1488,7 +1647,11 @@ func _update_adventure_value_box() -> void:
 		adventure_value_label.text = _ui_text("Mostro: %d" % base)
 	if player_value_label != null:
 		if roll_pending_apply:
-			player_value_label.text = _ui_text("Tuo tiro: %d" % last_roll_total)
+			var total := _get_roll_total_with_chain_bonus()
+			if pending_chain_bonus != 0:
+				player_value_label.text = _ui_text("Tuo tiro: %d (+%d)" % [total, pending_chain_bonus])
+			else:
+				player_value_label.text = _ui_text("Tuo tiro: %d" % total)
 		else:
 			player_value_label.text = _ui_text("Tuo tiro: -")
 	DICE_FLOW.refresh_roll_dice_buttons(self)
@@ -1511,7 +1674,9 @@ func _on_compare_pressed() -> void:
 	var battlefield := _get_battlefield_card()
 	if battlefield == null:
 		return
-	_apply_battlefield_result(battlefield, last_roll_total)
+	var total := _get_roll_total_with_chain_bonus()
+	_apply_battlefield_result(battlefield, total)
+	_consume_chain_bonus()
 
 func _apply_battlefield_result(card: Node3D, total: int) -> void:
 	if card == null or not is_instance_valid(card):
@@ -1893,20 +2058,20 @@ func _spawn_battlefield_rewards(rewards: Array, coin_pile_center: Vector3) -> vo
 			continue
 		match code:
 			"reward_group_vaso_di_coccio":
-				_spawn_reward_tokens_with_code(1, TOKEN_VASO, code, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_VASO, code)
 			"reward_group_chest":
-				_spawn_reward_tokens_with_code(1, TOKEN_CHEST, code, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_CHEST, code)
 			"reward_group_teca":
-				_spawn_reward_tokens_with_code(1, TOKEN_TECA, code, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_TECA, code)
 			"reward_token_tombstone":
-				_spawn_reward_tokens_with_code(1, TOKEN_TOMBSTONE, code, battlefield_pos)
+				_spawn_reward_tokens_with_code(1, TOKEN_TOMBSTONE, code)
 
 func _get_next_coin_pile_center() -> Vector3:
 	var idx := coin_pile_count
 	coin_pile_count += 1
 	var row := int(idx / COIN_PILE_COLUMNS)
 	var col := int(idx % COIN_PILE_COLUMNS)
-	return battlefield_pos + Vector3(float(col) * COIN_PILE_SPACING_X, 0.0, float(row) * COIN_PILE_SPACING_Z)
+	return _get_reward_drop_center() + Vector3(float(col) * COIN_PILE_SPACING_X, 0.0, float(row) * COIN_PILE_SPACING_Z)
 
 func _update_all_card_sorting_offsets(released_card: Node3D) -> void:
 	# Raccogli tutte le carte (esclusa quella rilasciata)
@@ -1954,16 +2119,22 @@ func _hide_outcome() -> void:
 	if outcome_panel != null:
 		outcome_panel.visible = false
 
-func spawn_reward_coins(count: int, center: Vector3 = battlefield_pos) -> void:
+func spawn_reward_coins(count: int, center: Vector3 = Vector3.INF) -> void:
+	if center == Vector3.INF:
+		center = _get_reward_drop_center()
 	SPAWN_CORE.spawn_reward_coins(self, count, center)
 
-func spawn_reward_coins_stack(count: int, center: Vector3 = battlefield_pos) -> void:
+func spawn_reward_coins_stack(count: int, center: Vector3 = Vector3.INF) -> void:
+	if center == Vector3.INF:
+		center = _get_reward_drop_center()
 	SPAWN_CORE.spawn_reward_coins_stack(self, count, center)
 
-func spawn_reward_tokens(count: int, texture_path: String, center: Vector3 = battlefield_pos) -> Array:
+func spawn_reward_tokens(count: int, texture_path: String, center: Vector3 = Vector3.INF) -> Array:
+	if center == Vector3.INF:
+		center = _get_reward_drop_center()
 	return SPAWN_CORE.spawn_reward_tokens(self, count, texture_path, center)
 
-func _spawn_reward_tokens_with_code(count: int, texture_path: String, reward_code: String, center: Vector3) -> void:
+func _spawn_reward_tokens_with_code(count: int, texture_path: String, reward_code: String, center: Vector3 = Vector3.INF) -> void:
 	var spawned := spawn_reward_tokens(count, texture_path, center)
 	for node in spawned:
 		if not (node is Node3D):

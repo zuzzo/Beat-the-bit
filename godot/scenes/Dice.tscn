@@ -44,7 +44,7 @@ roughness = 0.9
 
 [sub_resource type="BoxShape3D" id="8"]
 size = Vector3(0.25, 0.25, 0.25)
-margin = 0.001
+margin = 0.0001
 
 [node name="Dice" type="RigidBody3D"]
 mass = 1.0

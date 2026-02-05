@@ -49,8 +49,8 @@ static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
 		main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: Regno avanza a %s." % format_regno_reward(reward_code)))
 	return true
 
-static func get_next_chain_pos(main: Node) -> Vector3:
-	var base: Vector3 = main.battlefield_pos + main.CHAIN_ROW_OFFSET
+static func get_next_chain_pos(main: Node, base_pos: Vector3) -> Vector3:
+	var base: Vector3 = base_pos
 	var pos := base + Vector3(main.chain_row_count * main.CHAIN_ROW_SPACING, 0.0, 0.0)
 	main.chain_row_count += 1
 	return pos
@@ -182,69 +182,86 @@ static func spawn_regno_del_male(main: Node) -> void:
 static func setup_regno_overlay(main: Node) -> void:
 	main.regno_track_nodes = get_regno_track_nodes(main)
 	main.regno_track_rewards = get_regno_track_rewards(main)
-	if main.regno_track_nodes.is_empty():
-		return
-	if main.regno_overlay_layer != null and is_instance_valid(main.regno_overlay_layer):
-		main.regno_overlay_layer.queue_free()
-	main.regno_overlay_layer = CanvasLayer.new()
-	main.add_child(main.regno_overlay_layer)
-	main.regno_overlay = Control.new()
-	main.regno_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	main.regno_overlay_layer.add_child(main.regno_overlay)
-	main.regno_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	main.regno_overlay.offset_left = 0
-	main.regno_overlay.offset_top = 0
-	main.regno_overlay.offset_right = 0
-	main.regno_overlay.offset_bottom = 0
-	build_regno_boxes(main)
+	_ensure_regno_outline(main)
 
 static func build_regno_boxes(main: Node) -> void:
-	for node in main.regno_node_boxes:
-		if node != null and node.is_inside_tree():
-			node.queue_free()
-	main.regno_node_boxes.clear()
-	for i in main.regno_track_nodes.size():
-		var box := PanelContainer.new()
-		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0, 0, 0, 0)
-		style.border_color = Color(1.0, 0.9, 0.2, 0.0)
-		style.set_border_width_all(3)
-		box.add_theme_stylebox_override("panel", style)
-		main.regno_overlay.add_child(box)
-		main.regno_node_boxes.append(box)
+	return
 
 static func update_regno_overlay(main: Node) -> void:
-	if main.regno_overlay == null or main.regno_track_nodes.is_empty():
-		return
 	if main.regno_card == null or not is_instance_valid(main.regno_card):
 		return
-	var rect: Rect2 = main._get_card_screen_rect(main.regno_card)
-	if rect.size.x <= 0.0 or rect.size.y <= 0.0:
+	if main.regno_track_nodes.is_empty():
 		return
+	_ensure_regno_outline(main)
 	main.regno_blink_time = Time.get_ticks_msec() / 1000.0
-	for i in main.regno_track_nodes.size():
-		if i >= main.regno_node_boxes.size():
-			continue
-		var data: Dictionary = main.regno_track_nodes[i]
-		var x := float(data.get("x", 0.0))
-		var y := float(data.get("y", 0.0))
-		var w := float(data.get("w", 0.0))
-		var h := float(data.get("h", 0.0))
-		var box: PanelContainer = main.regno_node_boxes[i]
-		box.position = rect.position + Vector2(x * rect.size.x, y * rect.size.y)
-		var size: Vector2 = Vector2(w * rect.size.x, h * rect.size.y)
-		var side: float = max(size.x, size.y)
-		box.size = Vector2(side, side)
-		var style: StyleBoxFlat = box.get_theme_stylebox("panel") as StyleBoxFlat
-		if style != null:
-			if i == main.regno_track_index:
-				var alpha: float = 0.25 + 0.55 * abs(sin(main.regno_blink_time * 3.0))
-				style.border_color = Color(1.0, 0.9, 0.2, alpha)
-			else:
-				style.border_color = Color(1.0, 0.9, 0.2, 0.0)
-			box.add_theme_stylebox_override("panel", style)
+	var alpha: float = 0.25 + 0.55 * abs(sin(main.regno_blink_time * 3.0))
+	var outline := main.get_meta("regno_outline") as MeshInstance3D
+	if outline != null and outline.is_inside_tree():
+		var mat := outline.material_override as ShaderMaterial
+		if mat != null:
+			mat.set_shader_parameter("border_color", Color(1.0, 0.9, 0.2, alpha))
+		var data: Dictionary = main.regno_track_nodes[main.regno_track_index]
+		_update_regno_outline_transform(main, outline, data)
 	update_regno_reward_label(main)
+
+static func _ensure_regno_outline(main: Node) -> void:
+	if main.regno_card == null or not is_instance_valid(main.regno_card):
+		return
+	var parent_node := main.regno_card.get_node_or_null("Pivot") as Node3D
+	if parent_node == null:
+		parent_node = main.regno_card
+	var outline := main.get_meta("regno_outline") as MeshInstance3D
+	if outline == null or not outline.is_inside_tree():
+		outline = MeshInstance3D.new()
+		parent_node.add_child(outline)
+		main.set_meta("regno_outline", outline)
+	var quad := outline.mesh as QuadMesh
+	if quad == null:
+		quad = QuadMesh.new()
+		outline.mesh = quad
+	quad.size = Vector2(0.2, 0.2)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(1.0, 0.9, 0.2, 0.9)
+	mat.albedo_texture = _get_regno_border_texture()
+	outline.material_override = mat
+	outline.position = Vector3(0.0, 0.0, 0.04)
+	outline.rotation = Vector3.ZERO
+	outline.visible = true
+
+static func _update_regno_outline_transform(_main: Node, outline: MeshInstance3D, data: Dictionary) -> void:
+	var x := float(data.get("x", 0.0))
+	var y := float(data.get("y", 0.0))
+	var w := float(data.get("w", 0.0))
+	var h := float(data.get("h", 0.0))
+	var width: float = 1.4
+	var height: float = 2.0
+	var size := Vector2(w * width, h * height)
+	var quad := outline.mesh as QuadMesh
+	if quad != null:
+		quad.size = size
+	var center_x: float = -width * 0.5 + (x + w * 0.5) * width + _main.CARD_CENTER_X_OFFSET
+	var center_y: float = height * 0.5 - (y + h * 0.5) * height
+	outline.position = Vector3(center_x, center_y, 0.04)
+	var mat := outline.material_override as StandardMaterial3D
+	if mat != null:
+		var color: Color = mat.albedo_color
+		color.a = 0.25 + 0.55 * abs(sin(_main.regno_blink_time * 3.0))
+		mat.albedo_color = color
+
+static func _get_regno_border_texture() -> Texture2D:
+	var image := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	var border := 4
+	var color := Color(1, 1, 1, 1)
+	for x in range(64):
+		for y in range(64):
+			if x < border or x >= 64 - border or y < border or y >= 64 - border:
+				image.set_pixel(x, y, color)
+	var tex := ImageTexture.create_from_image(image)
+	return tex
 
 static func update_regno_reward_label(main: Node) -> void:
 	if main.regno_reward_label == null:
