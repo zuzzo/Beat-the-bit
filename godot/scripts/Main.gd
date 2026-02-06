@@ -119,6 +119,7 @@ var action_prompt_panel: PanelContainer
 var action_prompt_label: Label
 var action_prompt_yes: Button
 var action_prompt_no: Button
+var action_prompt_block_until_ms: int = 0
 var pending_action_card_data: Dictionary = {}
 var pending_action_is_magic: bool = false
 var pending_action_source_card: Node3D
@@ -185,6 +186,7 @@ var astaroth_pos := Vector3(-5, 0.0389999970793724, -2.5)
 const HEART_TEXTURE := "res://assets/Token/cuore.png"
 var character_card: Node3D
 var regno_card: Node3D
+var regno_final_boss_spawned: bool = false
 const BOSS_STACK_OFFSET := Vector3(0.0, 0.0, 0.0)
 var regno_track_nodes: Array = []
 var regno_track_rewards: Array = []
@@ -234,6 +236,13 @@ func _ready() -> void:
 	DECK_UTILS.shuffle_deck(example_deck)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if action_prompt_panel != null and action_prompt_panel.visible and event is InputEventMouseButton and event.pressed:
+		if action_prompt_yes != null and action_prompt_yes.get_global_rect().has_point(event.position):
+			_confirm_action_prompt()
+			return
+		if action_prompt_no != null and action_prompt_no.get_global_rect().has_point(event.position):
+			_hide_action_prompt()
+			return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion:
@@ -269,6 +278,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_adjust_camera_pitch(2.0)
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
+	if Time.get_ticks_msec() < action_prompt_block_until_ms:
+		return
+	if action_prompt_panel != null and action_prompt_panel.visible and event.pressed:
+		return
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			last_mouse_pos = event.position
@@ -570,6 +583,9 @@ func _move_adventure_to_discard(card: Node3D) -> void:
 func _get_top_adventure_card() -> Node3D:
 	return BOARD_CORE.get_top_adventure_card(self)
 
+func _get_top_boss_card() -> Node3D:
+	return BOARD_CORE.get_top_boss_card(self)
+
 func _get_top_market_card() -> Node3D:
 	return BOARD_CORE.get_top_market_card(self)
 
@@ -733,6 +749,76 @@ func _get_player_collect_target() -> Vector3:
 	world.y = battlefield_pos.y + 0.02
 	return world
 
+func _reveal_boss_from_regno() -> void:
+	if _get_blocking_adventure_card() != null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("C'e gia un nemico in campo."))
+		return
+	var boss := _get_top_boss_card()
+	if boss == null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Nessun boss disponibile."))
+		return
+	boss.set_meta("in_boss_stack", false)
+	boss.set_meta("in_battlefield", true)
+	boss.set_meta("adventure_blocking", true)
+	var data: Dictionary = boss.get_meta("card_data", {})
+	var hearts := int(data.get("hearts", 1))
+	boss.set_meta("battlefield_hearts", hearts)
+	_spawn_battlefield_hearts(boss, hearts)
+	if boss.has_method("flip_to_side"):
+		boss.call("flip_to_side", _get_battlefield_target_pos())
+
+func _claim_boss_to_hand_from_regno() -> void:
+	var boss := _get_top_boss_card()
+	if boss == null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Nessun boss disponibile."))
+		return
+	var data: Dictionary = boss.get_meta("card_data", {})
+	if data.is_empty():
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Boss non valido."))
+		boss.queue_free()
+		return
+	boss.set_meta("in_boss_stack", false)
+	boss.queue_free()
+	player_hand.append(data)
+	_refresh_hand_ui()
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Boss aggiunto alla mano."))
+
+func _reveal_final_boss_from_regno() -> void:
+	if regno_final_boss_spawned:
+		return
+	if _get_blocking_adventure_card() != null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("C'e gia un nemico in campo."))
+		return
+	if CardDatabase.deck_boss_finale.is_empty():
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Boss finale non disponibile."))
+		return
+	var entry: Dictionary = CardDatabase.deck_boss_finale[0]
+	var card := CARD_SCENE.instantiate()
+	add_child(card)
+	card.global_position = _get_battlefield_target_pos()
+	card.rotate_x(-PI / 2.0)
+	card.set_meta("in_battlefield", true)
+	card.set_meta("adventure_blocking", true)
+	card.set_meta("card_data", entry)
+	var hearts := int(entry.get("hearts", 1))
+	card.set_meta("battlefield_hearts", hearts)
+	_spawn_battlefield_hearts(card, hearts)
+	var image_path := str(entry.get("image", ""))
+	if image_path != "" and card.has_method("set_card_texture"):
+		card.call_deferred("set_card_texture", image_path)
+	if card.has_method("set_back_texture"):
+		card.call_deferred("set_back_texture", BOSS_BACK)
+	if card.has_method("set_face_up"):
+		card.call_deferred("set_face_up", true)
+	regno_final_boss_spawned = true
+
 func _update_phase_info() -> void:
 	if hand_ui == null or not hand_ui.has_method("set_info"):
 		return
@@ -809,15 +895,19 @@ func _hide_adventure_prompt() -> void:
 	ADVENTURE_PROMPT.hide(self)
 
 func _show_action_prompt(card_data: Dictionary, is_magic: bool, source_card: Node3D = null) -> void:
+	if Time.get_ticks_msec() < action_prompt_block_until_ms:
+		return
 	ACTION_PROMPT.show(self, card_data, is_magic, source_card)
 
 func _hide_action_prompt() -> void:
+	action_prompt_block_until_ms = Time.get_ticks_msec() + 400
 	ACTION_PROMPT.hide(self)
 
 func _center_action_prompt() -> void:
 	ACTION_PROMPT.center(self)
 
 func _confirm_action_prompt() -> void:
+	action_prompt_block_until_ms = Time.get_ticks_msec() + 400
 	ACTION_PROMPT.confirm(self)
 
 func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window: String = "") -> void:
@@ -1135,6 +1225,7 @@ func _spawn_coord_label() -> void:
 	_create_adventure_value_box(ui)
 	_create_music_toggle(ui)
 	_create_purchase_prompt()
+	_create_action_prompt()
 
 func _spawn_position_marker() -> void:
 	if POSITION_BOX_SCENE == null:
@@ -1143,8 +1234,8 @@ func _spawn_position_marker() -> void:
 	if position_marker == null:
 		return
 	position_marker.set_meta("position_marker", true)
-	position_marker.global_position = Vector3(4.661, 0.04, 2.491)
 	add_child(position_marker)
+	position_marker.global_position = Vector3(4.661, 0.04, 2.491)
 	if position_marker.has_method("set_label"):
 		position_marker.call_deferred("set_label", "Marker")
 	_update_coord_label()
@@ -1162,7 +1253,6 @@ func _update_coord_label() -> void:
 		return
 	var pos := position_marker.global_position
 	coord_label.text = _ui_text("Coord: x=%.3f y=%.3f z=%.3f" % [pos.x, pos.y, pos.z])
-	_create_action_prompt()
 
 func _create_music_toggle(ui_layer: CanvasLayer) -> void:
 	CORE_UI.create_music_toggle(self, ui_layer)
@@ -1277,7 +1367,7 @@ func _create_action_prompt() -> void:
 	add_child(prompt_layer)
 	action_prompt_panel = PanelContainer.new()
 	action_prompt_panel.visible = false
-	action_prompt_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	action_prompt_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	action_prompt_panel.z_index = 210
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0, 0, 0, 0.8)
@@ -1338,7 +1428,7 @@ func _create_action_prompt() -> void:
 	button_row.add_child(action_prompt_no)
 	content.add_child(button_row)
 
-	action_prompt_panel.add_child(content)
+	# content already added above
 
 func _create_adventure_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -1715,8 +1805,9 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 			if card_type == "scontro":
 				enemies_defeated_total += 1
 			_report_battlefield_reward(card_data, total, difficulty)
-			_spawn_defeat_explosion(defeated_pos)
 			_move_adventure_to_discard(card)
+			_spawn_defeat_explosion(defeated_pos)
+			_cleanup_chain_cards_after_victory()
 		last_roll_success = true
 		if total == difficulty:
 			_show_outcome("SUCCESSO PERFETTO", Color(1.0, 0.9, 0.2))
@@ -1734,6 +1825,25 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		hand_ui.call("set_phase_button_enabled", true)
 	if adventure_value_panel != null:
 		adventure_value_panel.visible = false
+
+func _cleanup_chain_cards_after_victory() -> void:
+	if chain_row_count <= 0 and pending_chain_bonus == 0 and pending_chain_choice_cards.is_empty():
+		return
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_battlefield"):
+			continue
+		if not child.get_meta("in_battlefield", false):
+			continue
+		var data: Dictionary = child.get_meta("card_data", {})
+		var ctype := str(data.get("type", "")).strip_edges().to_lower()
+		if ctype == "concatenamento":
+			_move_adventure_to_discard(child)
+	pending_chain_bonus = 0
+	pending_chain_choice_cards.clear()
+	pending_chain_choice_active = false
+	chain_row_count = 0
 
 func _apply_player_heart_loss(amount: int) -> void:
 	if amount <= 0:
@@ -1987,7 +2097,6 @@ func _spawn_defeat_explosion(world_pos: Vector3) -> void:
 		var sprite := AnimatedSprite3D.new()
 		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		sprite.pixel_size = 0.01
-		sprite.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
 		var frames := SpriteFrames.new()
 		var frame_count := 5
 		var frame_w := int(floor(tex.get_width() / float(frame_count)))
@@ -2001,6 +2110,7 @@ func _spawn_defeat_explosion(world_pos: Vector3) -> void:
 		frames.set_animation_loop("default", false)
 		sprite.sprite_frames = frames
 		add_child(sprite)
+		sprite.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
 		sprite.play("default")
 		sprite.animation_finished.connect(func() -> void:
 			if is_instance_valid(sprite):
@@ -2018,8 +2128,8 @@ func _spawn_defeat_explosion(world_pos: Vector3) -> void:
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	flash.material_override = mat
-	flash.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
 	add_child(flash)
+	flash.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
 	var tween := create_tween()
 	tween.tween_property(flash, "scale", Vector3(1.6, 1.6, 1.6), 0.25)
 	tween.parallel().tween_property(flash, "modulate", Color(1, 1, 1, 0), 0.25)
@@ -2546,10 +2656,10 @@ func _format_regno_reward(code: String) -> String:
 	return GNG_RULES.format_regno_reward(code)
 
 func _load_texture(path: String) -> Texture2D:
-	var image := Image.new()
-	if image.load(path) != OK:
-		return null
-	return ImageTexture.create_from_image(image)
+	var tex := load(path)
+	if tex is Texture2D:
+		return tex
+	return null
 
 func _spawn_astaroth() -> void:
 	GNG_RULES.spawn_astaroth(self)

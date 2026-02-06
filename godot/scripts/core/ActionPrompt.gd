@@ -44,6 +44,7 @@ static func confirm(main: Node) -> void:
 		hide(main)
 		return
 	if not main._validate_roll_selection_for_effects(effects):
+		hide(main)
 		return
 	main._use_card_effects(main.pending_action_card_data, effects, action_window)
 	if not main.pending_action_is_magic and main.pending_action_source_card != null and is_instance_valid(main.pending_action_source_card):

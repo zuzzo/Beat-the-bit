@@ -32,6 +32,44 @@ var _regno_resize_mouse: Vector2 = Vector2.ZERO
 const REGNO_ID := "shared_regno_del_male"
 const REGNO_NODE_COUNT := 11
 
+const EFFECT_DESCRIPTIONS := {
+	"armor_extra_slot_1": "Aggiunge 1 slot equipaggiamento quando equipaggiata.",
+	"armor_extra_slot_2": "Aggiunge 2 slot equipaggiamento quando equipaggiata.",
+	"sacrifice_prevent_heart_loss": "Se sacrificata, previene una perdita di cuore.",
+	"discard_revealed_adventure": "Scarta l'avventura rivelata.",
+	"reroll_same_dice": "Rilancia i dadi selezionati.",
+	"after_roll_minus_1_all_dice": "Dopo il lancio, -1 a tutti i dadi (min 1).",
+	"after_roll_set_one_die_to_1": "Dopo il lancio, scegli un dado e impostalo a 1.",
+	"reroll_5_or_6": "Rilancia i dadi con valore 5 o 6.",
+	"halve_even_dice": "Dopo il lancio, dimezza i dadi pari.",
+	"add_red_die": "Aggiunge un dado rosso.",
+	"reflect_damage_poison": "Quando perdi un cuore, riflette danno/veleno.",
+	"next_roll_minus_2_all_dice": "Nel prossimo lancio, -2 a tutti i dadi (min 1).",
+	"lowest_die_applies_to_all": "Prima del lancio, il valore piu basso vale per tutti i dadi.",
+	"deal_1_damage": "Infligge 1 danno immediato al nemico attivo.",
+	"ignore_fatigue_if_all_different": "Se tutti i dadi sono diversi, ignori fatica.",
+	"next_roll_double_then_remove_half": "Nel prossimo lancio, raddoppia i dadi e annulla la meta piu bassa.",
+	"on_heart_loss_destroy_fatigue": "Quando perdi un cuore, rimuovi una fatica.",
+	"regno_del_male_portal": "Avanza sul tracciato Regno del Male.",
+	"sacrifice_open_portal": "Sacrifica per avanzare nel Regno del Male.",
+	"bonus_damage_multiheart": "Dopo il danno, bonus contro nemici con piu cuori.",
+	"reset_hearts_and_dice": "Ripristina cuori e dadi base.",
+	"return_to_hand": "Ritorna in mano dopo l'uso.",
+	"discard_hand_card_1": "Scarta 1 carta dalla mano."
+}
+
+const TIMING_DESCRIPTIONS := {
+	"before_roll": "Prima del lancio",
+	"after_roll": "Dopo il lancio",
+	"before_adventure": "Prima di rivelare l'avventura",
+	"on_heart_loss": "Quando perdi cuori",
+	"equip": "Quando equipaggiata",
+	"on_play": "Quando usata",
+	"any_time": "In qualunque momento",
+	"after_damage": "Dopo il danno",
+	"next_roll": "Al prossimo lancio"
+}
+
 func _ready() -> void:
 	deck_option.add_item("Ghosts 'n Goblins", 0)
 	deck_option.selected = 0
@@ -198,6 +236,7 @@ func _on_card_selected(index: int) -> void:
 
 func _build_details(card: Dictionary) -> String:
 	var lines: Array[String] = []
+	var category: String = _category_for(card)
 	lines.append("Nome: %s" % str(card.get("name", "")))
 	lines.append("ID: %s" % str(card.get("id", "")))
 	lines.append("Tipo: %s" % str(card.get("type", "")))
@@ -228,7 +267,30 @@ func _build_details(card: Dictionary) -> String:
 		lines.append("Sacrifice: %s -> %s" % [cost, effect])
 	if card.has("sacrifice_optional"):
 		lines.append("Opzione: %s" % ", ".join(card.get("sacrifice_optional", [])))
+	if category == "treasure":
+		var understood: Array[String] = _describe_treasure_effects(card)
+		if not understood.is_empty():
+			lines.append("Effetto capito:")
+			for entry in understood:
+				lines.append("  - %s" % entry)
 	return "\n".join(lines)
+
+func _describe_treasure_effects(card: Dictionary) -> Array[String]:
+	var out: Array[String] = []
+	if card.has("timed_effects"):
+		for item in card.get("timed_effects", []):
+			if item is Dictionary:
+				var eff: String = str(item.get("effect", ""))
+				var when: String = str(item.get("when", ""))
+				var eff_text: String = str(EFFECT_DESCRIPTIONS.get(eff, eff))
+				var when_text: String = str(TIMING_DESCRIPTIONS.get(when, when))
+				out.append("%s: %s" % [when_text, eff_text])
+		return out
+	if card.has("effects"):
+		for eff in card.get("effects", []):
+			var eff_name := str(eff)
+			out.append(EFFECT_DESCRIPTIONS.get(eff_name, eff_name))
+	return out
 
 func _update_regno_controls() -> void:
 	var is_regno := _is_regno_card(_selected_card)

@@ -42,6 +42,7 @@ static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
 	main.player_tombstones -= 1
 	main.regno_track_index += 1
 	update_regno_reward_label(main)
+	_apply_regno_reward(main, str(main.regno_track_rewards[main.regno_track_index]))
 	if main.hand_ui != null and main.hand_ui.has_method("set_tokens"):
 		main.hand_ui.call("set_tokens", main.player_tombstones)
 	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
@@ -49,8 +50,27 @@ static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
 		main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: Regno avanza a %s." % format_regno_reward(reward_code)))
 	return true
 
+static func _apply_regno_reward(main: Node, code: String) -> void:
+	match code:
+		"reward_group_vaso_di_coccio":
+			main._spawn_reward_tokens_with_code(1, main.TOKEN_VASO, code, main._get_reward_drop_center())
+		"reward_group_chest":
+			main._spawn_reward_tokens_with_code(1, main.TOKEN_CHEST, code, main._get_reward_drop_center())
+		"reward_group_teca":
+			main._spawn_reward_tokens_with_code(1, main.TOKEN_TECA, code, main._get_reward_drop_center())
+		"gain_heart":
+			main.player_current_hearts = min(main.player_max_hearts, main.player_current_hearts + 1)
+			main._update_hand_ui_stats()
+			main._refresh_character_hearts_tokens()
+		"boss":
+			main._claim_boss_to_hand_from_regno()
+		"boss_finale":
+			main._reveal_final_boss_from_regno()
+		_:
+			pass
+
 static func get_next_chain_pos(main: Node, base_pos: Vector3) -> Vector3:
-	var base: Vector3 = base_pos
+	var base: Vector3 = base_pos + main.CHAIN_ROW_OFFSET
 	var pos := base + Vector3(main.chain_row_count * main.CHAIN_ROW_SPACING, 0.0, 0.0)
 	main.chain_row_count += 1
 	return pos
@@ -195,7 +215,7 @@ static func update_regno_overlay(main: Node) -> void:
 	_ensure_regno_outline(main)
 	main.regno_blink_time = Time.get_ticks_msec() / 1000.0
 	var alpha: float = 0.25 + 0.55 * abs(sin(main.regno_blink_time * 3.0))
-	var outline := main.get_meta("regno_outline") as MeshInstance3D
+	var outline := main.get_meta("regno_outline", null) as MeshInstance3D
 	if outline != null and outline.is_inside_tree():
 		var mat := outline.material_override as ShaderMaterial
 		if mat != null:
@@ -210,7 +230,7 @@ static func _ensure_regno_outline(main: Node) -> void:
 	var parent_node := main.regno_card.get_node_or_null("Pivot") as Node3D
 	if parent_node == null:
 		parent_node = main.regno_card
-	var outline := main.get_meta("regno_outline") as MeshInstance3D
+	var outline := main.get_meta("regno_outline", null) as MeshInstance3D
 	if outline == null or not outline.is_inside_tree():
 		outline = MeshInstance3D.new()
 		parent_node.add_child(outline)

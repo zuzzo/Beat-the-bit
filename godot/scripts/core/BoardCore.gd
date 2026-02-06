@@ -49,6 +49,22 @@ static func get_top_adventure_card(main: Node) -> Node3D:
 			top_card = child
 	return top_card
 
+static func get_top_boss_card(main: Node) -> Node3D:
+	var top_card: Node3D = null
+	var top_index := -1
+	for child in main.get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_boss_stack"):
+			continue
+		if not child.get_meta("in_boss_stack", false):
+			continue
+		var idx: int = int(child.get_meta("stack_index", -1))
+		if idx > top_index:
+			top_index = idx
+			top_card = child
+	return top_card
+
 static func get_top_market_card(main: Node) -> Node3D:
 	var top_card: Node3D = null
 	var top_y := -INF
