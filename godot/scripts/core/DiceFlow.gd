@@ -2,10 +2,19 @@ extends RefCounted
 class_name DiceFlow
 
 static func launch_dice_at(main: Node, spawn_pos: Vector3, launch_dir: Vector3) -> void:
-	clear_dice(main)
+	clear_dice(main, false)
 	main._hide_outcome()
-	main.post_roll_effects.clear()
 	main.roll_in_progress = true
+	if main.next_roll_double_dice:
+		main.roll_dice_restore = {
+			"blue": main.blue_dice,
+			"green": main.green_dice,
+			"red": main.red_dice
+		}
+		main.blue_dice *= 2
+		main.green_dice *= 2
+		main.red_dice *= 2
+		main.next_roll_double_dice = false
 	main.dice_count = get_total_dice(main)
 	spawn_dice(main, spawn_pos, launch_dir)
 	main.blue_dice += 1
@@ -162,13 +171,25 @@ static func track_dice_sum(main: Node) -> void:
 		total += v
 	main.last_roll_values = values.duplicate()
 	main.selected_roll_dice.clear()
-	for i in main.last_roll_values.size():
-		main.selected_roll_dice.append(i)
+	if main.pending_drop_half_count <= 0:
+		for i in main.last_roll_values.size():
+			main.selected_roll_dice.append(i)
 	main.last_roll_total = total
 	main.roll_pending_apply = true
 	main.last_roll_success = false
 	main.last_roll_penalty = false
 	main.roll_trigger_reset = false
+	if main.next_roll_drop_half:
+		main.pending_drop_half_count = int(floor(main.last_roll_values.size() * 0.5))
+		main.next_roll_drop_half = false
+		if main.pending_drop_half_count > 0:
+			main._show_drop_half_prompt(main.pending_drop_half_count)
+	if not main.roll_dice_restore.is_empty():
+		main.blue_dice = int(main.roll_dice_restore.get("blue", main.blue_dice)) + 1
+		main.green_dice = int(main.roll_dice_restore.get("green", main.green_dice))
+		main.red_dice = int(main.roll_dice_restore.get("red", main.red_dice))
+		main.roll_dice_restore.clear()
+		main.dice_count = get_total_dice(main)
 	main.roll_history.append(total)
 	main.roll_color_history.append(", ".join(names))
 	if main.sum_label != null:
@@ -199,7 +220,7 @@ static func wait_for_dice_settle(_main: Node, dice_list: Array[RigidBody3D]) -> 
 		await _main.get_tree().create_timer(0.1).timeout
 		elapsed += 0.1
 
-static func clear_dice(main: Node) -> void:
+static func clear_dice(main: Node, clear_post_roll_effects: bool = true) -> void:
 	for dice in main.active_dice:
 		if is_instance_valid(dice):
 			dice.queue_free()
@@ -208,7 +229,8 @@ static func clear_dice(main: Node) -> void:
 	main.roll_pending_apply = false
 	main.last_roll_values.clear()
 	main.selected_roll_dice.clear()
-	main.post_roll_effects.clear()
+	if clear_post_roll_effects:
+		main.post_roll_effects.clear()
 
 static func get_top_face_value(_main: Node, dice: RigidBody3D) -> int:
 	if dice.has_method("get_top_value"):
@@ -274,6 +296,22 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		main.player_dice_buttons_row.add_child(btn)
 
 static func on_roll_die_button_pressed(main: Node, index: int) -> void:
+	if main.pending_drop_half_count > 0:
+		if main.active_dice[index] != null and is_instance_valid(main.active_dice[index]):
+			var dice_type := ""
+			if main.active_dice[index].has_method("get_dice_type"):
+				dice_type = str(main.active_dice[index].call("get_dice_type"))
+			if dice_type == "green":
+				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+					main.hand_ui.call("set_info", main._ui_text("Non puoi eliminare dadi verdi."))
+				refresh_roll_dice_buttons(main)
+				return
+		if main.selected_roll_dice.has(index):
+			main.selected_roll_dice.erase(index)
+		else:
+			main.selected_roll_dice.append(index)
+		refresh_roll_dice_buttons(main)
+		return
 	if main.selected_roll_dice.has(index):
 		main.selected_roll_dice.erase(index)
 	else:

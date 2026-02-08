@@ -44,6 +44,7 @@ signal request_place_equipment(card: Dictionary, screen_pos: Vector2)
 signal phase_changed(phase_index: int, turn_index: int)
 signal request_use_magic(card: Dictionary)
 signal request_discard_card(card: Dictionary)
+signal request_sell_card(card: Dictionary)
 
 func _ui_text(text: String) -> String:
 	return text.replace(" ", "  ")
@@ -277,11 +278,7 @@ func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
 				if _phase_index == 0:
-					_right_preview_active = true
-					_right_preview_panel = tex_rect.get_parent() as Control
-					_right_preview_texture = tex_rect.texture
-					_right_preview_size = full_size * 1.5
-					_show_hover_preview(_right_preview_texture, _right_preview_size, _right_preview_panel)
+					request_sell_card.emit(card)
 				elif _phase_index == 1:
 					request_use_magic.emit(card)
 			else:

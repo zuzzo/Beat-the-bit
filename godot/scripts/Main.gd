@@ -74,6 +74,13 @@ var last_roll_penalty: bool = false
 var roll_trigger_reset: bool = false
 var post_roll_effects: Array[String] = []
 var roll_in_progress: bool = false
+var pending_drop_half_count: int = 0
+var next_roll_double_dice: bool = false
+var next_roll_drop_half: bool = false
+var roll_dice_restore: Dictionary = {}
+var dice_drop_panel: PanelContainer
+var dice_drop_label: Label
+var dice_drop_ok: Button
 var dragged_card: Node3D
 var drag_offset: Vector3 = Vector3.ZERO
 var dragged_card_origin_y: float = 0.0
@@ -110,6 +117,12 @@ var purchase_yes_button: Button
 var purchase_no_button: Button
 var purchase_card: Node3D
 var purchase_content: VBoxContainer
+var sell_prompt_panel: PanelContainer
+var sell_prompt_label: Label
+var sell_prompt_yes: Button
+var sell_prompt_no: Button
+var pending_sell_card: Dictionary = {}
+var pending_sell_price: int = 0
 var adventure_prompt_panel: PanelContainer
 var adventure_prompt_label: Label
 var adventure_prompt_yes: Button
@@ -935,6 +948,10 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 		if effect_name == "lowest_die_applies_to_all" and action_window == "before_roll" and not roll_pending_apply:
 			post_roll_effects.append("next_roll_lowest_die_applies_to_all")
 			continue
+		if effect_name == "next_roll_double_then_remove_half" and action_window == "before_roll" and not roll_pending_apply:
+			next_roll_double_dice = true
+			next_roll_drop_half = true
+			continue
 		post_roll_effects.append(effect_name)
 		EFFECTS_REGISTRY.collect_reroll_indices(self, effect_name, reroll_indices)
 		EFFECTS_REGISTRY.apply_post_roll_effect(self, effect_name, selected_values)
@@ -1226,6 +1243,8 @@ func _spawn_coord_label() -> void:
 	_create_music_toggle(ui)
 	_create_purchase_prompt()
 	_create_action_prompt()
+	_create_sell_prompt()
+	_create_dice_drop_prompt()
 
 func _spawn_position_marker() -> void:
 	if POSITION_BOX_SCENE == null:
@@ -1361,6 +1380,127 @@ func _create_purchase_prompt() -> void:
 	purchase_panel.add_child(purchase_content)
 	prompt_layer.add_child(purchase_panel)
 
+func _create_sell_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 10
+	add_child(prompt_layer)
+	sell_prompt_panel = PanelContainer.new()
+	sell_prompt_panel.visible = false
+	sell_prompt_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	sell_prompt_panel.z_index = 210
+	sell_prompt_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	sell_prompt_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.75)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	sell_prompt_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var content := VBoxContainer.new()
+	content.anchor_left = 0.0
+	content.anchor_right = 1.0
+	content.anchor_top = 0.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_right = -16.0
+	content.offset_top = 12.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 8)
+
+	sell_prompt_label = Label.new()
+	sell_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	sell_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sell_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	sell_prompt_label.custom_minimum_size = Vector2(460, 0)
+	sell_prompt_label.add_theme_font_override("font", UI_FONT)
+	sell_prompt_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	sell_prompt_label.add_theme_constant_override("font_spacing/space", 8)
+	sell_prompt_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sell_prompt_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sell_prompt_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.add_child(sell_prompt_label)
+
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button_row.set("theme_override_constants/separation", 24)
+
+	sell_prompt_yes = Button.new()
+	sell_prompt_yes.text = _ui_text("Si")
+	sell_prompt_yes.add_theme_font_override("font", UI_FONT)
+	sell_prompt_yes.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	sell_prompt_yes.add_theme_constant_override("font_spacing/space", 8)
+	sell_prompt_yes.pressed.connect(_confirm_sell_prompt)
+	button_row.add_child(sell_prompt_yes)
+
+	sell_prompt_no = Button.new()
+	sell_prompt_no.text = _ui_text("No")
+	sell_prompt_no.add_theme_font_override("font", UI_FONT)
+	sell_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	sell_prompt_no.add_theme_constant_override("font_spacing/space", 8)
+	sell_prompt_no.pressed.connect(_hide_sell_prompt)
+	button_row.add_child(sell_prompt_no)
+
+	content.add_child(button_row)
+	sell_prompt_panel.add_child(content)
+	prompt_layer.add_child(sell_prompt_panel)
+
+func _show_sell_prompt(card_data: Dictionary) -> void:
+	if phase_index != 0:
+		return
+	if sell_prompt_panel == null or sell_prompt_label == null:
+		return
+	var name: String = str(card_data.get("name", "Carta"))
+	var cost: int = int(card_data.get("cost", 0))
+	var price: int = max(0, cost - 2)
+	pending_sell_card = card_data
+	pending_sell_price = price
+	sell_prompt_label.text = _ui_text("Vuoi vendere %s\nper %d monete?" % [name, price])
+	sell_prompt_panel.visible = true
+	_center_sell_prompt()
+
+func _center_sell_prompt() -> void:
+	if sell_prompt_panel == null:
+		return
+	sell_prompt_panel.custom_minimum_size = Vector2.ZERO
+	sell_prompt_panel.reset_size()
+	sell_prompt_panel.custom_minimum_size = sell_prompt_panel.get_combined_minimum_size()
+	sell_prompt_panel.reset_size()
+	var view_size: Vector2 = get_viewport().get_visible_rect().size
+	var size: Vector2 = sell_prompt_panel.size
+	sell_prompt_panel.position = (view_size - size) * 0.5
+
+func _hide_sell_prompt() -> void:
+	if sell_prompt_panel != null:
+		sell_prompt_panel.visible = false
+	pending_sell_card = {}
+	pending_sell_price = 0
+
+func _confirm_sell_prompt() -> void:
+	if pending_sell_card.is_empty():
+		_hide_sell_prompt()
+		return
+	var card_id := str(pending_sell_card.get("id", ""))
+	var idx := player_hand.find(pending_sell_card)
+	if idx < 0 and card_id != "":
+		for i in player_hand.size():
+			var data: Variant = player_hand[i]
+			if data is Dictionary and str((data as Dictionary).get("id", "")) == card_id:
+				idx = i
+				break
+	if idx >= 0:
+		player_hand.remove_at(idx)
+	player_gold += max(0, pending_sell_price)
+	if hand_ui != null and hand_ui.has_method("set_gold"):
+		hand_ui.call("set_gold", player_gold)
+	_refresh_hand_ui()
+	_hide_sell_prompt()
+
 func _create_action_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
 	prompt_layer.layer = 12
@@ -1429,6 +1569,119 @@ func _create_action_prompt() -> void:
 	content.add_child(button_row)
 
 	# content already added above
+
+func _create_dice_drop_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 12
+	add_child(prompt_layer)
+	dice_drop_panel = PanelContainer.new()
+	dice_drop_panel.visible = false
+	dice_drop_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	dice_drop_panel.z_index = 210
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.75)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	dice_drop_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var content := VBoxContainer.new()
+	content.anchor_left = 0.0
+	content.anchor_right = 1.0
+	content.anchor_top = 0.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_right = -16.0
+	content.offset_top = 12.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 8)
+
+	dice_drop_label = Label.new()
+	dice_drop_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	dice_drop_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	dice_drop_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	dice_drop_label.custom_minimum_size = Vector2(460, 0)
+	dice_drop_label.add_theme_font_override("font", UI_FONT)
+	dice_drop_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	dice_drop_label.add_theme_constant_override("font_spacing/space", 8)
+	content.add_child(dice_drop_label)
+
+	dice_drop_ok = Button.new()
+	dice_drop_ok.text = _ui_text("Ok")
+	dice_drop_ok.add_theme_font_override("font", UI_FONT)
+	dice_drop_ok.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	dice_drop_ok.add_theme_constant_override("font_spacing/space", 8)
+	dice_drop_ok.pressed.connect(_confirm_drop_half_selection)
+	content.add_child(dice_drop_ok)
+
+	dice_drop_panel.add_child(content)
+	prompt_layer.add_child(dice_drop_panel)
+
+func _show_drop_half_prompt(count: int) -> void:
+	if dice_drop_panel == null or dice_drop_label == null:
+		return
+	dice_drop_label.text = _ui_text("Seleziona %d dadi che vuoi tenere." % count)
+	dice_drop_panel.visible = true
+	_center_drop_half_prompt()
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Scegli %d dadi e premi Ok." % count))
+
+func _center_drop_half_prompt() -> void:
+	if dice_drop_panel == null:
+		return
+	dice_drop_panel.custom_minimum_size = Vector2.ZERO
+	dice_drop_panel.reset_size()
+	dice_drop_panel.custom_minimum_size = dice_drop_panel.get_combined_minimum_size()
+	dice_drop_panel.reset_size()
+	var view_size: Vector2 = get_viewport().get_visible_rect().size
+	var size: Vector2 = dice_drop_panel.size
+	dice_drop_panel.position = (view_size - size) * 0.5
+
+func _hide_drop_half_prompt() -> void:
+	if dice_drop_panel != null:
+		dice_drop_panel.visible = false
+
+func _confirm_drop_half_selection() -> void:
+	if pending_drop_half_count <= 0:
+		_hide_drop_half_prompt()
+		return
+	if selected_roll_dice.size() != pending_drop_half_count:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Seleziona %d dadi." % pending_drop_half_count))
+		return
+	var drop_indices: Array[int] = []
+	for idx in selected_roll_dice:
+		var i := int(idx)
+		if i >= 0 and i < last_roll_values.size() and i < active_dice.size():
+			var die: RigidBody3D = active_dice[i]
+			if die != null and die.has_method("get_dice_type"):
+				var dtype := str(die.call("get_dice_type"))
+				if dtype == "green":
+					continue
+			drop_indices.append(i)
+	if drop_indices.size() != pending_drop_half_count:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Puoi eliminare solo dadi blu."))
+		return
+	drop_indices.sort()
+	for i in range(drop_indices.size() - 1, -1, -1):
+		var drop_idx := int(drop_indices[i])
+		if drop_idx >= 0 and drop_idx < active_dice.size():
+			var die: RigidBody3D = active_dice[drop_idx]
+			if die != null and is_instance_valid(die):
+				die.queue_free()
+			active_dice.remove_at(drop_idx)
+		if drop_idx >= 0 and drop_idx < last_roll_values.size():
+			last_roll_values.remove_at(drop_idx)
+	pending_drop_half_count = 0
+	selected_roll_dice.clear()
+	DICE_FLOW.recalculate_last_roll_total(self)
+	DICE_FLOW.refresh_roll_dice_buttons(self)
+	_hide_drop_half_prompt()
 
 func _create_adventure_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -1517,6 +1770,8 @@ func _spawn_hand_ui() -> void:
 		hand_root.connect("request_use_magic", Callable(self, "_on_hand_request_use_magic"))
 	if hand_root.has_signal("request_discard_card"):
 		hand_root.connect("request_discard_card", Callable(self, "_on_hand_request_discard_card"))
+	if hand_root.has_signal("request_sell_card"):
+		hand_root.connect("request_sell_card", Callable(self, "_on_hand_request_sell_card"))
 
 	var view_size := get_viewport().get_visible_rect().size
 	var card_height := view_size.y * 0.2
@@ -1746,7 +2001,7 @@ func _update_adventure_value_box() -> void:
 			player_value_label.text = _ui_text("Tuo tiro: -")
 	DICE_FLOW.refresh_roll_dice_buttons(self)
 	if compare_button != null:
-		compare_button.disabled = not roll_pending_apply
+		compare_button.disabled = (not roll_pending_apply) or pending_drop_half_count > 0
 	adventure_value_panel.visible = true
 
 func _refresh_roll_dice_buttons() -> void:
@@ -1896,13 +2151,13 @@ func _consume_hand_reactive_heart_guard() -> bool:
 	return false
 
 func _discard_one_fatigue_from_battlefield() -> void:
-	var battlefield := _get_battlefield_card()
-	if battlefield == null:
+	if blue_dice <= base_dice_count:
 		return
-	var card_data: Dictionary = battlefield.get_meta("card_data", {})
-	if str(card_data.get("type", "")).strip_edges().to_lower() != "maledizione":
-		return
-	_move_adventure_to_discard(battlefield)
+	blue_dice = max(base_dice_count, blue_dice - 1)
+	dice_count = DICE_FLOW.get_total_dice(self)
+	if not roll_pending_apply and not roll_in_progress:
+		DICE_FLOW.clear_dice_preview(self)
+		DICE_FLOW.spawn_dice_preview(self)
 
 func _has_equipped_effect(effect_name: String) -> bool:
 	for slot in equipment_slots:
@@ -2067,6 +2322,12 @@ func _on_hand_request_discard_card(card: Dictionary) -> void:
 				hand_ui.call("set_info", "Limite mano rispettato.")
 			else:
 				hand_ui.call("set_info", "Penalita applicata:\n- scarta 1 carta")
+
+func _on_hand_request_sell_card(card: Dictionary) -> void:
+	if phase_index != 0:
+		return
+	var resolved := _resolve_card_data(card)
+	_show_sell_prompt(resolved)
 
 func _discard_one_equipped_card() -> bool:
 	for slot in equipment_slots:
@@ -2417,7 +2678,8 @@ func _get_character_max_slots() -> int:
 func _on_hand_request_place_equipment(card: Dictionary, screen_pos: Vector2) -> void:
 	if phase_index != 0:
 		return
-	var card_type := str(card.get("type", "")).strip_edges().to_lower()
+	var resolved := _resolve_card_data(card)
+	var card_type := str(resolved.get("type", "")).strip_edges().to_lower()
 	if card_type != "equipaggiamento":
 		return
 	var slot := _get_equipment_slot_under_mouse(screen_pos)
@@ -2427,8 +2689,8 @@ func _on_hand_request_place_equipment(card: Dictionary, screen_pos: Vector2) -> 
 		return
 	if slot.has_meta("occupied") and slot.get_meta("occupied", false):
 		return
-	_place_equipment_in_slot(slot, card)
-	player_hand.erase(card)
+	_place_equipment_in_slot(slot, resolved)
+	_remove_hand_card(card, resolved)
 	_refresh_hand_ui()
 
 func _get_equipment_slot_under_mouse(mouse_pos: Vector2) -> Area3D:
@@ -2485,7 +2747,7 @@ func _place_equipment_in_slot(slot: Area3D, card_data: Dictionary) -> void:
 
 func _apply_equipment_extra_slots(card_data: Dictionary) -> int:
 	var effects: Array = card_data.get("effects", [])
-	var extra := 0
+	var extra: int = 0
 	for effect in effects:
 		var name := str(effect)
 		if name == "armor_extra_slot_1":
@@ -2593,13 +2855,46 @@ func _force_return_equipped_to_hand(card: Node3D) -> void:
 func _on_hand_request_use_magic(card: Dictionary) -> void:
 	if phase_index != 1:
 		return
-	var card_type := str(card.get("type", "")).strip_edges().to_lower()
+	var resolved := _resolve_card_data(card)
+	var card_type := str(resolved.get("type", "")).strip_edges().to_lower()
 	if card_type != "istantaneo":
 		return
-	if not CARD_TIMING.is_card_activation_allowed_now(self, card):
-		CARD_TIMING.show_card_timing_hint(self, card)
+	if not CARD_TIMING.is_card_activation_allowed_now(self, resolved):
+		CARD_TIMING.show_card_timing_hint(self, resolved)
 		return
-	_show_action_prompt(card, true, null)
+	_show_action_prompt(resolved, true, null)
+
+func _resolve_card_data(card: Dictionary) -> Dictionary:
+	var card_id := str(card.get("id", "")).strip_edges()
+	if card_id == "":
+		return card
+	for entry in CardDatabase.cards:
+		if str(entry.get("id", "")) == card_id:
+			return entry
+	return card
+
+func _replace_hand_card(original: Dictionary, resolved: Dictionary) -> void:
+	if original == resolved:
+		return
+	var idx := player_hand.find(original)
+	if idx < 0:
+		return
+	player_hand[idx] = resolved
+
+func _remove_hand_card(original: Dictionary, resolved: Dictionary) -> void:
+	var idx := player_hand.find(original)
+	if idx < 0 and original != resolved:
+		idx = player_hand.find(resolved)
+	if idx < 0:
+		var original_id := str(original.get("id", ""))
+		if original_id != "":
+			for i in player_hand.size():
+				var data: Variant = player_hand[i]
+				if data is Dictionary and str((data as Dictionary).get("id", "")) == original_id:
+					idx = i
+					break
+	if idx >= 0:
+		player_hand.remove_at(idx)
 
 func _spawn_regno_del_male() -> void:
 	GNG_RULES.spawn_regno_del_male(self)

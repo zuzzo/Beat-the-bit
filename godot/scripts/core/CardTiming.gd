@@ -6,6 +6,8 @@ static func is_card_activation_allowed_now(main: Node, card_data: Dictionary) ->
 		return false
 	if main.roll_in_progress:
 		return false
+	if _can_use_discard_adventure_now(main, card_data):
+		return true
 	var action_window := get_current_card_action_window(main, card_data)
 	if action_window.is_empty():
 		return false
@@ -31,6 +33,8 @@ static func get_current_card_action_window(main: Node, card_data: Dictionary) ->
 		if windows.has("any_time"):
 			return "any_time"
 		return ""
+	if _can_use_discard_adventure_now(main, card_data):
+		return "before_adventure"
 	if windows.has("before_adventure"):
 		return "before_adventure"
 	if windows.has("before_roll") or windows.has("next_roll"):
@@ -40,6 +44,27 @@ static func get_current_card_action_window(main: Node, card_data: Dictionary) ->
 	if windows.has("on_play"):
 		return "on_play"
 	return ""
+
+static func _can_use_discard_adventure_now(main: Node, card_data: Dictionary) -> bool:
+	if main.roll_pending_apply:
+		return false
+	if main._get_battlefield_card() == null:
+		return false
+	return _card_has_effect(card_data, "discard_revealed_adventure")
+
+static func _card_has_effect(card_data: Dictionary, effect_name: String) -> bool:
+	var timed_effects: Array = card_data.get("timed_effects", [])
+	for entry in timed_effects:
+		if not (entry is Dictionary):
+			continue
+		var eff := str((entry as Dictionary).get("effect", "")).strip_edges()
+		if eff == effect_name:
+			return true
+	var effects: Array = card_data.get("effects", [])
+	for eff in effects:
+		if str(eff).strip_edges() == effect_name:
+			return true
+	return false
 
 static func get_effects_for_window(card_data: Dictionary, action_window: String) -> Array:
 	var out: Array = []

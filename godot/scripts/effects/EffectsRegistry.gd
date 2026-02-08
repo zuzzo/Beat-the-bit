@@ -118,19 +118,11 @@ static func consume_next_roll_effects(main: Node, values: Array[int]) -> void:
 					values[i] = max(1, int(values[i]) - 2)
 				consumed.append(name)
 			"next_roll_double_then_remove_half":
-				for i in values.size():
-					values[i] = max(1, int(values[i]) * 2)
 				if values.size() > 1:
-					var order: Array[int] = []
-					for i in values.size():
-						order.append(i)
-					order.sort_custom(func(a, b):
-						return int(values[int(a)]) < int(values[int(b)])
-					)
-					var remove_count := int(floor(values.size() * 0.5))
-					for i in remove_count:
-						var idx := int(order[i])
-						values[idx] = 1
+					main.pending_drop_half_count = int(floor(values.size() * 0.5))
+					main._show_drop_half_prompt(main.pending_drop_half_count)
+					if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+						main.hand_ui.call("set_info", main._ui_text("Seleziona %d dadi da scartare." % main.pending_drop_half_count))
 				consumed.append(name)
 			"next_roll_lowest_die_applies_to_all":
 				var low := int(values[0])

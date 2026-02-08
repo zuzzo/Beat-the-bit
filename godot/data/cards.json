@@ -544,7 +544,7 @@
 				"when": "on_heart_loss"
 			}
 		],
-		"type": "istantaneo"
+		"type": "equipaggiamento"
 	},
 	{
 		"cost": 7.0,
@@ -618,7 +618,7 @@
 				"when": "before_roll"
 			}
 		],
-		"type": "istantaneo"
+		"type": "equipaggiamento"
 	},
 	{
 		"cost": 10.0,

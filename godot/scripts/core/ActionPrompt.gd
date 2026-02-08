@@ -44,7 +44,8 @@ static func confirm(main: Node) -> void:
 		hide(main)
 		return
 	if not main._validate_roll_selection_for_effects(effects):
-		hide(main)
+		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+			main.hand_ui.call("set_info", main._ui_text("Seleziona il dado richiesto e conferma."))
 		return
 	main._use_card_effects(main.pending_action_card_data, effects, action_window)
 	if not main.pending_action_is_magic and main.pending_action_source_card != null and is_instance_valid(main.pending_action_source_card):
