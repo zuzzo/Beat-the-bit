@@ -30,7 +30,7 @@ static func position_music_toggle(_main: Node) -> void:
 static func create_coin_total_label(main: Node) -> void:
 	main.coin_total_label = Label3D.new()
 	main.coin_total_label.font = main.UI_FONT
-	main.coin_total_label.font_size = 64
+	main.coin_total_label.font_size = 72
 	main.coin_total_label.modulate = Color(1, 1, 1, 1)
 	main.coin_total_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	main.coin_total_label.pixel_size = 0.01
@@ -41,13 +41,34 @@ static func create_coin_total_label(main: Node) -> void:
 static func position_coin_total_label(main: Node) -> void:
 	if main.coin_total_label == null:
 		return
-	var spawner: Node3D = main.get_node_or_null("RewardSpawner") as Node3D
-	if spawner == null:
+	var coins := main.get_tree().get_nodes_in_group("coins")
+	if coins.is_empty():
+		main.coin_total_label.visible = false
 		return
-	var offset := Vector3(-0.9, 0.0, -0.3)
-	if spawner.has_method("get"):
-		offset = spawner.get("coin_offset")
-	main.coin_total_label.global_position = spawner.global_position + offset + Vector3(0.45, 0.15, 0.0)
+	var min_x := INF
+	var max_x := -INF
+	var min_z := INF
+	var max_z := -INF
+	var max_y := 0.0
+	for node in coins:
+		if not (node is Node3D):
+			continue
+		var pos := (node as Node3D).global_position
+		min_x = min(min_x, pos.x)
+		max_x = max(max_x, pos.x)
+		min_z = min(min_z, pos.z)
+		max_z = max(max_z, pos.z)
+		max_y = max(max_y, pos.y)
+	if min_x == INF:
+		main.coin_total_label.visible = false
+		return
+	main.coin_total_label.visible = true
+	var side_offset: float = 0.32
+	var y_level: float = max_y * 0.25
+	if y_level < 0.045:
+		y_level = 0.045
+	var center_z: float = (min_z + max_z) * 0.5
+	main.coin_total_label.global_position = Vector3(max_x + side_offset, y_level, center_z)
 
 static func update_coin_total_label(main: Node) -> void:
 	if main.coin_total_label == null:

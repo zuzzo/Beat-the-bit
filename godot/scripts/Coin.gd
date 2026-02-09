@@ -1,9 +1,9 @@
 extends RigidBody3D
 
-@export var mesh_radius: float = 0.105
-@export var mesh_height: float = 0.02
-@export var collision_radius: float = 0.15
-@export var collision_height: float = 0.008
+@export var mesh_radius: float = 0.21
+@export var mesh_height: float = 0.04
+@export var collision_radius: float = 0.30
+@export var collision_height: float = 0.016
 
 @onready var mesh_instance: MeshInstance3D = $Mesh
 @onready var collision_shape: CollisionShape3D = $Collision

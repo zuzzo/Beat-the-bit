@@ -45,7 +45,11 @@ static func resize(main: Node) -> void:
 	main.purchase_panel.reset_size()
 
 static func confirm(main: Node) -> void:
-	if main.phase_index != 0:
+	var from_discard := false
+	if main.purchase_card != null and is_instance_valid(main.purchase_card):
+		from_discard = bool(main.purchase_card.get_meta("in_treasure_discard", false))
+	var phase_ok: bool = (main.phase_index == 0) or (from_discard and main.phase_index == 1)
+	if not phase_ok:
 		hide(main)
 		return
 	if main.purchase_card == null or not is_instance_valid(main.purchase_card):
@@ -58,7 +62,7 @@ static func confirm(main: Node) -> void:
 		return
 	main.player_gold -= cost
 	main.player_hand.append(card_data)
-	if main.revealed_treasure_count > 0:
+	if bool(main.purchase_card.get_meta("in_treasure_market", false)) and main.revealed_treasure_count > 0:
 		main.revealed_treasure_count -= 1
 	main.purchase_card.queue_free()
 	main._refresh_hand_ui()

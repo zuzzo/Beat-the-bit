@@ -171,8 +171,10 @@ static func reposition_discard_stack(main: Node) -> void:
 	)
 	for i in cards.size():
 		var card: Node3D = cards[i]
-		var pos: Vector3 = main.treasure_discard_pos + Vector3(0.0, i * main.TREASURE_REVEALED_Y_STEP, 0.0)
+		var pos: Vector3 = main.treasure_discard_pos + Vector3(0.0, i * main.TREASURE_DISCARD_Y_STEP, 0.0)
 		card.global_position = pos
+		var yaw := card.rotation.y
+		card.rotation = Vector3(-PI / 2.0, yaw, 0.0)
 
 static func reposition_adventure_discard_stack(main: Node) -> void:
 	var cards: Array = []

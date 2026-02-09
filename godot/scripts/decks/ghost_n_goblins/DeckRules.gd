@@ -103,14 +103,13 @@ static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
 			main.hand_ui.call("set_info", main._ui_text("Il Regno del Male e gia al massimo."))
 		return true
 	main.player_tombstones -= 1
-	main.regno_track_index += 1
 	update_regno_reward_label(main)
 	_apply_regno_reward(main, str(main.regno_track_rewards[main.regno_track_index]))
 	if main.hand_ui != null and main.hand_ui.has_method("set_tokens"):
 		main.hand_ui.call("set_tokens", main.player_tombstones)
 	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
 		var reward_code := str(main.regno_track_rewards[main.regno_track_index])
-		main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: Regno avanza a %s." % format_regno_reward(reward_code)))
+		main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: premio %s." % format_regno_reward(reward_code)))
 	return true
 
 static func _apply_regno_reward(main: Node, code: String) -> void:

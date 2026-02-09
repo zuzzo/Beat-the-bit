@@ -9,7 +9,7 @@ extends Node3D
 @export var token_offset: Vector3 = Vector3(0.9, 0.0, 0.3)
 @export var coin_spacing_multiplier: float = 1.6
 @export var coin_impulse_multiplier: float = 0.4
-@export var coin_stack_step: float = 0.018
+@export var coin_stack_step: float = 0.036
 @export var coin_stack_jitter: float = 0.012
 
 func spawn_coins(count: int, center: Vector3, spacing: float = -1.0) -> Array[RigidBody3D]:
