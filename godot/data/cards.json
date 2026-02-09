@@ -278,6 +278,7 @@
 		"difficulty": 8.0,
 		"hearts": 2.0,
 		"id": "boss_gigante",
+		"image": "res://assets/cards/ghost_n_goblins/boss/gigante.png",
 		"name": "Gigante",
 		"penalty_violet": [
 			"fail_even_discard_or_odd_lose_heart"
@@ -293,6 +294,7 @@
 		"difficulty": 8.0,
 		"hearts": 2.0,
 		"id": "boss_dragone",
+		"image": "res://assets/cards/ghost_n_goblins/boss/dragone.png",
 		"name": "Dragone",
 		"penalty_violet": [
 			"fail_even_poison_or_odd_lose_heart"
@@ -308,6 +310,7 @@
 		"difficulty": 7.0,
 		"hearts": 2.0,
 		"id": "boss_vampiro",
+		"image": "res://assets/cards/ghost_n_goblins/boss/vampiro.png",
 		"name": "Vampiro",
 		"penalty_violet": [
 			"fail_even_lose_3_coins_or_odd_lose_heart"
@@ -323,6 +326,7 @@
 		"difficulty": 9.0,
 		"hearts": 2.0,
 		"id": "boss_cerbero",
+		"image": "res://assets/cards/ghost_n_goblins/boss/cerbero.png",
 		"name": "Cerbero",
 		"penalty_violet": [
 			"fail_even_flip_or_odd_lose_heart"
@@ -338,6 +342,7 @@
 		"difficulty": 5.0,
 		"hearts": 3.0,
 		"id": "boss_finale_astaroth",
+		"image": "res://assets/cards/ghost_n_goblins/singles/astaroth.png",
 		"name": "Astaroth",
 		"penalty_violet": [
 			"fail_3_hearts_lose_heart",

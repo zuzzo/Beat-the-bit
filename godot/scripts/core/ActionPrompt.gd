@@ -48,9 +48,6 @@ static func confirm(main: Node) -> void:
 			main.hand_ui.call("set_info", main._ui_text("Seleziona il dado richiesto e conferma."))
 		return
 	main._use_card_effects(main.pending_action_card_data, effects, action_window)
-	if not main.pending_action_is_magic and main.pending_action_source_card != null and is_instance_valid(main.pending_action_source_card):
-		if effects.has("return_to_hand"):
-			main._force_return_equipped_to_hand(main.pending_action_source_card)
 	if main.pending_action_is_magic:
 		if not effects.has("return_to_hand"):
 			main.player_hand.erase(main.pending_action_card_data)

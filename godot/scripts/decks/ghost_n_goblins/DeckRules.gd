@@ -1,6 +1,69 @@
 extends RefCounted
 class_name GnGDeckRules
 
+const META_NEXT_ROLL_LOWEST := "gng_next_roll_lowest"
+const META_NEXT_ROLL_CLONE := "gng_next_roll_clone"
+const META_NEXT_ROLL_DROP_HALF := "gng_next_roll_drop_half"
+const META_ROLL_RESTORE := "gng_roll_restore"
+const META_PENDING_DROP_HALF := "gng_pending_drop_half_count"
+
+static func set_next_roll_lowest(main: Node) -> void:
+	main.set_meta(META_NEXT_ROLL_LOWEST, true)
+
+static func set_next_roll_clone(main: Node) -> void:
+	main.set_meta(META_NEXT_ROLL_CLONE, true)
+
+static func prepare_roll_for_clone(main: Node) -> void:
+	if not bool(main.get_meta(META_NEXT_ROLL_CLONE, false)):
+		return
+	main.set_meta(META_ROLL_RESTORE, {
+		"blue": main.blue_dice,
+		"green": main.green_dice,
+		"red": main.red_dice
+	})
+	main.blue_dice *= 2
+	main.green_dice *= 2
+	main.red_dice *= 2
+	main.set_meta(META_NEXT_ROLL_CLONE, false)
+	main.set_meta(META_NEXT_ROLL_DROP_HALF, true)
+
+static func apply_next_roll_overrides(main: Node, values: Array[int]) -> void:
+	if bool(main.get_meta(META_NEXT_ROLL_LOWEST, false)):
+		var low := int(values[0])
+		for v in values:
+			low = min(low, int(v))
+		for i in values.size():
+			values[i] = low
+		main.set_meta(META_NEXT_ROLL_LOWEST, false)
+
+static func start_drop_half_if_pending(main: Node, dice_count: int) -> void:
+	if not bool(main.get_meta(META_NEXT_ROLL_DROP_HALF, false)):
+		return
+	var count := int(floor(dice_count * 0.5))
+	if count > 0:
+		set_pending_drop_half_count(main, count)
+		main._show_drop_half_prompt(count)
+	main.set_meta(META_NEXT_ROLL_DROP_HALF, false)
+
+static func finalize_roll_for_clone(main: Node) -> void:
+	var restore: Variant = main.get_meta(META_ROLL_RESTORE, null)
+	if restore == null or not (restore is Dictionary):
+		return
+	main.blue_dice = int((restore as Dictionary).get("blue", main.blue_dice)) + 1
+	main.green_dice = int((restore as Dictionary).get("green", main.green_dice))
+	main.red_dice = int((restore as Dictionary).get("red", main.red_dice))
+	main.dice_count = main.DICE_FLOW.get_total_dice(main)
+	main.set_meta(META_ROLL_RESTORE, null)
+
+static func get_pending_drop_half_count(main: Node) -> int:
+	return int(main.get_meta(META_PENDING_DROP_HALF, 0))
+
+static func set_pending_drop_half_count(main: Node, value: int) -> void:
+	main.set_meta(META_PENDING_DROP_HALF, max(0, value))
+
+static func consume_next_roll_effects(_main: Node, _values: Array[int]) -> void:
+	return
+
 static func create_regno_reward_label(main: Node, ui: CanvasLayer) -> void:
 	main.regno_reward_label = Label.new()
 	main.regno_reward_label.text = main._ui_text("Regno: -")

@@ -83,6 +83,7 @@ static func spawn_boss_cards(main: Node) -> void:
 		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
 		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
 		card.set_meta("in_boss_stack", true)
+		card.set_meta("card_data", bosses[i])
 		card.set_meta("stack_index", i)
 		var image_path := str(bosses[i].get("image", ""))
 		if image_path.is_empty():

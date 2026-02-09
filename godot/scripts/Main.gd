@@ -74,10 +74,6 @@ var last_roll_penalty: bool = false
 var roll_trigger_reset: bool = false
 var post_roll_effects: Array[String] = []
 var roll_in_progress: bool = false
-var pending_drop_half_count: int = 0
-var next_roll_double_dice: bool = false
-var next_roll_drop_half: bool = false
-var roll_dice_restore: Dictionary = {}
 var dice_drop_panel: PanelContainer
 var dice_drop_label: Label
 var dice_drop_ok: Button
@@ -111,6 +107,10 @@ var player_tombstones: int = 0
 var enemies_defeated_total: int = 0
 var pending_penalty_discards: int = 0
 var pending_discard_reason: String = ""
+var pending_discard_paid: bool = false
+var pending_effect_card_data: Dictionary = {}
+var pending_effect_effects: Array = []
+var pending_effect_window: String = ""
 var purchase_panel: PanelContainer
 var purchase_label: Label
 var purchase_yes_button: Button
@@ -139,6 +139,7 @@ var pending_action_source_card: Node3D
 var pending_chain_bonus: int = 0
 var pending_chain_choice_cards: Array[Node3D] = []
 var pending_chain_choice_active: bool = false
+var pending_chain_reveal_lock: bool = false
 var position_marker: Node3D
 var dragging_marker: bool = false
 var marker_drag_offset: Vector3 = Vector3.ZERO
@@ -155,6 +156,9 @@ var player_max_hand: int = 0
 var player_current_hearts: int = 0
 var curse_stats_override: Dictionary = {}
 var active_curse_id: String = ""
+var curse_texture_override: String = ""
+var pending_curse_unequip_count: int = 0
+var active_character_id: String = "character_sir_arthur_a"
 const PURCHASE_FONT_SIZE := 44
 var treasure_deck_pos := Vector3(-3, 0.0179999992251396, 0)
 var treasure_reveal_pos := Vector3(-4, 0.0240000002086163, 0)
@@ -186,8 +190,10 @@ const ADVENTURE_REVEAL_OFFSET := Vector3(5, 0, 0.0)
 const ADVENTURE_DISCARD_OFFSET := Vector3(2.1, 0.006, 0.35)
 var adventure_image_index: Dictionary = {}
 var adventure_variant_cursor: Dictionary = {}
+const BOSS_X_EXTRA := 0.8
 const BOSS_BACK := "res://assets/cards/ghost_n_goblins/boss/back_Boss.png"
 const CHARACTER_FRONT := "res://assets/cards/ghost_n_goblins/singles/sir Arthur A.png"
+const CHARACTER_FRONT_B := "res://assets/cards/ghost_n_goblins/singles/Sir Arthur B.png"
 const CHARACTER_BACK := "res://assets/cards/ghost_n_goblins/singles/back_personaggio.png"
 const REGNO_FRONT := "res://assets/cards/ghost_n_goblins/singles/Regno del male.png"
 const REGNO_BACK := "res://assets/cards/ghost_n_goblins/singles/back_regno del male.png"
@@ -300,6 +306,16 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			last_mouse_pos = event.position
 			mouse_down_pos = event.position
 			var card := _get_card_under_mouse(event.position)
+			if card == null and phase_index == 1:
+				card = _get_battlefield_boss_at(event.position)
+			if pending_curse_unequip_count > 0:
+				if card != null and card.has_meta("equipped_slot"):
+					_force_return_equipped_to_hand(card)
+					pending_curse_unequip_count = max(0, pending_curse_unequip_count - 1)
+					if pending_curse_unequip_count == 0:
+						_apply_equipment_slot_limit_after_curse()
+					_update_curse_unequip_prompt()
+				return
 			if card != null and card.has_meta("position_marker"):
 				selected_card = card
 				dragging_marker = true
@@ -317,12 +333,43 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				return
 			if card == null and phase_index == 1:
 				card = _get_adventure_stack_card_at(event.position)
+			if card == null and phase_index == 0:
+				card = _get_boss_stack_card_at(event.position)
 			if card == null and phase_index == 1 and _get_battlefield_card() != null:
 				DICE_FLOW.start_dice_hold(self, event.position)
 				return
 			if card != null:
+				if phase_index == 1 and card.has_meta("in_battlefield") and card.get_meta("in_battlefield", false):
+					var data: Dictionary
+					if card.has_meta("card_data") and card.get_meta("card_data") is Dictionary:
+						data = card.get_meta("card_data") as Dictionary
+					else:
+						data = {}
+					var ctype: String = ""
+					if not data.is_empty():
+						ctype = str(data.get("type", "")).strip_edges().to_lower()
+					if ctype == "boss":
+						_set_card_hit_enabled(card, true)
+						var current_turn: int = -1
+						if hand_ui != null and hand_ui.has_method("get_turn_index"):
+							current_turn = int(hand_ui.call("get_turn_index"))
+						var played_turn: int = int(card.get_meta("played_from_hand_turn", -999))
+						if played_turn < 0 or current_turn < 0 or played_turn != current_turn:
+							_set_card_hit_enabled(card, false)
+							return
+						card.set_meta("in_battlefield", false)
+						card.set_meta("adventure_blocking", false)
+						card.set_meta("battlefield_hearts", 0)
+						_set_card_hit_enabled(card, false)
+						player_hand.append(data)
+						card.queue_free()
+						_refresh_hand_ui()
+						return
 				if phase_index == 0 and card.has_meta("in_mission_side") and card.get_meta("in_mission_side", false):
 					_try_claim_mission(card)
+					return
+				if phase_index == 0 and card.has_meta("in_boss_stack") and card.get_meta("in_boss_stack", false):
+					_claim_boss_to_hand_from_stack()
 					return
 				if phase_index == 0 and _try_spend_tombstone_on_regno(card):
 					return
@@ -560,6 +607,50 @@ func _get_card_under_mouse(mouse_pos: Vector2) -> Node3D:
 		node = node.get_parent()
 	return null
 
+func _get_battlefield_boss_at(mouse_pos: Vector2) -> Node3D:
+	var boss := _get_battlefield_card()
+	if boss == null or not is_instance_valid(boss):
+		return null
+	var data: Dictionary = {}
+	if boss.has_meta("card_data") and boss.get_meta("card_data") is Dictionary:
+		data = boss.get_meta("card_data") as Dictionary
+	if data.is_empty():
+		return null
+	var ctype := str(data.get("type", "")).strip_edges().to_lower()
+	if ctype != "boss":
+		return null
+	var hit := _ray_to_plane(mouse_pos)
+	if hit == Vector3.INF:
+		return null
+	var center := boss.global_position
+	if abs(hit.x - center.x) <= CARD_HIT_HALF_SIZE.x and abs(hit.z - center.z) <= CARD_HIT_HALF_SIZE.y:
+		return boss
+	return null
+
+func _set_card_hit_enabled(card: Node3D, enabled: bool) -> void:
+	if card == null:
+		return
+	var area := card.get_node_or_null("Pivot/HitArea")
+	if area == null or not (area is Area3D):
+		return
+	var hit_area := area as Area3D
+	hit_area.collision_layer = 2 if enabled else 0
+	hit_area.collision_mask = 0
+
+func _set_card_pivot_right_edge(card: Node3D) -> void:
+	if card == null:
+		return
+	var pivot := card.get_node_or_null("Pivot")
+	if pivot == null or not (pivot is Node3D):
+		return
+	var pivot_node := pivot as Node3D
+	var width := 1.4
+	pivot_node.position.x = width
+	for child in pivot_node.get_children():
+		if child is Node3D:
+			var node := child as Node3D
+			node.position.x -= width
+
 func _get_top_treasure_card() -> Node3D:
 	return BOARD_CORE.get_top_treasure_card(self)
 
@@ -633,6 +724,8 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 	if new_phase_index == 0 and _block_turn_pass_if_hand_exceeds_limit(_turn_index):
 		return
 	phase_index = new_phase_index
+	if phase_index == 1:
+		_ensure_portale_infernale_on_top_for_gold_key()
 	if phase_index != 0:
 		_hide_purchase_prompt()
 	if phase_index != 1:
@@ -644,6 +737,67 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 		_reset_dice_for_rest()
 	_update_phase_lighting()
 	_update_phase_info()
+
+func _ensure_portale_infernale_on_top_for_gold_key() -> void:
+	if not _has_equipped_card_id("treasure_chiave_oro"):
+		return
+	if _is_portale_infernale_in_play():
+		return
+	_move_portale_infernale_to_top_of_adventure_stack()
+
+func _has_equipped_card_id(card_id: String) -> bool:
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not bool(slot.get_meta("occupied", false)):
+			continue
+		var equipped: Node3D = slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		var data: Dictionary = equipped.get_meta("card_data", {}) as Dictionary
+		if str(data.get("id", "")) == card_id:
+			return true
+	return false
+
+func _is_portale_infernale_in_play() -> bool:
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("card_data"):
+			continue
+		var data: Dictionary = child.get_meta("card_data", {}) as Dictionary
+		if str(data.get("id", "")) != "event_portale_infernale":
+			continue
+		if bool(child.get_meta("in_battlefield", false)):
+			return true
+		if bool(child.get_meta("in_event_row", false)):
+			return true
+		if bool(child.get_meta("in_mission_side", false)):
+			return true
+	return false
+
+func _move_portale_infernale_to_top_of_adventure_stack() -> void:
+	var portal_card: Node3D = null
+	var top_index: int = -1
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not bool(child.get_meta("in_adventure_stack", false)):
+			continue
+		var idx: int = int(child.get_meta("stack_index", -1))
+		if idx > top_index:
+			top_index = idx
+		if not child.has_meta("card_data"):
+			continue
+		var data: Dictionary = child.get_meta("card_data", {}) as Dictionary
+		if str(data.get("id", "")) == "event_portale_infernale":
+			portal_card = child as Node3D
+	if portal_card == null:
+		return
+	if int(portal_card.get_meta("stack_index", -1)) >= top_index:
+		return
+	portal_card.set_meta("stack_index", top_index + 1)
+	BOARD_CORE.reposition_stack(self, "in_adventure_stack", adventure_deck_pos)
 
 func _block_turn_pass_if_hand_exceeds_limit(turn_index: int) -> bool:
 	var excess := player_hand.size() - player_max_hand
@@ -775,12 +929,19 @@ func _reveal_boss_from_regno() -> void:
 	boss.set_meta("in_boss_stack", false)
 	boss.set_meta("in_battlefield", true)
 	boss.set_meta("adventure_blocking", true)
+	_set_card_hit_enabled(boss, false)
 	var data: Dictionary = boss.get_meta("card_data", {})
 	var hearts := int(data.get("hearts", 1))
 	boss.set_meta("battlefield_hearts", hearts)
 	_spawn_battlefield_hearts(boss, hearts)
+	if boss.has_method("set_face_up"):
+		boss.call("set_face_up", true)
 	if boss.has_method("flip_to_side"):
-		boss.call("flip_to_side", _get_battlefield_target_pos())
+		var target := _get_battlefield_target_pos()
+		target.x -= (CARD_CENTER_X_OFFSET + BOSS_X_EXTRA)
+		print("BOSS_POS:", target)
+		_debug_card_positions(boss, "BOSS")
+		boss.call("flip_to_side", target)
 
 func _claim_boss_to_hand_from_regno() -> void:
 	var boss := _get_top_boss_card()
@@ -801,6 +962,48 @@ func _claim_boss_to_hand_from_regno() -> void:
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", _ui_text("Boss aggiunto alla mano."))
 
+func _claim_boss_to_hand_from_stack() -> void:
+	var boss := _get_top_boss_card()
+	if boss == null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Nessun boss disponibile."))
+		return
+	var data: Dictionary = boss.get_meta("card_data", {})
+	if data.is_empty():
+		boss.queue_free()
+		return
+	boss.set_meta("in_boss_stack", false)
+	var image_path := str(data.get("image", ""))
+	if image_path.is_empty():
+		image_path = _find_boss_image(data)
+	var reveal_card: Node3D = CARD_SCENE.instantiate()
+	add_child(reveal_card)
+	reveal_card.global_position = boss.global_position
+	reveal_card.rotate_x(-PI / 2.0)
+	_set_card_pivot_right_edge(reveal_card)
+	reveal_card.set_meta("flip_dir", 1.0)
+	reveal_card.set_meta("flip_force_face_up", true)
+	if image_path != "" and reveal_card.has_method("set_card_texture"):
+		reveal_card.call("set_card_texture", image_path)
+	if reveal_card.has_method("set_back_texture"):
+		reveal_card.call("set_back_texture", BOSS_BACK)
+	if reveal_card.has_method("set_face_up"):
+		reveal_card.call("set_face_up", false)
+	if reveal_card.has_method("set_sorting_offset"):
+		reveal_card.call("set_sorting_offset", 999.0)
+	var reveal_pos := boss_deck_pos + Vector3(1.6, 0.02, 0.0)
+	if reveal_card.has_method("flip_to_side"):
+		reveal_card.call("flip_to_side", reveal_pos)
+		await get_tree().create_timer(1.25).timeout
+	else:
+		reveal_card.global_position = reveal_pos
+		await get_tree().create_timer(0.2).timeout
+	if is_instance_valid(reveal_card):
+		reveal_card.queue_free()
+	player_hand.append(data)
+	boss.queue_free()
+	_refresh_hand_ui()
+
 func _reveal_final_boss_from_regno() -> void:
 	if regno_final_boss_spawned:
 		return
@@ -816,9 +1019,11 @@ func _reveal_final_boss_from_regno() -> void:
 	var card := CARD_SCENE.instantiate()
 	add_child(card)
 	card.global_position = _get_battlefield_target_pos()
+	card.global_position.x -= (CARD_CENTER_X_OFFSET + BOSS_X_EXTRA)
 	card.rotate_x(-PI / 2.0)
 	card.set_meta("in_battlefield", true)
 	card.set_meta("adventure_blocking", true)
+	_set_card_hit_enabled(card, false)
 	card.set_meta("card_data", entry)
 	var hearts := int(entry.get("hearts", 1))
 	card.set_meta("battlefield_hearts", hearts)
@@ -879,6 +1084,7 @@ func _on_end_turn_with_battlefield() -> void:
 	_show_battlefield_warning()
 	var hearts := int(battlefield.get_meta("battlefield_hearts", 1))
 	battlefield.set_meta("battlefield_hearts", hearts + 1)
+	_spawn_battlefield_hearts(battlefield, hearts + 1)
 
 func _try_advance_regno_track() -> void:
 	GNG_RULES.try_advance_regno_track(self)
@@ -929,16 +1135,35 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 	if effects.is_empty():
 		return
 	_hide_outcome()
+	var local_effects := effects.duplicate()
+	if local_effects.has("return_to_hand") and not pending_action_is_magic and pending_action_source_card != null and is_instance_valid(pending_action_source_card):
+		_force_return_equipped_to_hand(pending_action_source_card)
+		local_effects.erase("return_to_hand")
 	var selected_values := DICE_FLOW.get_selected_roll_values(self)
 	if selected_values.is_empty():
 		selected_values = last_roll_values.duplicate()
 	var reroll_indices: Array[int] = []
-	for effect in effects:
+	for effect in local_effects:
 		var effect_name := str(effect).strip_edges()
 		if effect_name.is_empty():
 			continue
 		if effect_name == "discard_hand_card_1":
-			if not _discard_one_hand_card_for_effect(card_data if pending_action_is_magic else {}):
+			if pending_discard_paid:
+				pending_discard_paid = false
+				continue
+			if player_hand.size() == 1:
+				_discard_one_hand_card_for_effect({})
+				continue
+			if player_hand.size() > 1:
+				pending_effect_card_data = card_data
+				pending_effect_effects = local_effects.duplicate()
+				pending_effect_window = action_window
+				pending_penalty_discards = max(pending_penalty_discards, 1)
+				_set_hand_discard_mode(true, "effect")
+				if hand_ui != null and hand_ui.has_method("set_info"):
+					hand_ui.call("set_info", _ui_text("Scegli 1 carta da scartare per attivare l'effetto."))
+				return
+			if not _discard_one_hand_card_for_effect({}):
 				if hand_ui != null and hand_ui.has_method("set_info"):
 					hand_ui.call("set_info", _ui_text("Costo non pagato: scarta 1 carta dalla mano."))
 				return
@@ -946,11 +1171,10 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 		if EFFECTS_REGISTRY.apply_direct_card_effect(self, effect_name, card_data, action_window):
 			continue
 		if effect_name == "lowest_die_applies_to_all" and action_window == "before_roll" and not roll_pending_apply:
-			post_roll_effects.append("next_roll_lowest_die_applies_to_all")
+			GNG_RULES.set_next_roll_lowest(self)
 			continue
 		if effect_name == "next_roll_double_then_remove_half" and action_window == "before_roll" and not roll_pending_apply:
-			next_roll_double_dice = true
-			next_roll_drop_half = true
+			GNG_RULES.set_next_roll_clone(self)
 			continue
 		post_roll_effects.append(effect_name)
 		EFFECTS_REGISTRY.collect_reroll_indices(self, effect_name, reroll_indices)
@@ -1085,8 +1309,11 @@ func _confirm_adventure_prompt() -> void:
 		pending_adventure_card.set_meta("in_battlefield", true)
 		pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
 		_spawn_battlefield_hearts(pending_adventure_card, base_hearts)
+		print("ADV_POS:", target_pos_adv)
+		_debug_card_positions(pending_adventure_card, "ADV")
 		pending_adventure_card.call("flip_to_side", target_pos_adv)
 	elif card_type == "concatenamento":
+		pending_chain_reveal_lock = true
 		var effects: Array = []
 		if not card_data.is_empty():
 			effects = card_data.get("effects", [])
@@ -1095,17 +1322,21 @@ func _confirm_adventure_prompt() -> void:
 		pending_adventure_card.set_meta("adventure_blocking", false)
 		pending_adventure_card.call("flip_to_side", chain_pos)
 		_apply_chain_card_effects(pending_adventure_card, effects)
+		_schedule_next_chain_reveal()
 		_hide_adventure_prompt()
 		return
 	elif card_type == "evento":
+		pending_chain_reveal_lock = false
 		_reveal_event_card(pending_adventure_card, card_data)
 		_hide_adventure_prompt()
 		return
 	elif card_type == "missione":
+		pending_chain_reveal_lock = false
 		_reveal_mission_card(pending_adventure_card, card_data)
 		_hide_adventure_prompt()
 		return
 	else:
+		pending_chain_reveal_lock = false
 		pending_adventure_card.set_meta("in_battlefield", true)
 		pending_adventure_card.set_meta("battlefield_hearts", base_hearts)
 		_spawn_battlefield_hearts(pending_adventure_card, base_hearts)
@@ -1161,18 +1392,34 @@ func _spawn_battlefield_hearts(card: Node3D, hearts: int) -> void:
 	for child in card.get_children():
 		if child is Node3D and child.has_meta("battlefield_heart_token"):
 			child.queue_free()
-	var spacing := 0.3
-	var total_width := (hearts - 1) * spacing
+	var spacing := 0.42
+	var total_width := float(hearts - 1) * spacing
 	var start_x := -total_width * 0.5
+	var right: Vector3 = card.global_transform.basis.x.normalized()
+	var up_on_card: Vector3 = card.global_transform.basis.y.normalized()
+	# Tokens stay near the top edge of the card, following card orientation on the table.
+	var base_origin: Vector3 = card.global_position + (right * 0.62) + (up_on_card * 0.92)
+	base_origin.y = TABLE_Y + 0.01
 	for i in hearts:
 		var token := TOKEN_SCENE.instantiate()
 		card.add_child(token)
+		token.top_level = true
 		token.set_meta("battlefield_heart_token", true)
-		token.position = Vector3(start_x + i * spacing, 0.03, -0.5)
-		token.rotation = Vector3(-PI / 2.0, deg_to_rad(randf_range(-4.0, 4.0)), 0.0)
-		token.scale = Vector3(0.65, 0.65, 0.65)
+		token.global_position = base_origin + (right * (start_x + float(i) * spacing))
+		token.rotate_x(-PI / 2.0)
+		token.rotate_y(deg_to_rad(randf_range(-4.0, 4.0)))
+		token.scale = Vector3(0.72, 0.72, 0.72)
 		if token.has_method("set_token_texture"):
 			token.call_deferred("set_token_texture", HEART_TEXTURE)
+
+func _debug_card_positions(card: Node3D, label: String) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var mesh := card.get_node_or_null("Pivot/Mesh") as MeshInstance3D
+	var mesh_pos := Vector3.ZERO
+	if mesh != null:
+		mesh_pos = mesh.global_position
+	print("%s card=%s mesh=%s" % [label, str(card.global_position), str(mesh_pos)])
 
 func _get_next_mission_side_pos() -> Vector3:
 	return GNG_RULES.get_next_mission_side_pos(self)
@@ -1630,6 +1877,22 @@ func _show_drop_half_prompt(count: int) -> void:
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", _ui_text("Scegli %d dadi e premi Ok." % count))
 
+func _get_pending_drop_half_count() -> int:
+	return GNG_RULES.get_pending_drop_half_count(self)
+
+func _set_pending_drop_half_count(value: int) -> void:
+	GNG_RULES.set_pending_drop_half_count(self, value)
+
+func _deck_prepare_roll() -> void:
+	GNG_RULES.prepare_roll_for_clone(self)
+
+func _deck_apply_roll_overrides(values: Array[int]) -> void:
+	GNG_RULES.apply_next_roll_overrides(self, values)
+
+func _deck_after_roll_setup() -> void:
+	GNG_RULES.start_drop_half_if_pending(self, last_roll_values.size())
+	GNG_RULES.finalize_roll_for_clone(self)
+
 func _center_drop_half_prompt() -> void:
 	if dice_drop_panel == null:
 		return
@@ -1646,12 +1909,13 @@ func _hide_drop_half_prompt() -> void:
 		dice_drop_panel.visible = false
 
 func _confirm_drop_half_selection() -> void:
-	if pending_drop_half_count <= 0:
+	var pending_count := _get_pending_drop_half_count()
+	if pending_count <= 0:
 		_hide_drop_half_prompt()
 		return
-	if selected_roll_dice.size() != pending_drop_half_count:
+	if selected_roll_dice.size() != pending_count:
 		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Seleziona %d dadi." % pending_drop_half_count))
+			hand_ui.call("set_info", _ui_text("Seleziona %d dadi." % pending_count))
 		return
 	var drop_indices: Array[int] = []
 	for idx in selected_roll_dice:
@@ -1663,7 +1927,7 @@ func _confirm_drop_half_selection() -> void:
 				if dtype == "green":
 					continue
 			drop_indices.append(i)
-	if drop_indices.size() != pending_drop_half_count:
+	if drop_indices.size() != pending_count:
 		if hand_ui != null and hand_ui.has_method("set_info"):
 			hand_ui.call("set_info", _ui_text("Puoi eliminare solo dadi blu."))
 		return
@@ -1677,7 +1941,7 @@ func _confirm_drop_half_selection() -> void:
 			active_dice.remove_at(drop_idx)
 		if drop_idx >= 0 and drop_idx < last_roll_values.size():
 			last_roll_values.remove_at(drop_idx)
-	pending_drop_half_count = 0
+	_set_pending_drop_half_count(0)
 	selected_roll_dice.clear()
 	DICE_FLOW.recalculate_last_roll_total(self)
 	DICE_FLOW.refresh_roll_dice_buttons(self)
@@ -1772,6 +2036,8 @@ func _spawn_hand_ui() -> void:
 		hand_root.connect("request_discard_card", Callable(self, "_on_hand_request_discard_card"))
 	if hand_root.has_signal("request_sell_card"):
 		hand_root.connect("request_sell_card", Callable(self, "_on_hand_request_sell_card"))
+	if hand_root.has_signal("request_play_boss"):
+		hand_root.connect("request_play_boss", Callable(self, "_on_hand_request_play_boss"))
 
 	var view_size := get_viewport().get_visible_rect().size
 	var card_height := view_size.y * 0.2
@@ -1833,6 +2099,7 @@ func _track_dice_sum() -> void:
 
 func _consume_next_roll_effects(values: Array[int]) -> void:
 	EFFECTS_REGISTRY.consume_next_roll_effects(self, values)
+	GNG_RULES.consume_next_roll_effects(self, values)
 
 func _wait_for_dice_settle(dice_list: Array[RigidBody3D]) -> void:
 	await DICE_FLOW.wait_for_dice_settle(self, dice_list)
@@ -1974,6 +2241,9 @@ func _put_adventure_card_on_bottom(card: Node3D) -> void:
 func _update_adventure_value_box() -> void:
 	if adventure_value_panel == null or adventure_value_label == null:
 		return
+	if phase_index != 1:
+		adventure_value_panel.visible = false
+		return
 	var battlefield := _get_battlefield_card()
 	if battlefield == null:
 		adventure_value_panel.visible = false
@@ -2001,7 +2271,7 @@ func _update_adventure_value_box() -> void:
 			player_value_label.text = _ui_text("Tuo tiro: -")
 	DICE_FLOW.refresh_roll_dice_buttons(self)
 	if compare_button != null:
-		compare_button.disabled = (not roll_pending_apply) or pending_drop_half_count > 0
+		compare_button.disabled = (not roll_pending_apply) or _get_pending_drop_half_count() > 0
 	adventure_value_panel.visible = true
 
 func _refresh_roll_dice_buttons() -> void:
@@ -2055,6 +2325,8 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 		if hearts > 0 and _has_equipped_effect("bonus_damage_multiheart"):
 			hearts -= 1
 		card.set_meta("battlefield_hearts", hearts)
+		if hearts > 0:
+			_spawn_battlefield_hearts(card, hearts)
 		if hearts <= 0:
 			var defeated_pos := card.global_position
 			if card_type == "scontro":
@@ -2108,9 +2380,12 @@ func _apply_player_heart_loss(amount: int) -> void:
 		remaining -= 1
 	if _consume_hand_reactive_heart_guard() and remaining > 0:
 		remaining -= 1
+	if _has_equipped_effect("reflect_damage_poison"):
+		EFFECTS_REGISTRY.apply_direct_damage_to_battlefield(self, 1)
 	if _has_equipped_effect("on_heart_loss_destroy_fatigue"):
 		_discard_one_fatigue_from_battlefield()
 	player_current_hearts = max(0, player_current_hearts - max(0, remaining))
+	_update_character_form_for_hearts()
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
 
@@ -2302,6 +2577,8 @@ func _set_hand_discard_mode(active: bool, reason: String = "") -> void:
 	if active and hand_ui.has_method("set_info"):
 		if pending_discard_reason == "hand_limit":
 			hand_ui.call("set_info", "Fine turno: scegli carte dalla mano da scartare.")
+		elif pending_discard_reason == "effect":
+			hand_ui.call("set_info", "Scegli 1 carta da scartare per attivare l'effetto.")
 		else:
 			hand_ui.call("set_info", "Penalita: scegli 1 carta dalla mano da scartare.")
 
@@ -2317,6 +2594,16 @@ func _on_hand_request_discard_card(card: Dictionary) -> void:
 	if pending_penalty_discards <= 0:
 		var finished_reason := pending_discard_reason
 		_set_hand_discard_mode(false)
+		if finished_reason == "effect" and not pending_effect_effects.is_empty():
+			pending_discard_paid = true
+			var effects := pending_effect_effects.duplicate()
+			var card_data := pending_effect_card_data.duplicate()
+			var window := pending_effect_window
+			pending_effect_card_data = {}
+			pending_effect_effects.clear()
+			pending_effect_window = ""
+			_use_card_effects(card_data, effects, window)
+			return
 		if hand_ui != null and hand_ui.has_method("set_info"):
 			if finished_reason == "hand_limit":
 				hand_ui.call("set_info", "Limite mano rispettato.")
@@ -2328,6 +2615,49 @@ func _on_hand_request_sell_card(card: Dictionary) -> void:
 		return
 	var resolved := _resolve_card_data(card)
 	_show_sell_prompt(resolved)
+
+func _on_hand_request_play_boss(card: Dictionary) -> void:
+	if phase_index != 0:
+		return
+	if _get_blocking_adventure_card() != null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("C'e gia un nemico in campo."))
+		return
+	var resolved := _resolve_card_data(card)
+	var card_type := str(resolved.get("type", "")).strip_edges().to_lower()
+	if card_type != "boss":
+		return
+	var card_node: Node3D = CARD_SCENE.instantiate()
+	add_child(card_node)
+	card_node.global_position = _get_battlefield_target_pos()
+	card_node.global_position.x -= (CARD_CENTER_X_OFFSET + BOSS_X_EXTRA)
+	print("BOSS_POS:", card_node.global_position)
+	card_node.rotate_x(-PI / 2.0)
+	card_node.set_meta("card_data", resolved)
+	card_node.set_meta("in_battlefield", true)
+	card_node.set_meta("adventure_blocking", true)
+	_set_card_hit_enabled(card_node, false)
+	var played_turn: int = -1
+	if hand_ui != null and hand_ui.has_method("get_turn_index"):
+		played_turn = int(hand_ui.call("get_turn_index"))
+	card_node.set_meta("played_from_hand_turn", played_turn)
+	var hearts := int(resolved.get("hearts", 2))
+	if hearts <= 0:
+		hearts = 2
+	card_node.set_meta("battlefield_hearts", hearts)
+	_spawn_battlefield_hearts(card_node, hearts)
+	_debug_card_positions(card_node, "BOSS_HAND")
+	var image_path := str(resolved.get("image", ""))
+	if image_path == "":
+		image_path = _find_boss_image(resolved)
+	if image_path != "" and card_node.has_method("set_card_texture"):
+		card_node.call_deferred("set_card_texture", image_path)
+	if card_node.has_method("set_back_texture"):
+		card_node.call_deferred("set_back_texture", BOSS_BACK)
+	if card_node.has_method("set_face_up"):
+		card_node.call_deferred("set_face_up", true)
+	_remove_hand_card(card, resolved)
+	_refresh_hand_ui()
 
 func _discard_one_equipped_card() -> bool:
 	for slot in equipment_slots:
@@ -2399,10 +2729,37 @@ func _spawn_defeat_explosion(world_pos: Vector3) -> void:
 		flash.queue_free()
 
 func _apply_curse(card_data: Dictionary) -> void:
-	curse_stats_override = card_data.get("stats", {})
+	curse_stats_override = card_data.get("stats", {}) as Dictionary
 	active_curse_id = str(card_data.get("id", ""))
-	_init_character_stats()
-	_spawn_equipment_slots(character_card)
+	curse_texture_override = _get_curse_texture_path(card_data)
+	_apply_character_texture_override()
+	_init_character_stats(true)
+	player_current_hearts = clamp(player_current_hearts, 0, player_max_hearts)
+	_apply_equipment_slot_limit_after_curse()
+	_update_hand_ui_stats()
+	_refresh_character_hearts_tokens()
+
+func _get_curse_texture_path(card_data: Dictionary) -> String:
+	var image_path: String = str(card_data.get("image", ""))
+	if not image_path.is_empty():
+		return image_path
+	var from_adventure_index: String = _get_adventure_image_path(card_data)
+	if not from_adventure_index.is_empty():
+		return from_adventure_index
+	return ""
+
+func _apply_character_texture_override() -> void:
+	if character_card == null or not is_instance_valid(character_card):
+		return
+	var texture_path: String = CHARACTER_FRONT
+	if not curse_texture_override.is_empty():
+		texture_path = curse_texture_override
+	elif active_character_id == "character_sir_arthur_b":
+		texture_path = CHARACTER_FRONT_B
+	if character_card.has_method("set_card_texture"):
+		character_card.call_deferred("set_card_texture", texture_path)
+	if character_card.has_method("set_face_up"):
+		character_card.call_deferred("set_face_up", true)
 
 func _report_battlefield_reward(card_data: Dictionary, total: int, difficulty: int) -> void:
 	var rewards: Array = card_data.get("reward_brown", [])
@@ -2539,17 +2896,35 @@ func _refresh_character_hearts_tokens() -> void:
 			token.call_deferred("set_token_texture", HEART_TEXTURE)
 
 func _get_character_hearts() -> int:
-	for entry in CardDatabase.cards_characters:
-		if str(entry.get("id", "")) == "character_sir_arthur_a":
-			var stats: Dictionary = entry.get("stats", {})
-			return int(stats.get("start_hearts", 0))
+	var entry: Dictionary = _get_character_entry(active_character_id)
+	if not entry.is_empty():
+		var stats: Dictionary = entry.get("stats", {})
+		return int(stats.get("start_hearts", 0))
 	return 0
 
 func _get_character_stats() -> Dictionary:
-	for entry in CardDatabase.cards_characters:
-		if str(entry.get("id", "")) == "character_sir_arthur_a":
-			return entry.get("stats", {})
+	var entry: Dictionary = _get_character_entry(active_character_id)
+	if not entry.is_empty():
+		return entry.get("stats", {})
 	return {}
+
+func _get_character_entry(character_id: String) -> Dictionary:
+	for entry in CardDatabase.cards_characters:
+		if str(entry.get("id", "")) == character_id:
+			return entry
+	return {}
+
+func _update_character_form_for_hearts() -> void:
+	if not curse_stats_override.is_empty():
+		return
+	var target_id: String = "character_sir_arthur_a"
+	if player_current_hearts <= 1:
+		target_id = "character_sir_arthur_b"
+	if target_id == active_character_id:
+		return
+	active_character_id = target_id
+	_apply_character_texture_override()
+	_init_character_stats(true)
 
 func _spawn_adventure_cards() -> void:
 	GNG_SPAWN.spawn_adventure_cards(self)
@@ -2577,18 +2952,22 @@ func _find_boss_image(card: Dictionary) -> String:
 func _spawn_character_card() -> void:
 	GNG_SPAWN.spawn_character_card(self)
 
-func _init_character_stats() -> void:
-	var stats := _get_character_stats()
+func _init_character_stats(preserve_current: bool = false) -> void:
+	var stats: Dictionary = _get_character_stats()
 	if not curse_stats_override.is_empty():
 		stats = curse_stats_override
 	player_max_hand = int(stats.get("max_hand", 0))
 	player_max_hearts = int(stats.get("max_hearts", 0))
-	player_current_hearts = int(stats.get("start_hearts", 0))
+	if preserve_current:
+		player_current_hearts = clamp(player_current_hearts, 0, player_max_hearts)
+	else:
+		player_current_hearts = int(stats.get("start_hearts", 0))
 	var min_dice := int(stats.get("min_dice", stats.get("start_dice", 1)))
 	base_dice_count = max(1, min_dice)
-	blue_dice = base_dice_count
-	green_dice = 0
-	red_dice = 0
+	if not preserve_current:
+		blue_dice = base_dice_count
+		green_dice = 0
+		red_dice = 0
 	dice_count = DICE_FLOW.get_total_dice(self)
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
@@ -2669,11 +3048,84 @@ func _reposition_equipment_slots() -> void:
 func _get_character_max_slots() -> int:
 	if not curse_stats_override.is_empty():
 		return int(curse_stats_override.get("max_slots", 0))
-	for entry in CardDatabase.cards_characters:
-		if str(entry.get("id", "")) == "character_sir_arthur_a":
-			var stats: Dictionary = entry.get("stats", {})
-			return int(stats.get("max_slots", 0))
+	var entry: Dictionary = _get_character_entry(active_character_id)
+	if not entry.is_empty():
+		var stats: Dictionary = entry.get("stats", {})
+		return int(stats.get("max_slots", 0))
 	return 0
+
+func _get_equipped_cards_sorted() -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	var slots_sorted: Array = equipment_slots.duplicate()
+	slots_sorted.sort_custom(func(a, b):
+		if a == null or b == null:
+			return false
+		return int(a.get_meta("slot_index", 0)) < int(b.get_meta("slot_index", 0))
+	)
+	for slot_any in slots_sorted:
+		var slot: Area3D = slot_any as Area3D
+		if slot == null:
+			continue
+		var occupied: bool = bool(slot.get_meta("occupied", false))
+		if not occupied:
+			continue
+		var equipped: Node3D = slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		out.append(equipped)
+	return out
+
+func _compact_equipment_slots() -> void:
+	var equipped_cards: Array[Node3D] = _get_equipped_cards_sorted()
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		slot.set_meta("occupied", false)
+		slot.set_meta("equipped_card", null)
+	var target_idx: int = 0
+	for card in equipped_cards:
+		if target_idx >= equipment_slots.size():
+			break
+		var target_slot: Area3D = equipment_slots[target_idx]
+		target_idx += 1
+		if target_slot == null:
+			continue
+		if card.get_parent() != target_slot:
+			card.reparent(target_slot)
+		card.position = Vector3(-CARD_CENTER_X_OFFSET, 0.01, 0.0)
+		card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
+		card.set_meta("equipped_slot", target_slot)
+		target_slot.set_meta("occupied", true)
+		target_slot.set_meta("equipped_card", card)
+
+func _apply_equipment_slot_limit_after_curse() -> void:
+	if equipment_slots_root == null or character_card == null:
+		return
+	var target_slots: int = max(0, _get_character_max_slots())
+	if equipment_slots.size() < target_slots:
+		_add_equipment_slots(target_slots - equipment_slots.size())
+		return
+	_compact_equipment_slots()
+	var equipped_cards: Array[Node3D] = _get_equipped_cards_sorted()
+	var equipped_count: int = equipped_cards.size()
+	var must_unequip: int = max(0, equipped_count - target_slots)
+	if must_unequip > 0:
+		pending_curse_unequip_count = must_unequip
+		_update_curse_unequip_prompt()
+		return
+	var extra_slots: int = equipment_slots.size() - target_slots
+	if extra_slots > 0:
+		_remove_equipment_slots(extra_slots)
+	pending_curse_unequip_count = 0
+	_update_curse_unequip_prompt()
+
+func _update_curse_unequip_prompt() -> void:
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", pending_curse_unequip_count <= 0)
+	if pending_curse_unequip_count <= 0:
+		return
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Maledizione: riprendi %d equipaggiamenti in mano." % pending_curse_unequip_count))
 
 func _on_hand_request_place_equipment(card: Dictionary, screen_pos: Vector2) -> void:
 	if phase_index != 0:
@@ -2954,6 +3406,21 @@ func _load_texture(path: String) -> Texture2D:
 	var tex := load(path)
 	if tex is Texture2D:
 		return tex
+	return null
+
+func _get_boss_stack_card_at(mouse_pos: Vector2) -> Node3D:
+	var card := _get_card_under_mouse(mouse_pos)
+	if card != null and card.has_meta("in_boss_stack") and card.get_meta("in_boss_stack", false):
+		return _get_top_boss_card()
+	var top := _get_top_boss_card()
+	if top == null:
+		return null
+	var hit := _ray_to_plane(mouse_pos)
+	if hit == Vector3.INF:
+		return null
+	var center := boss_deck_pos
+	if abs(hit.x - center.x) <= CARD_HIT_HALF_SIZE.x and abs(hit.z - center.z) <= CARD_HIT_HALF_SIZE.y:
+		return top
 	return null
 
 func _spawn_astaroth() -> void:

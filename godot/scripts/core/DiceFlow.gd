@@ -5,16 +5,7 @@ static func launch_dice_at(main: Node, spawn_pos: Vector3, launch_dir: Vector3) 
 	clear_dice(main, false)
 	main._hide_outcome()
 	main.roll_in_progress = true
-	if main.next_roll_double_dice:
-		main.roll_dice_restore = {
-			"blue": main.blue_dice,
-			"green": main.green_dice,
-			"red": main.red_dice
-		}
-		main.blue_dice *= 2
-		main.green_dice *= 2
-		main.red_dice *= 2
-		main.next_roll_double_dice = false
+	main._deck_prepare_roll()
 	main.dice_count = get_total_dice(main)
 	spawn_dice(main, spawn_pos, launch_dir)
 	main.blue_dice += 1
@@ -48,6 +39,8 @@ static func release_dice_hold(main: Node, mouse_pos: Vector2) -> void:
 	launch_dice_at(main, hit_end, launch_dir)
 
 static func can_start_roll(main: Node) -> bool:
+	if main.pending_chain_reveal_lock:
+		return false
 	if main.roll_pending_apply:
 		return false
 	if main.roll_in_progress:
@@ -157,21 +150,21 @@ static func track_dice_sum(main: Node) -> void:
 	await wait_for_dice_settle(main, main.pending_dice)
 	var values: Array[int] = []
 	var names: Array[String] = []
+	var total: int = 0
 	for dice in main.pending_dice:
 		if not is_instance_valid(dice):
 			continue
 		var value: int = get_top_face_value(main, dice)
 		values.append(value)
 		names.append(get_top_face_name(main, dice))
+		total += _get_signed_die_value(value, dice)
 	main.pending_dice.clear()
 	main.roll_in_progress = false
 	main._consume_next_roll_effects(values)
-	var total: int = 0
-	for v in values:
-		total += v
+	main._deck_apply_roll_overrides(values)
 	main.last_roll_values = values.duplicate()
 	main.selected_roll_dice.clear()
-	if main.pending_drop_half_count <= 0:
+	if main._get_pending_drop_half_count() <= 0:
 		for i in main.last_roll_values.size():
 			main.selected_roll_dice.append(i)
 	main.last_roll_total = total
@@ -179,17 +172,7 @@ static func track_dice_sum(main: Node) -> void:
 	main.last_roll_success = false
 	main.last_roll_penalty = false
 	main.roll_trigger_reset = false
-	if main.next_roll_drop_half:
-		main.pending_drop_half_count = int(floor(main.last_roll_values.size() * 0.5))
-		main.next_roll_drop_half = false
-		if main.pending_drop_half_count > 0:
-			main._show_drop_half_prompt(main.pending_drop_half_count)
-	if not main.roll_dice_restore.is_empty():
-		main.blue_dice = int(main.roll_dice_restore.get("blue", main.blue_dice)) + 1
-		main.green_dice = int(main.roll_dice_restore.get("green", main.green_dice))
-		main.red_dice = int(main.roll_dice_restore.get("red", main.red_dice))
-		main.roll_dice_restore.clear()
-		main.dice_count = get_total_dice(main)
+	main._deck_after_roll_setup()
 	main.roll_history.append(total)
 	main.roll_color_history.append(", ".join(names))
 	if main.sum_label != null:
@@ -253,7 +236,7 @@ static func rebuild_roll_values_from_active_dice(main: Node) -> void:
 			continue
 		var value: int = get_top_face_value(main, dice)
 		main.last_roll_values.append(value)
-		total += value
+		total += _get_signed_die_value(value, dice)
 		names.append(get_top_face_name(main, dice))
 		main.selected_roll_dice.append(main.last_roll_values.size() - 1)
 	main.last_roll_total = total
@@ -262,9 +245,20 @@ static func rebuild_roll_values_from_active_dice(main: Node) -> void:
 
 static func recalculate_last_roll_total(main: Node) -> void:
 	var total: int = 0
-	for v in main.last_roll_values:
-		total += int(v)
+	for i in main.last_roll_values.size():
+		var value: int = int(main.last_roll_values[i])
+		var dice: RigidBody3D = null
+		if i < main.active_dice.size():
+			dice = main.active_dice[i]
+		total += _get_signed_die_value(value, dice)
 	main.last_roll_total = total
+
+static func _get_signed_die_value(value: int, dice: RigidBody3D) -> int:
+	if dice != null and is_instance_valid(dice) and dice.has_method("get_dice_type"):
+		var dice_type := str(dice.call("get_dice_type"))
+		if dice_type == "red":
+			return -value
+	return value
 
 static func refresh_roll_dice_buttons(main: Node) -> void:
 	if main.player_dice_buttons_row == null:
@@ -296,7 +290,7 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		main.player_dice_buttons_row.add_child(btn)
 
 static func on_roll_die_button_pressed(main: Node, index: int) -> void:
-	if main.pending_drop_half_count > 0:
+	if main._get_pending_drop_half_count() > 0:
 		if main.active_dice[index] != null and is_instance_valid(main.active_dice[index]):
 			var dice_type := ""
 			if main.active_dice[index].has_method("get_dice_type"):

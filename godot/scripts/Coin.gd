@@ -75,14 +75,23 @@ func _physics_process(delta: float) -> void:
 	if linear_velocity.length() < _SETTLE_LINEAR and angular_velocity.length() < _SETTLE_ANGULAR:
 		_settle_time += delta
 		if _settle_time >= _SETTLE_DELAY:
-			freeze = true
-			sleeping = true
+			_settle_now()
 	else:
 		_settle_time = 0.0
 	if _alive_time >= _MAX_SETTLE_TIME:
 		if linear_velocity.length() < _MAX_LINEAR and angular_velocity.length() < _MAX_ANGULAR:
-			freeze = true
-			sleeping = true
+			_settle_now()
+
+func _settle_now() -> void:
+	# Hard stop to avoid micro jitter while resting on the table.
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	var rot := global_rotation
+	rot.x = 0.0
+	rot.z = 0.0
+	global_rotation = rot
+	freeze = true
+	sleeping = true
 
 func _apply_sizes() -> void:
 	if mesh_instance != null and mesh_instance.mesh is CylinderMesh:

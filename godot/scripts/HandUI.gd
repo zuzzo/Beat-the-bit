@@ -45,6 +45,7 @@ signal phase_changed(phase_index: int, turn_index: int)
 signal request_use_magic(card: Dictionary)
 signal request_discard_card(card: Dictionary)
 signal request_sell_card(card: Dictionary)
+signal request_play_boss(card: Dictionary)
 
 func _ui_text(text: String) -> String:
 	return text.replace(" ", "  ")
@@ -274,7 +275,11 @@ func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2
 				request_discard_card.emit(card)
 				return
 			if _phase_index == 0:
-				request_place_equipment.emit(card, get_viewport().get_mouse_position())
+				var ctype := str(card.get("type", "")).strip_edges().to_lower()
+				if ctype == "boss":
+					request_play_boss.emit(card)
+				else:
+					request_place_equipment.emit(card, get_viewport().get_mouse_position())
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
 				if _phase_index == 0:

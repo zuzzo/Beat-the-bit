@@ -22,6 +22,8 @@ static func apply_direct_card_effect(main: Node, effect_name: String, _card_data
 			return true
 		"reset_hearts_and_dice":
 			main.player_current_hearts = main.player_max_hearts
+			if main.has_method("_update_character_form_for_hearts"):
+				main._update_character_form_for_hearts()
 			main.blue_dice = main.base_dice_count
 			main.green_dice = 0
 			main.red_dice = 0
@@ -118,11 +120,6 @@ static func consume_next_roll_effects(main: Node, values: Array[int]) -> void:
 					values[i] = max(1, int(values[i]) - 2)
 				consumed.append(name)
 			"next_roll_double_then_remove_half":
-				if values.size() > 1:
-					main.pending_drop_half_count = int(floor(values.size() * 0.5))
-					main._show_drop_half_prompt(main.pending_drop_half_count)
-					if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-						main.hand_ui.call("set_info", main._ui_text("Seleziona %d dadi da scartare." % main.pending_drop_half_count))
 				consumed.append(name)
 			"next_roll_lowest_die_applies_to_all":
 				var low := int(values[0])

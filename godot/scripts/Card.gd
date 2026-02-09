@@ -211,17 +211,25 @@ func flip_to_side(target_position: Vector3) -> void:
 		return
 	is_animating = true
 	pivot.rotation = Vector3.ZERO
+	var dir := -1.0
+	if has_meta("flip_dir"):
+		dir = float(get_meta("flip_dir"))
+	var sign := 1.0 if dir >= 0.0 else -1.0
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	var half := 1.2 * 0.5
-	tween.tween_property(pivot, "rotation:y", -PI * 0.5, half)
-	tween.tween_property(pivot, "rotation:y", -PI, half)
+	tween.tween_property(pivot, "rotation:y", sign * PI * 0.5, half)
+	tween.tween_property(pivot, "rotation:y", sign * PI, half)
 	tween.parallel().tween_property(self, "global_position", target_position, 1.2)
 	tween.tween_callback(func() -> void:
 		global_position = target_position
 		rotation.y += deg_to_rad(randf_range(-2.0, 2.0))
+		if has_meta("flip_force_face_up") and bool(get_meta("flip_force_face_up")):
+			set_face_up(true)
+			set_meta("flip_force_face_up", false)
 		is_animating = false
 	)
+
 
 func set_back_texture(texture_path: String) -> void:
 	if texture_path.is_empty():
