@@ -7,7 +7,8 @@ const TABLE_Y := 0.0
 const HAND_UI_SCRIPT := preload("res://scripts/HandUI.gd")
 const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
 const POSITION_BOX_SCENE := preload("res://scenes/PositionBox.tscn")
-const MUSIC_TRACK := preload("res://assets/music/Music.mp3")
+const MUSIC_TRACK := preload("res://assets/Music/Music.mp3")
+const BATTLE_MUSIC_TRACK := preload("res://assets/Music/Battaglia a Turni.mp3")
 const MUSIC_ON_ICON := preload("res://assets/Music/sound_on.png")
 const MUSIC_OFF_ICON := preload("res://assets/Music/sound_off.png")
 const FIGHT_ICON := preload("res://assets/Token/fight.png")
@@ -148,7 +149,10 @@ var battlefield_warning_panel: PanelContainer
 var battlefield_warning_label: Label
 var battlefield_warning_ok: Button
 var music_player: AudioStreamPlayer
+var battle_music_player: AudioStreamPlayer
 var music_toggle_button: TextureButton
+var music_fade_tween: Tween
+var music_enabled: bool = true
 var fight_icon: Texture2D
 var light_tween: Tween
 var phase_index: int = 0
@@ -169,6 +173,7 @@ var discarded_treasure_count: int = 0
 var is_treasure_stack_hovered: bool = false
 const REVEALED_Y_STEP := 0.01
 const TREASURE_REVEALED_Y_STEP := 0.02
+const TREASURE_CARD_THICKNESS_Y := 0.04
 const TREASURE_DISCARD_Y_STEP := 0.05
 const TREASURE_DISCARD_INSERT_Y_BIAS := 0.006
 var adventure_deck_pos := Vector3(4, 0.02, 0)
@@ -442,6 +447,8 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					pending_flip_card.set_meta("in_treasure_stack", false)
 					pending_flip_card.set_meta("in_treasure_market", true)
 					pending_flip_card.set_meta("market_index", revealed_treasure_count)
+					_lift_treasure_card_to_stack_top(pending_flip_card)
+					pending_flip_card.set_meta("flip_rotate_on_lifted_axis", true)
 					pending_flip_card.call("flip_to_side", target_pos)
 					revealed_treasure_count += 1
 			pending_flip_card = null
@@ -761,6 +768,7 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 		if not retreated_this_turn:
 			_try_advance_regno_track()
 		_reset_dice_for_rest()
+	_update_phase_music()
 	_update_phase_lighting()
 	_update_phase_info()
 
@@ -921,10 +929,29 @@ func _flip_treasure_card_for_recovery(card: Node3D) -> void:
 		return
 	var reveal_pos := treasure_reveal_pos + Vector3(0.0, revealed_treasure_count * TREASURE_REVEALED_Y_STEP, 0.0)
 	if card.has_method("flip_to_side"):
+		_lift_treasure_card_to_stack_top(card)
+		card.set_meta("flip_rotate_on_lifted_axis", true)
 		card.call("flip_to_side", reveal_pos)
 		await get_tree().create_timer(0.35).timeout
 	else:
 		card.global_position = reveal_pos
+
+func _lift_treasure_card_to_stack_top(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var deck_top_y: float = treasure_deck_pos.y
+	var discard_top_y: float = treasure_discard_pos.y
+	var top_deck := _get_top_treasure_card()
+	if top_deck != null and is_instance_valid(top_deck):
+		deck_top_y = top_deck.global_position.y
+	var top_discard := _get_top_treasure_discard_card()
+	if top_discard != null and is_instance_valid(top_discard):
+		discard_top_y = top_discard.global_position.y
+	var lift_y: float = max(deck_top_y, discard_top_y) + TREASURE_CARD_THICKNESS_Y
+	# Set the lift height immediately before flip to avoid any tween interruption.
+	var pos := card.global_position
+	pos.y = lift_y
+	card.global_position = pos
 
 func _collect_tombstone_token(token: RigidBody3D, target: Vector3) -> void:
 	if token == null or not is_instance_valid(token):
@@ -1608,17 +1635,24 @@ func _create_music_toggle(ui_layer: CanvasLayer) -> void:
 	CORE_UI.create_music_toggle(self, ui_layer)
 
 func _toggle_music() -> void:
-	if music_player == null or music_toggle_button == null:
+	if music_toggle_button == null:
 		return
-	music_player.playing = music_toggle_button.button_pressed
-	if music_player.playing:
+	music_enabled = music_toggle_button.button_pressed
+	if music_enabled:
 		music_toggle_button.texture_normal = MUSIC_ON_ICON
 		music_toggle_button.texture_pressed = MUSIC_ON_ICON
 		music_toggle_button.texture_hover = MUSIC_ON_ICON
+		_update_phase_music()
 	else:
 		music_toggle_button.texture_normal = MUSIC_OFF_ICON
 		music_toggle_button.texture_pressed = MUSIC_OFF_ICON
 		music_toggle_button.texture_hover = MUSIC_OFF_ICON
+		if music_fade_tween != null and music_fade_tween.is_valid():
+			music_fade_tween.kill()
+		if music_player != null:
+			music_player.stop()
+		if battle_music_player != null:
+			battle_music_player.stop()
 
 func _create_coin_total_label() -> void:
 	CORE_UI.create_coin_total_label(self)
@@ -3584,10 +3618,66 @@ func _play_music() -> void:
 		return
 	music_player = AudioStreamPlayer.new()
 	music_player.stream = MUSIC_TRACK
-	music_player.autoplay = true
 	music_player.volume_db = -28.0
 	music_player.bus = "Master"
 	add_child(music_player)
+	music_player.play()
+	battle_music_player = AudioStreamPlayer.new()
+	battle_music_player.stream = BATTLE_MUSIC_TRACK
+	battle_music_player.volume_db = -80.0
+	battle_music_player.bus = "Master"
+	add_child(battle_music_player)
+	_update_phase_music(true)
+
+func _update_phase_music(immediate: bool = false) -> void:
+	if not music_enabled:
+		return
+	var to_battle: bool = (phase_index == 1)
+	_crossfade_music(to_battle, immediate)
+
+func _crossfade_music(to_battle: bool, immediate: bool = false) -> void:
+	if music_player == null or battle_music_player == null:
+		return
+	if music_fade_tween != null and music_fade_tween.is_valid():
+		music_fade_tween.kill()
+	var target_db := -28.0
+	var muted_db := -80.0
+	if to_battle:
+		if not battle_music_player.playing:
+			battle_music_player.play()
+		if not music_player.playing:
+			music_player.play()
+		if immediate:
+			battle_music_player.volume_db = target_db
+			music_player.volume_db = muted_db
+			music_player.stop()
+			return
+		music_fade_tween = create_tween()
+		music_fade_tween.set_parallel(true)
+		music_fade_tween.tween_property(battle_music_player, "volume_db", target_db, 0.8)
+		music_fade_tween.tween_property(music_player, "volume_db", muted_db, 0.8)
+		music_fade_tween.chain().tween_callback(func() -> void:
+			if music_player != null:
+				music_player.stop()
+		)
+	else:
+		if not music_player.playing:
+			music_player.play()
+		if not battle_music_player.playing:
+			battle_music_player.play()
+		if immediate:
+			music_player.volume_db = target_db
+			battle_music_player.volume_db = muted_db
+			battle_music_player.stop()
+			return
+		music_fade_tween = create_tween()
+		music_fade_tween.set_parallel(true)
+		music_fade_tween.tween_property(music_player, "volume_db", target_db, 0.8)
+		music_fade_tween.tween_property(battle_music_player, "volume_db", muted_db, 0.8)
+		music_fade_tween.chain().tween_callback(func() -> void:
+			if battle_music_player != null:
+				battle_music_player.stop()
+		)
 
 func _strip_variant_suffix(card_name: String) -> String:
 	var parts := card_name.split(" ")

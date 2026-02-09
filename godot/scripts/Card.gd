@@ -215,12 +215,32 @@ func flip_to_side(target_position: Vector3) -> void:
 	if has_meta("flip_dir"):
 		dir = float(get_meta("flip_dir"))
 	var sign := 1.0 if dir >= 0.0 else -1.0
+	var rotate_on_lifted_axis := false
+	if has_meta("flip_rotate_on_lifted_axis"):
+		rotate_on_lifted_axis = bool(get_meta("flip_rotate_on_lifted_axis"))
+		set_meta("flip_rotate_on_lifted_axis", false)
+	var pre_lift_y: float = global_position.y
+	var pre_lift_duration: float = 0.14
+	if has_meta("flip_pre_lift_y"):
+		pre_lift_y = float(get_meta("flip_pre_lift_y"))
+		set_meta("flip_pre_lift_y", global_position.y)
+	if has_meta("flip_pre_lift_duration"):
+		pre_lift_duration = max(0.05, float(get_meta("flip_pre_lift_duration")))
+		set_meta("flip_pre_lift_duration", 0.14)
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	if pre_lift_y > global_position.y + 0.001:
+		var lift_pos := global_position
+		lift_pos.y = pre_lift_y
+		tween.tween_property(self, "global_position", lift_pos, pre_lift_duration)
 	var half := 1.2 * 0.5
 	tween.tween_property(pivot, "rotation:y", sign * PI * 0.5, half)
 	tween.tween_property(pivot, "rotation:y", sign * PI, half)
-	tween.parallel().tween_property(self, "global_position", target_position, 1.2)
+	if rotate_on_lifted_axis:
+		# Keep the lifted position during the flip; move to target only after rotation.
+		tween.tween_property(self, "global_position", target_position, 0.2)
+	else:
+		tween.parallel().tween_property(self, "global_position", target_position, 1.2)
 	tween.tween_callback(func() -> void:
 		global_position = target_position
 		rotation.y += deg_to_rad(randf_range(-2.0, 2.0))

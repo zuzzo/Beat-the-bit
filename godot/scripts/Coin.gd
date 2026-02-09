@@ -55,18 +55,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				_uv_scale = max(0.1, _uv_scale - 0.1)
 				_update_uv()
-			KEY_UP:
-				_uv_offset.y -= 0.05
-				_update_uv()
-			KEY_DOWN:
-				_uv_offset.y += 0.05
-				_update_uv()
-			KEY_LEFT:
-				_uv_offset.x -= 0.05
-				_update_uv()
-			KEY_RIGHT:
-				_uv_offset.x += 0.05
-				_update_uv()
 
 func _physics_process(delta: float) -> void:
 	if sleeping:
