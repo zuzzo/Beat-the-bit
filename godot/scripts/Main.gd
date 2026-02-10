@@ -153,6 +153,7 @@ var battle_music_player: AudioStreamPlayer
 var music_toggle_button: TextureButton
 var music_fade_tween: Tween
 var music_enabled: bool = true
+var music_delay_timer: Timer
 var fight_icon: Texture2D
 var light_tween: Tween
 var phase_index: int = 0
@@ -174,7 +175,7 @@ var is_treasure_stack_hovered: bool = false
 const REVEALED_Y_STEP := 0.01
 const TREASURE_REVEALED_Y_STEP := 0.02
 const TREASURE_CARD_THICKNESS_Y := 0.04
-const TREASURE_DISCARD_Y_STEP := 0.05
+const TREASURE_DISCARD_Y_STEP := TREASURE_CARD_THICKNESS_Y
 const TREASURE_DISCARD_INSERT_Y_BIAS := 0.006
 var adventure_deck_pos := Vector3(4, 0.02, 0)
 var adventure_reveal_pos := Vector3(2, 0.2, 0)
@@ -390,11 +391,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					if top_discard_left != null and card == top_discard_left:
 						_try_show_purchase_prompt(card, true)
 						return
-				if phase_index == 1:
-					var top_discard_adv := _get_top_treasure_discard_card()
-					if top_discard_adv != null and card == top_discard_adv:
-						_try_show_purchase_prompt(card, true)
-						return
 				if phase_index == 1 and card.has_meta("equipped_slot"):
 					var eq_data: Dictionary = card.get_meta("card_data", {})
 					if CARD_TIMING.is_card_activation_allowed_now(self, eq_data):
@@ -467,9 +463,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					if top_discard != null and card == top_discard:
 						_try_show_purchase_prompt(card, true)
 				elif phase_index == 1:
-					var top_discard_adv := _get_top_treasure_discard_card()
-					if top_discard_adv != null and card == top_discard_adv:
-						_try_show_purchase_prompt(card, true)
 					if card.has_meta("in_adventure_stack") and card.get_meta("in_adventure_stack", false):
 						_try_show_adventure_prompt(card)
 		pan_active = false
@@ -626,8 +619,6 @@ func _get_card_under_mouse(mouse_pos: Vector2) -> Node3D:
 				return _get_top_treasure_card()
 			if node.has_meta("in_treasure_discard") and node.get_meta("in_treasure_discard", false):
 				return _get_top_treasure_discard_card()
-			if node.has_meta("discard_index"):
-				return _get_top_treasure_discard_card()
 			if node.has_meta("in_adventure_stack") and node.get_meta("in_adventure_stack", false):
 				return _get_top_adventure_card()
 			return node
@@ -729,10 +720,16 @@ func _get_blocking_adventure_card() -> Node3D:
 func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 	if card == null or not is_instance_valid(card):
 		return false
+	if phase_index != 0:
+		return false
 	var in_market := bool(card.get_meta("in_treasure_market", false))
 	var in_discard := bool(card.get_meta("in_treasure_discard", false))
 	if not in_market and not in_discard:
 		return false
+	if in_discard:
+		var top_discard := _get_top_treasure_discard_card()
+		if top_discard == null or top_discard != card:
+			return false
 	if not card.has_meta("card_data"):
 		return false
 	return PURCHASE_PROMPT.show(self, card, require_gold)
@@ -913,10 +910,9 @@ func _draw_treasure_until_group(group_key: String) -> void:
 			top.queue_free()
 			_refresh_hand_ui()
 			return
-		var discard_index := _get_next_treasure_discard_index()
+		var discard_index := _reserve_next_treasure_discard_index()
 		top.set_meta("discard_index", discard_index)
 		top.set_meta("in_treasure_discard", true)
-		discarded_treasure_count = max(discarded_treasure_count, discard_index + 1)
 		var discard_pos := _get_treasure_discard_pos_for_index(discard_index, TREASURE_DISCARD_INSERT_Y_BIAS)
 		var tween := create_tween()
 		tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -1270,14 +1266,18 @@ func _discard_one_hand_card_for_effect(exclude_card: Dictionary = {}) -> bool:
 	if player_hand.is_empty():
 		return false
 	var remove_idx := -1
+	var removed_card: Dictionary = {}
 	for i in player_hand.size():
 		if not exclude_card.is_empty() and player_hand[i] == exclude_card:
 			continue
 		remove_idx = i
+		if player_hand[i] is Dictionary:
+			removed_card = player_hand[i] as Dictionary
 		break
 	if remove_idx < 0:
 		return false
 	player_hand.remove_at(remove_idx)
+	_add_hand_card_to_treasure_discard(removed_card)
 	_refresh_hand_ui()
 	return true
 
@@ -1486,10 +1486,12 @@ func _get_treasure_discard_pos_for_index(index: int, y_bias: float = 0.0) -> Vec
 	return treasure_discard_pos + Vector3(0.0, (float(index) * TREASURE_DISCARD_Y_STEP) + y_bias, 0.0)
 
 func _get_next_treasure_discard_index() -> int:
-	var top: Node3D = _get_top_treasure_discard_card()
-	if top != null and is_instance_valid(top):
-		return int(top.get_meta("discard_index", -1)) + 1
-	return 0
+	return _reserve_next_treasure_discard_index()
+
+func _reserve_next_treasure_discard_index() -> int:
+	var idx := discarded_treasure_count
+	discarded_treasure_count += 1
+	return idx
 
 func _ensure_treasure_stack_from_discard_if_empty() -> bool:
 	if _get_top_treasure_card() != null:
@@ -1877,9 +1879,8 @@ func _add_treasure_card_data_to_discard(card_data: Dictionary) -> void:
 	card.set_meta("in_treasure_market", false)
 	card.set_meta("in_treasure_stack", false)
 	card.rotate_x(-PI / 2.0)
-	var discard_index := _get_next_treasure_discard_index()
+	var discard_index := _reserve_next_treasure_discard_index()
 	card.set_meta("discard_index", discard_index)
-	discarded_treasure_count = max(discarded_treasure_count, discard_index + 1)
 	if card.has_method("set_card_texture"):
 		var image_path := str(card_data.get("image", ""))
 		if not image_path.is_empty():
@@ -1888,7 +1889,24 @@ func _add_treasure_card_data_to_discard(card_data: Dictionary) -> void:
 		card.call_deferred("set_back_texture", "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png")
 	if card.has_method("set_face_up"):
 		card.call_deferred("set_face_up", true)
+	var discard_pos := _get_treasure_discard_pos_for_index(discard_index, 0.0)
+	card.global_position = discard_pos
 	_reposition_discard_stack()
+
+func _add_hand_card_to_treasure_discard(card_data: Dictionary) -> void:
+	if not _is_treasure_card_data(card_data):
+		return
+	_add_treasure_card_data_to_discard(card_data)
+
+func _is_treasure_card_data(card_data: Dictionary) -> bool:
+	if card_data.is_empty():
+		return false
+	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
+	if card_type == "equipaggiamento" or card_type == "istantaneo":
+		return true
+	if card_data.has("cost"):
+		return true
+	return false
 
 func _create_action_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -2694,7 +2712,11 @@ func _apply_coin_penalty(amount: int) -> void:
 func _discard_one_hand_card() -> bool:
 	if player_hand.is_empty():
 		return false
+	var removed_card: Dictionary = {}
+	if player_hand[player_hand.size() - 1] is Dictionary:
+		removed_card = player_hand[player_hand.size() - 1] as Dictionary
 	player_hand.remove_at(player_hand.size() - 1)
+	_add_hand_card_to_treasure_discard(removed_card)
 	_refresh_hand_ui()
 	return true
 
@@ -2731,6 +2753,7 @@ func _on_hand_request_discard_card(card: Dictionary) -> void:
 	if idx < 0:
 		return
 	player_hand.remove_at(idx)
+	_add_hand_card_to_treasure_discard(card)
 	pending_penalty_discards = max(0, pending_penalty_discards - 1)
 	_refresh_hand_ui()
 	if pending_penalty_discards <= 0:
@@ -3640,26 +3663,44 @@ func _crossfade_music(to_battle: bool, immediate: bool = false) -> void:
 		return
 	if music_fade_tween != null and music_fade_tween.is_valid():
 		music_fade_tween.kill()
+	if music_delay_timer != null:
+		music_delay_timer.stop()
 	var target_db := -28.0
 	var muted_db := -80.0
 	if to_battle:
-		if not battle_music_player.playing:
-			battle_music_player.play()
-		if not music_player.playing:
-			music_player.play()
 		if immediate:
+			if not battle_music_player.playing:
+				battle_music_player.play()
+			if not music_player.playing:
+				music_player.play()
 			battle_music_player.volume_db = target_db
 			music_player.volume_db = muted_db
 			music_player.stop()
 			return
-		music_fade_tween = create_tween()
-		music_fade_tween.set_parallel(true)
-		music_fade_tween.tween_property(battle_music_player, "volume_db", target_db, 0.8)
-		music_fade_tween.tween_property(music_player, "volume_db", muted_db, 0.8)
-		music_fade_tween.chain().tween_callback(func() -> void:
-			if music_player != null:
-				music_player.stop()
+		if music_delay_timer == null:
+			music_delay_timer = Timer.new()
+			music_delay_timer.one_shot = true
+			add_child(music_delay_timer)
+		music_delay_timer.wait_time = 3.0
+		music_delay_timer.timeout.connect(func() -> void:
+			if not music_enabled:
+				return
+			if phase_index != 1:
+				return
+			if not battle_music_player.playing:
+				battle_music_player.play()
+			if not music_player.playing:
+				music_player.play()
+			music_fade_tween = create_tween()
+			music_fade_tween.set_parallel(true)
+			music_fade_tween.tween_property(battle_music_player, "volume_db", target_db, 0.8)
+			music_fade_tween.tween_property(music_player, "volume_db", muted_db, 0.8)
+			music_fade_tween.chain().tween_callback(func() -> void:
+				if music_player != null:
+					music_player.stop()
+			)
 		)
+		music_delay_timer.start()
 	else:
 		if not music_player.playing:
 			music_player.play()
@@ -3687,3 +3728,8 @@ func _strip_variant_suffix(card_name: String) -> String:
 			parts.remove_at(parts.size() - 1)
 			return " ".join(parts)
 	return card_name
+
+
+
+
+

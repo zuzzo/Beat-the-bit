@@ -23,7 +23,9 @@ static func get_top_treasure_discard_card(main: Node) -> Node3D:
 	for child in main.get_children():
 		if not (child is Node3D):
 			continue
-		if child.has_meta("in_treasure_discard") and not child.get_meta("in_treasure_discard", false):
+		if not child.has_meta("in_treasure_discard"):
+			continue
+		if not child.get_meta("in_treasure_discard", false):
 			continue
 		if not child.has_meta("discard_index"):
 			continue
@@ -159,6 +161,10 @@ static func reposition_discard_stack(main: Node) -> void:
 			continue
 		if not child.has_meta("discard_index"):
 			continue
+		if not child.has_meta("in_treasure_discard") or not child.get_meta("in_treasure_discard", false):
+			child.set_meta("in_treasure_discard", true)
+			child.set_meta("in_treasure_market", false)
+			child.set_meta("in_treasure_stack", false)
 		cards.append(child)
 	if cards.is_empty():
 		return
@@ -171,7 +177,8 @@ static func reposition_discard_stack(main: Node) -> void:
 	)
 	for i in cards.size():
 		var card: Node3D = cards[i]
-		var pos: Vector3 = main.treasure_discard_pos + Vector3(0.0, i * main.TREASURE_DISCARD_Y_STEP, 0.0)
+		var idx: int = int(card.get_meta("discard_index", i))
+		var pos: Vector3 = main.treasure_discard_pos + Vector3(0.0, float(idx) * main.TREASURE_DISCARD_Y_STEP, 0.0)
 		card.global_position = pos
 		var yaw := card.rotation.y
 		card.rotation = Vector3(-PI / 2.0, yaw, 0.0)

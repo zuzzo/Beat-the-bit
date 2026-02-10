@@ -51,5 +51,7 @@ static func confirm(main: Node) -> void:
 	if main.pending_action_is_magic:
 		if not effects.has("return_to_hand"):
 			main.player_hand.erase(main.pending_action_card_data)
+			if main.has_method("_add_hand_card_to_treasure_discard"):
+				main._add_hand_card_to_treasure_discard(main.pending_action_card_data)
 			main._refresh_hand_ui()
 	hide(main)
