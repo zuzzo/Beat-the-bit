@@ -45,6 +45,7 @@ var launch_start_time: float = -1.0
 var pending_dice: Array[RigidBody3D] = []
 var sum_label: Label
 var coord_label: Label
+var card_debug_label: Label
 var adventure_value_panel: PanelContainer
 var adventure_value_label: Label
 var player_value_panel: PanelContainer
@@ -167,16 +168,13 @@ var pending_curse_unequip_count: int = 0
 var active_character_id: String = "character_sir_arthur_a"
 const PURCHASE_FONT_SIZE := 44
 var treasure_deck_pos := Vector3(-3, 0.0179999992251396, 0)
-var treasure_reveal_pos := Vector3(-4, 0.0240000002086163, 0)
-var treasure_discard_pos := Vector3(-5.05, 0.0240000002086163, 0.315)
+var treasure_reveal_pos := Vector3(-5.05, 0.0240000002086163, 0.315)
 var revealed_treasure_count: int = 0
-var discarded_treasure_count: int = 0
+var market_order_counter: int = 0
 var is_treasure_stack_hovered: bool = false
 const REVEALED_Y_STEP := 0.01
 const TREASURE_REVEALED_Y_STEP := 0.02
 const TREASURE_CARD_THICKNESS_Y := 0.04
-const TREASURE_DISCARD_Y_STEP := TREASURE_CARD_THICKNESS_Y
-const TREASURE_DISCARD_INSERT_Y_BIAS := 0.006
 var adventure_deck_pos := Vector3(4, 0.02, 0)
 var adventure_reveal_pos := Vector3(2, 0.2, 0)
 var battlefield_pos := Vector3(0, 0.02, 0)
@@ -193,8 +191,7 @@ const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
 const EVENT_ROW_SPACING := 1.6
 const CHAIN_ROW_SPACING := 0.9
 const CHAIN_ROW_OFFSET := Vector3(-1.6, 0.0, 0.0)
-const TREASURE_REVEAL_OFFSET := Vector3(-1.0, 0.006, 0.0)
-const TREASURE_DISCARD_OFFSET := Vector3(-2.05, 0.006, 0.315)
+const TREASURE_REVEAL_OFFSET := Vector3(-2.05, 0.006, 0.315)
 const ADVENTURE_REVEAL_OFFSET := Vector3(5, 0, 0.0)
 const ADVENTURE_DISCARD_OFFSET := Vector3(2.1, 0.006, 0.35)
 var adventure_image_index: Dictionary = {}
@@ -348,6 +345,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				DICE_FLOW.start_dice_hold(self, event.position)
 				return
 			if card != null:
+				_show_card_debug_info(card)
 				if phase_index == 1 and card.has_meta("in_battlefield") and card.get_meta("in_battlefield", false):
 					var data: Dictionary
 					if card.has_meta("card_data") and card.get_meta("card_data") is Dictionary:
@@ -386,10 +384,6 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					var top_market_left := _get_top_market_card()
 					if top_market_left != null and card == top_market_left:
 						_try_show_purchase_prompt(card, false)
-						return
-					var top_discard_left := _get_top_treasure_discard_card()
-					if top_discard_left != null and card == top_discard_left:
-						_try_show_purchase_prompt(card, true)
 						return
 				if phase_index == 1 and card.has_meta("equipped_slot"):
 					var eq_data: Dictionary = card.get_meta("card_data", {})
@@ -442,7 +436,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					target_pos.y = treasure_reveal_pos.y + (revealed_treasure_count * TREASURE_REVEALED_Y_STEP)
 					pending_flip_card.set_meta("in_treasure_stack", false)
 					pending_flip_card.set_meta("in_treasure_market", true)
-					pending_flip_card.set_meta("market_index", revealed_treasure_count)
+					pending_flip_card.set_meta("market_index", _reserve_next_market_index())
 					_lift_treasure_card_to_stack_top(pending_flip_card)
 					pending_flip_card.set_meta("flip_rotate_on_lifted_axis", true)
 					pending_flip_card.call("flip_to_side", target_pos)
@@ -455,13 +449,11 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if card == null and phase_index == 1:
 				card = _get_adventure_stack_card_at(event.position)
 			if card != null:
+				_show_card_debug_info(card)
 				if phase_index == 0:
 					var top_market := _get_top_market_card()
 					if top_market != null and card == top_market:
 						_try_show_purchase_prompt(card, false)
-					var top_discard := _get_top_treasure_discard_card()
-					if top_discard != null and card == top_discard:
-						_try_show_purchase_prompt(card, true)
 				elif phase_index == 1:
 					if card.has_meta("in_adventure_stack") and card.get_meta("in_adventure_stack", false):
 						_try_show_adventure_prompt(card)
@@ -525,7 +517,7 @@ func _release_launch(mouse_pos: Vector2) -> void:
 
 func _process(_delta: float) -> void:
 	if phase_index == 0:
-		_ensure_treasure_stack_from_discard_if_empty()
+		_ensure_treasure_stack_from_market_if_empty()
 	if dragging_marker and position_marker != null and is_instance_valid(position_marker):
 		var hit := _ray_to_plane(last_mouse_pos)
 		if hit != Vector3.INF:
@@ -617,8 +609,8 @@ func _get_card_under_mouse(mouse_pos: Vector2) -> Node3D:
 		if node.has_method("set_highlighted"):
 			if node.has_meta("in_treasure_stack") and node.get_meta("in_treasure_stack", false):
 				return _get_top_treasure_card()
-			if node.has_meta("in_treasure_discard") and node.get_meta("in_treasure_discard", false):
-				return _get_top_treasure_discard_card()
+			if node.has_meta("in_treasure_market") and node.get_meta("in_treasure_market", false):
+				return _get_top_market_card()
 			if node.has_meta("in_adventure_stack") and node.get_meta("in_adventure_stack", false):
 				return _get_top_adventure_card()
 			return node
@@ -672,12 +664,6 @@ func _set_card_pivot_right_edge(card: Node3D) -> void:
 func _get_top_treasure_card() -> Node3D:
 	return BOARD_CORE.get_top_treasure_card(self)
 
-func _get_top_treasure_discard_card() -> Node3D:
-	return BOARD_CORE.get_top_treasure_discard_card(self)
-
-func _discard_revealed_treasure_cards() -> void:
-	BOARD_CORE.discard_revealed_treasure_cards(self)
-
 func _update_treasure_stack_position(new_pos: Vector3) -> void:
 	BOARD_CORE.update_treasure_stack_position(self, new_pos)
 
@@ -692,9 +678,6 @@ func _reposition_stack(meta_key: String, base_pos: Vector3) -> void:
 
 func _reposition_market_stack() -> void:
 	BOARD_CORE.reposition_market_stack(self)
-
-func _reposition_discard_stack() -> void:
-	BOARD_CORE.reposition_discard_stack(self)
 
 func _reposition_adventure_discard_stack() -> void:
 	BOARD_CORE.reposition_adventure_discard_stack(self)
@@ -723,13 +706,11 @@ func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 	if phase_index != 0:
 		return false
 	var in_market := bool(card.get_meta("in_treasure_market", false))
-	var in_discard := bool(card.get_meta("in_treasure_discard", false))
-	if not in_market and not in_discard:
+	if not in_market:
 		return false
-	if in_discard:
-		var top_discard := _get_top_treasure_discard_card()
-		if top_discard == null or top_discard != card:
-			return false
+	var top_market := _get_top_market_card()
+	if top_market == null or top_market != card:
+		return false
 	if not card.has_meta("card_data"):
 		return false
 	return PURCHASE_PROMPT.show(self, card, require_gold)
@@ -752,7 +733,7 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 	phase_index = new_phase_index
 	if phase_index == 0:
 		retreated_this_turn = false
-		_ensure_treasure_stack_from_discard_if_empty()
+		_ensure_treasure_stack_from_market_if_empty()
 	if phase_index == 1:
 		_ensure_portale_infernale_on_top_for_gold_key()
 	if phase_index != 0:
@@ -897,7 +878,7 @@ func _draw_treasure_until_group(group_key: String) -> void:
 	while true:
 		var top := _get_top_treasure_card()
 		if top == null:
-			if _ensure_treasure_stack_from_discard_if_empty():
+			if _ensure_treasure_stack_from_market_if_empty():
 				top = _get_top_treasure_card()
 			if top == null:
 				break
@@ -910,15 +891,16 @@ func _draw_treasure_until_group(group_key: String) -> void:
 			top.queue_free()
 			_refresh_hand_ui()
 			return
-		var discard_index := _reserve_next_treasure_discard_index()
-		top.set_meta("discard_index", discard_index)
-		top.set_meta("in_treasure_discard", true)
-		var discard_pos := _get_treasure_discard_pos_for_index(discard_index, TREASURE_DISCARD_INSERT_Y_BIAS)
+		var market_index := _reserve_next_market_index()
+		top.set_meta("market_index", market_index)
+		top.set_meta("in_treasure_market", true)
+		var discard_pos := treasure_reveal_pos + Vector3(0.0, float(revealed_treasure_count) * TREASURE_REVEALED_Y_STEP, 0.0)
 		var tween := create_tween()
 		tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 		tween.tween_property(top, "global_position", discard_pos, 0.18)
 		await tween.finished
-		_reposition_discard_stack()
+		revealed_treasure_count += 1
+		_reposition_market_stack()
 
 func _flip_treasure_card_for_recovery(card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
@@ -936,14 +918,14 @@ func _lift_treasure_card_to_stack_top(card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
 	var deck_top_y: float = treasure_deck_pos.y
-	var discard_top_y: float = treasure_discard_pos.y
+	var market_top_y: float = treasure_reveal_pos.y
 	var top_deck := _get_top_treasure_card()
 	if top_deck != null and is_instance_valid(top_deck):
 		deck_top_y = top_deck.global_position.y
-	var top_discard := _get_top_treasure_discard_card()
-	if top_discard != null and is_instance_valid(top_discard):
-		discard_top_y = top_discard.global_position.y
-	var lift_y: float = max(deck_top_y, discard_top_y) + TREASURE_CARD_THICKNESS_Y
+	var top_market := _get_top_market_card()
+	if top_market != null and is_instance_valid(top_market):
+		market_top_y = top_market.global_position.y
+	var lift_y: float = max(deck_top_y, market_top_y) + TREASURE_CARD_THICKNESS_Y
 	# Set the lift height immediately before flip to avoid any tween interruption.
 	var pos := card.global_position
 	pos.y = lift_y
@@ -1277,7 +1259,7 @@ func _discard_one_hand_card_for_effect(exclude_card: Dictionary = {}) -> bool:
 	if remove_idx < 0:
 		return false
 	player_hand.remove_at(remove_idx)
-	_add_hand_card_to_treasure_discard(removed_card)
+	_add_hand_card_to_treasure_market(removed_card)
 	_refresh_hand_ui()
 	return true
 
@@ -1482,18 +1464,12 @@ func _spawn_battlefield_hearts(card: Node3D, hearts: int) -> void:
 		if token.has_method("set_token_texture"):
 			token.call_deferred("set_token_texture", HEART_TEXTURE)
 
-func _get_treasure_discard_pos_for_index(index: int, y_bias: float = 0.0) -> Vector3:
-	return treasure_discard_pos + Vector3(0.0, (float(index) * TREASURE_DISCARD_Y_STEP) + y_bias, 0.0)
-
-func _get_next_treasure_discard_index() -> int:
-	return _reserve_next_treasure_discard_index()
-
-func _reserve_next_treasure_discard_index() -> int:
-	var idx := discarded_treasure_count
-	discarded_treasure_count += 1
+func _reserve_next_market_index() -> int:
+	var idx := market_order_counter
+	market_order_counter += 1
 	return idx
 
-func _ensure_treasure_stack_from_discard_if_empty() -> bool:
+func _ensure_treasure_stack_from_market_if_empty() -> bool:
 	if _get_top_treasure_card() != null:
 		return false
 	var recycled: Array[Node3D] = []
@@ -1501,9 +1477,9 @@ func _ensure_treasure_stack_from_discard_if_empty() -> bool:
 		if not (child is Node3D):
 			continue
 		var card := child as Node3D
-		if not card.has_meta("in_treasure_discard"):
+		if not card.has_meta("in_treasure_market"):
 			continue
-		if not bool(card.get_meta("in_treasure_discard", false)):
+		if not bool(card.get_meta("in_treasure_market", false)):
 			continue
 		recycled.append(card)
 	if recycled.is_empty():
@@ -1511,18 +1487,17 @@ func _ensure_treasure_stack_from_discard_if_empty() -> bool:
 	DECK_UTILS.shuffle_deck(recycled)
 	for i in recycled.size():
 		var card := recycled[i]
-		card.set_meta("in_treasure_discard", false)
-		card.set_meta("discard_index", -1)
 		card.set_meta("in_treasure_market", false)
 		card.set_meta("in_treasure_stack", true)
 		card.set_meta("stack_index", i)
+		card.set_meta("market_index", -1)
 		card.global_position = treasure_deck_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
 		card.rotation = Vector3(-PI / 2.0, deg_to_rad(randf_range(-1.0, 1.0)), deg_to_rad(randf_range(-0.6, 0.6)))
 		if card.has_method("set_face_up"):
 			card.call("set_face_up", false)
 		if card.has_method("set_sorting_offset"):
 			card.call("set_sorting_offset", float(i))
-	discarded_treasure_count = 0
+	revealed_treasure_count = 0
 	return true
 
 func _debug_card_positions(card: Node3D, label: String) -> void:
@@ -1597,6 +1572,15 @@ func _spawn_coord_label() -> void:
 	coord_label.add_theme_font_override("font", UI_FONT)
 	coord_label.add_theme_font_size_override("font_size", 18)
 	ui.add_child(coord_label)
+	card_debug_label = Label.new()
+	card_debug_label.text = _ui_text("Carta: -")
+	var screen_size: Vector2 = get_viewport().get_visible_rect().size
+	card_debug_label.position = Vector2(max(20.0, screen_size.x - 940.0), 20.0)
+	card_debug_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card_debug_label.custom_minimum_size = Vector2(900, 260)
+	card_debug_label.add_theme_font_override("font", UI_FONT)
+	card_debug_label.add_theme_font_size_override("font_size", 16)
+	ui.add_child(card_debug_label)
 	GNG_RULES.create_regno_reward_label(self, ui)
 	_create_outcome_banner(ui)
 	_create_adventure_value_box(ui)
@@ -1632,6 +1616,48 @@ func _update_coord_label() -> void:
 		return
 	var pos := position_marker.global_position
 	coord_label.text = _ui_text("Coord: x=%.3f y=%.3f z=%.3f" % [pos.x, pos.y, pos.z])
+
+func _show_card_debug_info(card: Node3D) -> void:
+	if card_debug_label == null:
+		return
+	if card == null or not is_instance_valid(card):
+		card_debug_label.text = _ui_text("Carta: -")
+		return
+	var lines: PackedStringArray = PackedStringArray()
+	var name_text: String = card.name
+	if card.has_meta("card_data") and card.get_meta("card_data") is Dictionary:
+		var data: Dictionary = card.get_meta("card_data", {})
+		var card_name := str(data.get("name", "")).strip_edges()
+		if not card_name.is_empty():
+			name_text = card_name
+	var p: Vector3 = card.global_position
+	lines.append("Carta: %s" % name_text)
+	lines.append("Coord: x=%.3f y=%.3f z=%.3f" % [p.x, p.y, p.z])
+	var groups: PackedStringArray = card.get_groups()
+	lines.append("Gruppi: %s" % (", ".join(groups) if groups.size() > 0 else "-"))
+	var belongs: PackedStringArray = PackedStringArray()
+	if bool(card.get_meta("in_treasure_stack", false)):
+		belongs.append("mazzo_tesori")
+	if bool(card.get_meta("in_treasure_market", false)):
+		belongs.append("mercato_tesori")
+	if bool(card.get_meta("in_adventure_stack", false)):
+		belongs.append("mazzo_avventura")
+	if bool(card.get_meta("in_boss_stack", false)):
+		belongs.append("mazzo_boss")
+	if bool(card.get_meta("in_battlefield", false)):
+		belongs.append("campo_battaglia")
+	if bool(card.get_meta("in_mission_side", false)):
+		belongs.append("missioni_lato")
+	if belongs.is_empty():
+		belongs.append("nessuna")
+	lines.append("Appartenenza: %s" % ", ".join(belongs))
+	var keys: PackedStringArray = card.get_meta_list()
+	keys.sort()
+	var meta_dump: PackedStringArray = PackedStringArray()
+	for key in keys:
+		meta_dump.append("%s=%s" % [str(key), str(card.get_meta(key, null))])
+	lines.append("Meta: %s" % (" | ".join(meta_dump) if meta_dump.size() > 0 else "-"))
+	card_debug_label.text = _ui_text("\n".join(lines))
 
 func _create_music_toggle(ui_layer: CanvasLayer) -> void:
 	CORE_UI.create_music_toggle(self, ui_layer)
@@ -1862,25 +1888,24 @@ func _confirm_sell_prompt() -> void:
 				break
 	if idx >= 0:
 		player_hand.remove_at(idx)
-		_add_treasure_card_data_to_discard(pending_sell_card)
+		_add_treasure_card_data_to_market(pending_sell_card, true)
 	player_gold += max(0, pending_sell_price)
 	if hand_ui != null and hand_ui.has_method("set_gold"):
 		hand_ui.call("set_gold", player_gold)
 	_refresh_hand_ui()
 	_hide_sell_prompt()
 
-func _add_treasure_card_data_to_discard(card_data: Dictionary) -> void:
+func _add_treasure_card_data_to_market(card_data: Dictionary, from_sell: bool = false) -> void:
 	if card_data.is_empty():
 		return
 	var card: Node3D = CARD_SCENE.instantiate()
 	add_child(card)
 	card.set_meta("card_data", card_data.duplicate(true))
-	card.set_meta("in_treasure_discard", true)
-	card.set_meta("in_treasure_market", false)
+	card.set_meta("in_treasure_market", true)
 	card.set_meta("in_treasure_stack", false)
+	card.set_meta("sold_from_hand", from_sell)
 	card.rotate_x(-PI / 2.0)
-	var discard_index := _reserve_next_treasure_discard_index()
-	card.set_meta("discard_index", discard_index)
+	card.set_meta("market_index", _reserve_next_market_index())
 	if card.has_method("set_card_texture"):
 		var image_path := str(card_data.get("image", ""))
 		if not image_path.is_empty():
@@ -1889,14 +1914,15 @@ func _add_treasure_card_data_to_discard(card_data: Dictionary) -> void:
 		card.call_deferred("set_back_texture", "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png")
 	if card.has_method("set_face_up"):
 		card.call_deferred("set_face_up", true)
-	var discard_pos := _get_treasure_discard_pos_for_index(discard_index, 0.0)
+	var discard_pos := treasure_reveal_pos + Vector3(0.0, float(revealed_treasure_count) * TREASURE_REVEALED_Y_STEP, 0.0)
 	card.global_position = discard_pos
-	_reposition_discard_stack()
+	revealed_treasure_count += 1
+	_reposition_market_stack()
 
-func _add_hand_card_to_treasure_discard(card_data: Dictionary) -> void:
+func _add_hand_card_to_treasure_market(card_data: Dictionary) -> void:
 	if not _is_treasure_card_data(card_data):
 		return
-	_add_treasure_card_data_to_discard(card_data)
+	_add_treasure_card_data_to_market(card_data)
 
 func _is_treasure_card_data(card_data: Dictionary) -> bool:
 	if card_data.is_empty():
@@ -2243,14 +2269,14 @@ func _update_hover(mouse_pos: Vector2) -> void:
 		hovered_card.set_highlighted(true)
 
 func _update_discard_stack_highlight() -> void:
-	var top_discard := _get_top_treasure_discard_card()
+	var top_market := _get_top_market_card()
 	for child in get_children():
 		if not (child is Node3D):
 			continue
 		if not child.has_method("set_highlighted"):
 			continue
-		if child.has_meta("discard_index"):
-			if child != top_discard:
+		if child.has_meta("in_treasure_market") and child.get_meta("in_treasure_market", false):
+			if child != top_market:
 				child.set_highlighted(false)
 
 
@@ -2716,7 +2742,7 @@ func _discard_one_hand_card() -> bool:
 	if player_hand[player_hand.size() - 1] is Dictionary:
 		removed_card = player_hand[player_hand.size() - 1] as Dictionary
 	player_hand.remove_at(player_hand.size() - 1)
-	_add_hand_card_to_treasure_discard(removed_card)
+	_add_hand_card_to_treasure_market(removed_card)
 	_refresh_hand_ui()
 	return true
 
@@ -2753,7 +2779,7 @@ func _on_hand_request_discard_card(card: Dictionary) -> void:
 	if idx < 0:
 		return
 	player_hand.remove_at(idx)
-	_add_hand_card_to_treasure_discard(card)
+	_add_hand_card_to_treasure_market(card)
 	pending_penalty_discards = max(0, pending_penalty_discards - 1)
 	_refresh_hand_ui()
 	if pending_penalty_discards <= 0:
@@ -3728,8 +3754,3 @@ func _strip_variant_suffix(card_name: String) -> String:
 			parts.remove_at(parts.size() - 1)
 			return " ".join(parts)
 	return card_name
-
-
-
-
-

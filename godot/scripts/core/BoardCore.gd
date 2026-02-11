@@ -17,24 +17,6 @@ static func get_top_treasure_card(main: Node) -> Node3D:
 			top_card = child
 	return top_card
 
-static func get_top_treasure_discard_card(main: Node) -> Node3D:
-	var top_card: Node3D = null
-	var top_index := -1
-	for child in main.get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("in_treasure_discard"):
-			continue
-		if not child.get_meta("in_treasure_discard", false):
-			continue
-		if not child.has_meta("discard_index"):
-			continue
-		var idx: int = int(child.get_meta("discard_index", -1))
-		if idx > top_index:
-			top_index = idx
-			top_card = child
-	return top_card
-
 static func get_top_adventure_card(main: Node) -> Node3D:
 	var top_card: Node3D = null
 	var top_index := -1
@@ -152,36 +134,11 @@ static func reposition_market_stack(main: Node) -> void:
 			continue
 		if int(card.get_meta("market_index", -1)) < 0:
 			card.set_meta("market_index", i)
-		card.global_position = main.treasure_reveal_pos + Vector3(0.0, i * main.TREASURE_REVEALED_Y_STEP, 0.0)
-
-static func reposition_discard_stack(main: Node) -> void:
-	var cards: Array = []
-	for child in main.get_children():
-		if not (child is Node3D):
-			continue
-		if not child.has_meta("discard_index"):
-			continue
-		if not child.has_meta("in_treasure_discard") or not child.get_meta("in_treasure_discard", false):
-			child.set_meta("in_treasure_discard", true)
-			child.set_meta("in_treasure_market", false)
-			child.set_meta("in_treasure_stack", false)
-		cards.append(child)
-	if cards.is_empty():
-		return
-	cards.sort_custom(func(a, b):
-		if a == null or b == null:
-			return false
-		var a_idx := int(a.get_meta("discard_index", -1))
-		var b_idx := int(b.get_meta("discard_index", -1))
-		return a_idx < b_idx
-	)
-	for i in cards.size():
-		var card: Node3D = cards[i]
-		var idx: int = int(card.get_meta("discard_index", i))
-		var pos: Vector3 = main.treasure_discard_pos + Vector3(0.0, float(idx) * main.TREASURE_DISCARD_Y_STEP, 0.0)
+		var pos: Vector3 = main.treasure_reveal_pos + Vector3(0.0, i * main.TREASURE_REVEALED_Y_STEP, 0.0)
+		if card.has_meta("sold_from_hand") and bool(card.get_meta("sold_from_hand", false)):
+			pos.x -= float(main.CARD_HIT_HALF_SIZE.x) * 2.0
 		card.global_position = pos
-		var yaw := card.rotation.y
-		card.rotation = Vector3(-PI / 2.0, yaw, 0.0)
+		card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
 
 static func reposition_adventure_discard_stack(main: Node) -> void:
 	var cards: Array = []
@@ -204,22 +161,6 @@ static func reposition_adventure_discard_stack(main: Node) -> void:
 		var card: Node3D = cards[i]
 		card.global_position = main.adventure_discard_pos + Vector3(0.0, i * main.REVEALED_Y_STEP, 0.0)
 
-static func discard_revealed_treasure_cards(main: Node) -> void:
-	var discarded_any := false
-	for child in main.get_children():
-		if not child.has_meta("in_treasure_market"):
-			continue
-		if not child.get_meta("in_treasure_market", false):
-			continue
-		child.set_meta("discard_index", main.discarded_treasure_count)
-		child.set_meta("in_treasure_discard", true)
-		child.set_meta("in_treasure_market", false)
-		main.discarded_treasure_count += 1
-		discarded_any = true
-	if discarded_any:
-		main.revealed_treasure_count = 0
-	reposition_discard_stack(main)
-
 static func move_adventure_to_discard(main: Node, card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
@@ -236,10 +177,8 @@ static func update_treasure_stack_position(main: Node, new_pos: Vector3) -> void
 	var base := Vector3(new_pos.x, main.treasure_deck_pos.y, new_pos.z)
 	main.treasure_deck_pos = base
 	main.treasure_reveal_pos = main.treasure_deck_pos + main.TREASURE_REVEAL_OFFSET
-	main.treasure_discard_pos = main.treasure_deck_pos + main.TREASURE_DISCARD_OFFSET
 	reposition_stack(main, "in_treasure_stack", main.treasure_deck_pos)
 	reposition_market_stack(main)
-	reposition_discard_stack(main)
 
 static func update_adventure_stack_position(main: Node, new_pos: Vector3) -> void:
 	var base := Vector3(new_pos.x, main.adventure_deck_pos.y, new_pos.z)

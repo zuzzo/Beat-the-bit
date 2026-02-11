@@ -45,9 +45,6 @@ static func resize(main: Node) -> void:
 	main.purchase_panel.reset_size()
 
 static func confirm(main: Node) -> void:
-	var from_discard := false
-	if main.purchase_card != null and is_instance_valid(main.purchase_card):
-		from_discard = bool(main.purchase_card.get_meta("in_treasure_discard", false))
 	var phase_ok: bool = (main.phase_index == 0)
 	if not phase_ok:
 		hide(main)
@@ -55,11 +52,10 @@ static func confirm(main: Node) -> void:
 	if main.purchase_card == null or not is_instance_valid(main.purchase_card):
 		hide(main)
 		return
-	if from_discard:
-		var top_discard: Node3D = main._get_top_treasure_discard_card()
-		if top_discard == null or top_discard != main.purchase_card:
-			hide(main)
-			return
+	var top_market: Node3D = main._get_top_market_card()
+	if top_market == null or top_market != main.purchase_card:
+		hide(main)
+		return
 	var card_data: Dictionary = main.purchase_card.get_meta("card_data", {})
 	var cost := int(card_data.get("cost", 0))
 	if cost <= 0 or main.player_gold < cost:
