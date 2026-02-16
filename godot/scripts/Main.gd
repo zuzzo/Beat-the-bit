@@ -198,6 +198,7 @@ const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
 const EVENT_ROW_SPACING := 1.6
 const CHAIN_ROW_SPACING := 0.9
 const CHAIN_ROW_OFFSET := Vector3(-1.6, 0.0, 0.0)
+const CHAIN_Z_STEP := 2.0
 const TREASURE_REVEAL_OFFSET := Vector3(-2.05, 0.006, 0.315)
 const ADVENTURE_REVEAL_OFFSET := Vector3(5, 0, 0.0)
 const ADVENTURE_DISCARD_OFFSET := Vector3(2.1, 0.006, 0.35)
@@ -1020,7 +1021,11 @@ func _discard_one_hand_card_for_effect(exclude_card: Dictionary = {}) -> bool:
 func _discard_revealed_adventure_card() -> void:
 	var battlefield := _get_battlefield_card()
 	if battlefield != null:
+		var data: Dictionary = battlefield.get_meta("card_data", {})
+		var ctype := str(data.get("type", "")).strip_edges().to_lower()
 		_move_adventure_to_discard(battlefield)
+		if ctype != "concatenamento":
+			_cleanup_chain_cards_after_victory()
 		return
 	var top := _get_top_adventure_card()
 	if top == null:

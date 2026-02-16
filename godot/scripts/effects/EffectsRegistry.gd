@@ -54,6 +54,7 @@ static func apply_direct_damage_to_battlefield(main: Node, amount: int) -> void:
 	main._report_battlefield_reward(card_data, main.last_roll_total, int(card_data.get("difficulty", 0)))
 	main._spawn_defeat_explosion(battlefield.global_position)
 	main._move_adventure_to_discard(battlefield)
+	main._cleanup_chain_cards_after_victory()
 
 static func apply_post_roll_effect(main: Node, effect_name: String, selected_values: Array[int]) -> void:
 	if main.last_roll_values.is_empty():

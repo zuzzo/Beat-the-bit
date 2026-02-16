@@ -265,7 +265,7 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		return
 	var selected: Array = main.selected_roll_dice.duplicate()
 	selected.sort()
-	var key := "%s|%s|%s" % [str(main.roll_pending_apply), str(main.last_roll_values), str(selected)]
+	var key := "%s|%s|%s|%d" % [str(main.roll_pending_apply), str(main.last_roll_values), str(selected), int(main.pending_chain_bonus)]
 	if key == main.player_dice_buttons_key:
 		return
 	main.player_dice_buttons_key = key
@@ -288,6 +288,17 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 			on_roll_die_button_pressed(main, idx)
 		)
 		main.player_dice_buttons_row.add_child(btn)
+	var chain_bonus_count := int(main.pending_chain_bonus / 3)
+	for _i in chain_bonus_count:
+		var bonus_btn := Button.new()
+		bonus_btn.focus_mode = Control.FOCUS_NONE
+		bonus_btn.disabled = true
+		bonus_btn.custom_minimum_size = Vector2(36, 30)
+		bonus_btn.text = "3"
+		bonus_btn.tooltip_text = main._ui_text("Bonus Piattaforma")
+		bonus_btn.add_theme_font_override("font", main.UI_FONT)
+		bonus_btn.add_theme_font_size_override("font_size", 24)
+		main.player_dice_buttons_row.add_child(bonus_btn)
 
 static func on_roll_die_button_pressed(main: Node, index: int) -> void:
 	if main._get_pending_drop_half_count() > 0:

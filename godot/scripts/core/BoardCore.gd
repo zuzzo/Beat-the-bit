@@ -66,6 +66,16 @@ static func get_top_market_card(main: Node) -> Node3D:
 	return top_card
 
 static func get_battlefield_card(main: Node) -> Node3D:
+	# Prefer the active blocking card (monster/boss/curse) over chain helpers.
+	for child in main.get_children():
+		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_battlefield"):
+			continue
+		if not child.get_meta("in_battlefield", false):
+			continue
+		if child.has_meta("adventure_blocking") and child.get_meta("adventure_blocking", false):
+			return child
 	for child in main.get_children():
 		if not (child is Node3D):
 			continue

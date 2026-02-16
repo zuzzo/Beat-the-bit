@@ -97,6 +97,7 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 		main.last_roll_values.clear()
 		main.selected_roll_dice.clear()
 		main.post_roll_effects.clear()
+		cleanup_chain_cards_after_victory(main)
 		if main.hand_ui != null and main.hand_ui.has_method("set_phase_button_enabled"):
 			main.hand_ui.call("set_phase_button_enabled", true)
 		return
