@@ -1114,6 +1114,10 @@ func _confirm_adventure_prompt() -> void:
 	if not card_data.is_empty():
 		base_hearts = max(1, int(card_data.get("hearts", 1)))
 		card_type = str(card_data.get("type", "")).strip_edges().to_lower()
+	# Chain lock must be released as soon as we reveal a non-chain card.
+	# Otherwise dice rolling can remain blocked after chain reveals.
+	if card_type != "concatenamento":
+		pending_chain_reveal_lock = false
 	pending_adventure_card.set_meta("adventure_type", card_type)
 	if card_type == "scontro" or card_type == "maledizione":
 		pending_adventure_card.set_meta("adventure_blocking", true)

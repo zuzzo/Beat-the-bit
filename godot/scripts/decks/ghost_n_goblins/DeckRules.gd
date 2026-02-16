@@ -132,7 +132,8 @@ static func _apply_regno_reward(main: Node, code: String) -> void:
 			pass
 
 static func get_next_chain_pos(main: Node, base_pos: Vector3) -> Vector3:
-	var pos := base_pos + Vector3(0.0, 0.0, (main.chain_row_count + 1) * main.CHAIN_Z_STEP)
+	# Place chained cards progressively upward on screen (negative Z in this camera setup).
+	var pos := base_pos + Vector3(0.0, 0.0, -(main.chain_row_count + 1) * main.CHAIN_Z_STEP)
 	main.chain_row_count += 1
 	return pos
 

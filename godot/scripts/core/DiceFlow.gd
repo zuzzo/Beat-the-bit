@@ -39,6 +39,9 @@ static func release_dice_hold(main: Node, mouse_pos: Vector2) -> void:
 	launch_dice_at(main, hit_end, launch_dir)
 
 static func can_start_roll(main: Node) -> bool:
+	# While the player must choose a discard, dice rolling must stay paused.
+	if int(main.pending_penalty_discards) > 0:
+		return false
 	if main.pending_chain_reveal_lock:
 		return false
 	if main.roll_pending_apply:
@@ -265,7 +268,10 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		return
 	var selected: Array = main.selected_roll_dice.duplicate()
 	selected.sort()
-	var key := "%s|%s|%s|%d" % [str(main.roll_pending_apply), str(main.last_roll_values), str(selected), int(main.pending_chain_bonus)]
+	var dice_types_sig := ""
+	for i in main.last_roll_values.size():
+		dice_types_sig += "|%s" % _get_roll_die_type(main, i)
+	var key := "%s|%s|%s|%d|%s" % [str(main.roll_pending_apply), str(main.last_roll_values), str(selected), int(main.pending_chain_bonus), dice_types_sig]
 	if key == main.player_dice_buttons_key:
 		return
 	main.player_dice_buttons_key = key
@@ -283,6 +289,7 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		btn.text = str(value)
 		btn.add_theme_font_override("font", main.UI_FONT)
 		btn.add_theme_font_size_override("font_size", 24)
+		_apply_roll_die_button_theme(btn, _get_roll_die_type(main, idx))
 		btn.button_pressed = main.selected_roll_dice.has(idx)
 		btn.pressed.connect(func() -> void:
 			on_roll_die_button_pressed(main, idx)
@@ -299,6 +306,53 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		bonus_btn.add_theme_font_override("font", main.UI_FONT)
 		bonus_btn.add_theme_font_size_override("font_size", 24)
 		main.player_dice_buttons_row.add_child(bonus_btn)
+
+static func _get_roll_die_type(main: Node, index: int) -> String:
+	if index < 0 or index >= main.active_dice.size():
+		return "blue"
+	var die: RigidBody3D = main.active_dice[index]
+	if die == null or not is_instance_valid(die):
+		return "blue"
+	if die.has_method("get_dice_type"):
+		return str(die.call("get_dice_type"))
+	return "blue"
+
+static func _apply_roll_die_button_theme(btn: Button, die_type: String) -> void:
+	var bg := Color(0.35, 0.35, 0.35, 0.9)
+	var border := Color(0.95, 0.95, 0.95, 0.85)
+	var fg := Color(1, 1, 1, 1)
+	match die_type:
+		"green":
+			bg = Color(0.28, 0.82, 0.36, 0.95)
+			border = Color(0.10, 0.35, 0.12, 0.95)
+			fg = Color(0.03, 0.08, 0.03, 1)
+		"red":
+			bg = Color(0.90, 0.28, 0.30, 0.95)
+			border = Color(0.38, 0.08, 0.09, 0.95)
+			fg = Color(1, 1, 1, 1)
+		_:
+			bg = Color(0.25, 0.50, 0.92, 0.95)
+			border = Color(0.08, 0.22, 0.45, 0.95)
+			fg = Color(1, 1, 1, 1)
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = bg
+	normal.border_color = border
+	normal.border_width_top = 2
+	normal.border_width_bottom = 2
+	normal.border_width_left = 2
+	normal.border_width_right = 2
+	normal.corner_radius_top_left = 6
+	normal.corner_radius_top_right = 6
+	normal.corner_radius_bottom_left = 6
+	normal.corner_radius_bottom_right = 6
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = bg.darkened(0.25)
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", normal)
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_color_override("font_color", fg)
+	btn.add_theme_color_override("font_hover_color", fg)
+	btn.add_theme_color_override("font_pressed_color", fg)
 
 static func on_roll_die_button_pressed(main: Node, index: int) -> void:
 	if main._get_pending_drop_half_count() > 0:

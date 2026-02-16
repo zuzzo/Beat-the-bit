@@ -145,8 +145,6 @@ static func reposition_market_stack(main: Node) -> void:
 		if int(card.get_meta("market_index", -1)) < 0:
 			card.set_meta("market_index", i)
 		var pos: Vector3 = main.treasure_reveal_pos + Vector3(0.0, i * main.TREASURE_REVEALED_Y_STEP, 0.0)
-		if card.has_meta("sold_from_hand") and bool(card.get_meta("sold_from_hand", false)):
-			pos.x -= float(main.CARD_HIT_HALF_SIZE.x) * 2.0
 		card.global_position = pos
 		card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
 

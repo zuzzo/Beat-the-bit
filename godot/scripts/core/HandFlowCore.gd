@@ -56,6 +56,9 @@ static func discard_one_card_for_penalty(main: Node) -> bool:
 	return main._discard_one_equipped_card()
 
 static func set_hand_discard_mode(main: Node, active: bool, reason: String = "") -> void:
+	if active and bool(main.dice_hold_active):
+		main.dice_hold_active = false
+		main.DICE_FLOW.clear_dice_preview(main)
 	if main.hand_ui == null or not main.hand_ui.has_method("set_discard_mode"):
 		return
 	main.pending_discard_reason = reason if active else ""
