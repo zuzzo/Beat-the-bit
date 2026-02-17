@@ -86,6 +86,7 @@ var roll_in_progress: bool = false
 var dice_drop_panel: PanelContainer
 var dice_drop_label: Label
 var dice_drop_ok: Button
+var dice_drop_mode: String = "drop_half"
 var dragged_card: Node3D
 var drag_offset: Vector3 = Vector3.ZERO
 var dragged_card_origin_y: float = 0.0
@@ -150,6 +151,8 @@ var action_prompt_no: Button
 var action_prompt_block_until_ms: int = 0
 var chain_choice_panel: PanelContainer
 var chain_choice_label: Label
+var flip_choice_panel: PanelContainer
+var flip_choice_label: Label
 var pending_action_card_data: Dictionary = {}
 var pending_action_is_magic: bool = false
 var pending_action_source_card: Node3D
@@ -157,6 +160,17 @@ var pending_chain_bonus: int = 0
 var pending_chain_choice_cards: Array[Node3D] = []
 var pending_chain_choice_active: bool = false
 var pending_chain_reveal_lock: bool = false
+var pending_flip_equip_choice_cards: Array[Node3D] = []
+var pending_flip_equip_choice_active: bool = false
+var pending_flip_penalties_to_resolve: int = 0
+var pending_mandatory_draw_locks: int = 0
+var pending_adventure_sacrifice_waiting_cost: bool = false
+var pending_adventure_sacrifice_effect: String = ""
+var pending_adventure_sacrifice_card: Node3D
+var pending_adventure_sacrifice_sequence_active: bool = false
+var pending_adventure_sacrifice_remove_after_roll_count: int = 0
+var pending_adventure_sacrifice_remove_choice_count: int = 0
+var match_closed: bool = false
 var position_marker: Node3D
 var dragging_marker: bool = false
 var marker_drag_offset: Vector3 = Vector3.ZERO
@@ -180,6 +194,7 @@ var curse_stats_override: Dictionary = {}
 var active_curse_id: String = ""
 var curse_texture_override: String = ""
 var pending_curse_unequip_count: int = 0
+var pending_forced_unequip_reason: String = "Slot equip ridotti"
 var active_character_id: String = "character_sir_arthur_a"
 const PURCHASE_FONT_SIZE := 44
 const FINAL_BOSS_DEFAULT_COST := 20
@@ -271,6 +286,7 @@ func _ready() -> void:
 	_create_adventure_prompt()
 	_create_final_boss_prompt()
 	_create_chain_choice_prompt()
+	_create_flip_choice_prompt()
 	_create_battlefield_warning()
 	_setup_regno_overlay()
 	print("Deck selezionato:", GameConfig.selected_deck_id)
@@ -288,13 +304,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_hide_final_boss_prompt()
 			return
 		return
-	if _is_chain_resolution_locked():
+	if _is_mandatory_action_locked():
 		if event is InputEventKey and event.pressed:
 			if event.keycode == KEY_ESCAPE:
 				get_tree().quit()
 			return
 		if event is InputEventMouseButton:
-			if pending_chain_choice_active and event.button_index == MOUSE_BUTTON_LEFT:
+			if event.button_index == MOUSE_BUTTON_LEFT and (pending_curse_unequip_count > 0 or pending_chain_choice_active or pending_flip_equip_choice_active):
 				_handle_mouse_button(event)
 			return
 		return
@@ -356,7 +372,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					_force_return_equipped_to_hand(card)
 					pending_curse_unequip_count = max(0, pending_curse_unequip_count - 1)
 					if pending_curse_unequip_count == 0:
-						_apply_equipment_slot_limit_after_curse()
+						_apply_equipment_slot_limit_after_curse(pending_forced_unequip_reason)
 					_update_curse_unequip_prompt()
 				return
 			if card != null and card.has_meta("position_marker"):
@@ -372,6 +388,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				return
 			if pending_chain_choice_active:
 				if card != null and pending_chain_choice_cards.has(card):
+					selected_card = card
+				return
+			if pending_flip_equip_choice_active:
+				if card != null and pending_flip_equip_choice_cards.has(card):
 					selected_card = card
 				return
 			if card == null and phase_index == 1:
@@ -414,6 +434,8 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					return
 				if phase_index == 1 and _try_activate_portale_infernale(card):
 					return
+				if phase_index == 1 and _try_activate_adventure_sacrifice(card):
+					return
 				if phase_index == 0 and card.has_meta("in_boss_stack") and card.get_meta("in_boss_stack", false):
 					_claim_boss_to_hand_from_stack()
 					return
@@ -427,6 +449,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 						_try_show_purchase_prompt(card, false)
 						return
 				if phase_index == 1 and card.has_meta("equipped_slot"):
+					if _is_adventure_sacrifice_resolution_pending():
+						if hand_ui != null and hand_ui.has_method("set_info"):
+							hand_ui.call("set_info", _ui_text("Completa prima l'approccio alternativo: lancia e rimuovi i dadi richiesti."))
+						return
+					if bool(card.get_meta("equipped_flipped", false)):
+						if hand_ui != null and hand_ui.has_method("set_info"):
+							hand_ui.call("set_info", _ui_text("Equipaggiamento girato: non utilizzabile ora."))
+						return
 					var eq_data: Dictionary = card.get_meta("card_data", {})
 					if CARD_TIMING.is_card_activation_allowed_now(self, eq_data):
 						_show_action_prompt(eq_data, false, card)
@@ -468,6 +498,11 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				var card := _get_card_under_mouse(event.position)
 				if card != null and pending_chain_choice_cards.has(card):
 					_resolve_chain_choice(card)
+				return
+			if pending_flip_equip_choice_active and not moved:
+				var card := _get_card_under_mouse(event.position)
+				if card != null and pending_flip_equip_choice_cards.has(card):
+					_resolve_flip_equipment_choice(card)
 				return
 			if not moved and pending_flip_card != null and is_instance_valid(pending_flip_card):
 				if pending_flip_is_adventure:
@@ -585,6 +620,8 @@ func _process(_delta: float) -> void:
 		_center_final_boss_prompt()
 	if chain_choice_panel != null and chain_choice_panel.visible:
 		_center_chain_choice_prompt()
+	if flip_choice_panel != null and flip_choice_panel.visible:
+		_center_flip_choice_prompt()
 	_update_coord_label()
 	_update_regno_overlay()
 	_update_adventure_value_box()
@@ -820,7 +857,7 @@ func _hide_final_boss_prompt() -> void:
 		final_boss_prompt_panel.visible = false
 
 func _confirm_final_boss_prompt() -> void:
-	var cost := max(0, pending_final_boss_cost)
+	var cost: int = max(0, int(pending_final_boss_cost))
 	if regno_final_boss_spawned:
 		_hide_final_boss_prompt()
 		return
@@ -849,9 +886,9 @@ func _confirm_purchase() -> void:
 	PURCHASE_PROMPT.confirm(self)
 
 func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
-	if _is_chain_resolution_locked():
+	if _is_mandatory_action_locked():
 		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Completa prima la scelta Scala."))
+			hand_ui.call("set_info", _ui_text("Completa prima l'azione obbligatoria in corso."))
 		if hand_ui != null and hand_ui.has_method("set_phase_silent"):
 			hand_ui.call("set_phase_silent", phase_index, _turn_index)
 		return
@@ -869,6 +906,7 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 	if phase_index != 1:
 		_hide_adventure_prompt()
 	if phase_index == 2:
+		_restore_flipped_equipment()
 		await _cleanup_battlefield_rewards_for_recovery()
 		_on_end_turn_with_battlefield()
 		if not retreated_this_turn:
@@ -893,6 +931,8 @@ func _has_equipped_card_id(card_id: String) -> bool:
 			continue
 		var equipped: Node3D = slot.get_meta("equipped_card", null) as Node3D
 		if equipped == null or not is_instance_valid(equipped):
+			continue
+		if bool(equipped.get_meta("equipped_flipped", false)):
 			continue
 		var data: Dictionary = equipped.get_meta("card_data", {}) as Dictionary
 		if str(data.get("id", "")) == card_id:
@@ -955,16 +995,24 @@ func _block_turn_pass_if_hand_exceeds_limit(turn_index: int) -> bool:
 	return true
 
 func _cleanup_battlefield_rewards_for_recovery() -> void:
+	_begin_mandatory_draw_lock()
 	await REWARD_RESOLUTION_CORE.cleanup_battlefield_rewards_for_recovery(self)
+	_end_mandatory_draw_lock()
 
 func _resolve_reward_tokens_for_recovery() -> void:
+	_begin_mandatory_draw_lock()
 	await REWARD_RESOLUTION_CORE.resolve_reward_tokens_for_recovery(self)
+	_end_mandatory_draw_lock()
 
 func _consume_token_and_draw_treasure(token: RigidBody3D, group_key: String) -> void:
+	_begin_mandatory_draw_lock()
 	await REWARD_RESOLUTION_CORE.consume_token_and_draw_treasure(self, token, group_key)
+	_end_mandatory_draw_lock()
 
 func _draw_treasure_until_group(group_key: String) -> void:
+	_begin_mandatory_draw_lock()
 	await REWARD_RESOLUTION_CORE.draw_treasure_until_group(self, group_key)
+	_end_mandatory_draw_lock()
 
 func _flip_treasure_card_for_recovery(card: Node3D) -> void:
 	await REWARD_RESOLUTION_CORE.flip_treasure_card_for_recovery(self, card)
@@ -1048,6 +1096,101 @@ func _try_activate_portale_infernale(card: Node3D) -> bool:
 	_update_adventure_value_box()
 	return true
 
+func _try_activate_adventure_sacrifice(card: Node3D) -> bool:
+	if phase_index != 1:
+		return false
+	if card == null or not is_instance_valid(card):
+		return false
+	if not bool(card.get_meta("in_battlefield", false)):
+		return false
+	if pending_adventure_sacrifice_waiting_cost:
+		return true
+	var card_data: Dictionary = card.get_meta("card_data", {})
+	if card_data.is_empty():
+		return false
+	var ctype := str(card_data.get("type", "")).strip_edges().to_lower()
+	if ctype != "scontro" and ctype != "maledizione":
+		return false
+	if bool(card.get_meta("sacrifice_used", false)):
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Approccio alternativo gia usato per questa carta."))
+		return true
+	if roll_pending_apply or roll_in_progress:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Usa l'approccio alternativo prima del lancio dadi."))
+		return true
+	var sacrifice_effect := str(card_data.get("sacrifice_effect", "")).strip_edges()
+	if sacrifice_effect.is_empty():
+		return false
+	var sacrifice_cost := str(card_data.get("sacrifice_cost", "")).strip_edges()
+	var cost_result := _pay_adventure_sacrifice_cost(sacrifice_cost, card, sacrifice_effect)
+	if cost_result == 0:
+		return true
+	if cost_result == 2:
+		return true
+	_apply_adventure_sacrifice_effect(card, sacrifice_effect)
+	return true
+
+func _pay_adventure_sacrifice_cost(cost_code: String, card: Node3D, sacrifice_effect: String) -> int:
+	var code := cost_code.strip_edges().to_lower()
+	var cost_context := {
+		"main": self,
+		"cost_code": code,
+		"card": card,
+		"sacrifice_effect": sacrifice_effect
+	}
+	AbilityRegistry.apply("sacrifice_cost_router", cost_context)
+	if bool(cost_context.get("handled", false)):
+		return int(cost_context.get("cost_result", 1))
+	return 1
+
+func _apply_adventure_sacrifice_effect(card: Node3D, sacrifice_effect: String) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var effect := sacrifice_effect.strip_edges().to_lower()
+	if effect == "":
+		return
+	var effect_context := {
+		"main": self,
+		"card": card,
+		"effect_code": effect
+	}
+	AbilityRegistry.apply("sacrifice_effect_router", effect_context)
+	if bool(effect_context.get("handled", false)):
+		return
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Effetto approccio alternativo non riconosciuto: %s" % effect))
+
+func _try_resolve_pending_adventure_sacrifice_after_cost() -> void:
+	if not pending_adventure_sacrifice_waiting_cost:
+		return
+	if pending_penalty_discards > 0:
+		return
+	if pending_flip_equip_choice_active:
+		return
+	var card := pending_adventure_sacrifice_card
+	var effect := pending_adventure_sacrifice_effect
+	pending_adventure_sacrifice_waiting_cost = false
+	pending_adventure_sacrifice_card = null
+	pending_adventure_sacrifice_effect = ""
+	if card == null or not is_instance_valid(card):
+		return
+	_apply_adventure_sacrifice_effect(card, effect)
+
+func _consume_pending_adventure_sacrifice_die_removal() -> void:
+	if pending_adventure_sacrifice_remove_choice_count <= 0 and pending_adventure_sacrifice_remove_after_roll_count <= 0:
+		return
+	pending_adventure_sacrifice_remove_choice_count = 0
+	pending_adventure_sacrifice_remove_after_roll_count = 0
+	pending_adventure_sacrifice_sequence_active = false
+	if dice_drop_mode == "sacrifice_remove":
+		_hide_drop_half_prompt()
+		dice_drop_mode = "drop_half"
+	dice_count = DICE_FLOW.get_total_dice(self)
+	if not roll_pending_apply and not roll_in_progress:
+		DICE_FLOW.clear_dice_preview(self)
+		DICE_FLOW.spawn_dice_preview(self)
+
 func _return_portale_infernale_to_event_row(card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
@@ -1098,6 +1241,8 @@ func _find_equipped_card_by_id(card_id: String) -> Node3D:
 		var equipped: Node3D = slot.get_meta("equipped_card", null) as Node3D
 		if equipped == null or not is_instance_valid(equipped):
 			continue
+		if bool(equipped.get_meta("equipped_flipped", false)):
+			continue
 		var data: Dictionary = equipped.get_meta("card_data", {})
 		if str(data.get("id", "")) == card_id:
 			return equipped
@@ -1112,10 +1257,8 @@ func _destroy_equipped_card(card: Node3D) -> bool:
 	if slot != null:
 		slot.set_meta("occupied", false)
 		slot.set_meta("equipped_card", null)
-	var extra := int(card.get_meta("extra_slots", 0))
-	if extra > 0:
-		_remove_equipment_slots(extra)
 	card.queue_free()
+	_apply_equipment_slot_limit_after_curse()
 	_refresh_hand_ui()
 	return true
 
@@ -1148,6 +1291,14 @@ func _apply_sacrifice_open_portal() -> void:
 func _reset_dice_for_rest() -> void:
 	DICE_FLOW.clear_dice(self)
 	roll_pending_apply = false
+	pending_adventure_sacrifice_sequence_active = false
+	pending_adventure_sacrifice_remove_after_roll_count = 0
+	pending_adventure_sacrifice_remove_choice_count = 0
+	pending_adventure_sacrifice_waiting_cost = false
+	pending_adventure_sacrifice_card = null
+	pending_adventure_sacrifice_effect = ""
+	dice_drop_mode = "drop_half"
+	_hide_drop_half_prompt()
 	blue_dice = base_dice_count + green_dice + red_dice
 	green_dice = 0
 	red_dice = 0
@@ -1267,6 +1418,12 @@ func _discard_one_hand_card_for_effect(exclude_card: Dictionary = {}) -> bool:
 	return true
 
 func _discard_revealed_adventure_card() -> void:
+	var discard_context := {
+		"main": self
+	}
+	AbilityRegistry.apply("discard_revealed_adventure", discard_context)
+	if bool(discard_context.get("handled", false)):
+		return
 	var battlefield := _get_battlefield_card()
 	if battlefield != null:
 		var data: Dictionary = battlefield.get_meta("card_data", {})
@@ -1500,7 +1657,7 @@ func _ensure_treasure_stack_from_market_if_empty() -> bool:
 			continue
 		recycled.append(card)
 	if recycled.is_empty():
-		return false
+		return _rebuild_treasure_stack_from_database()
 	DECK_UTILS.shuffle_deck(recycled)
 	for i in recycled.size():
 		var card := recycled[i]
@@ -1514,6 +1671,77 @@ func _ensure_treasure_stack_from_market_if_empty() -> bool:
 			card.call("set_face_up", false)
 		if card.has_method("set_sorting_offset"):
 			card.call("set_sorting_offset", float(i))
+	revealed_treasure_count = 0
+	return true
+
+func _rebuild_treasure_stack_from_database() -> bool:
+	if _get_top_treasure_card() != null:
+		return false
+	var owned_counts: Dictionary = {}
+	for hand_card_any in player_hand:
+		if not (hand_card_any is Dictionary):
+			continue
+		var hand_card: Dictionary = hand_card_any as Dictionary
+		if not _is_treasure_card_data(hand_card):
+			continue
+		var hid: String = str(hand_card.get("id", "")).strip_edges()
+		if hid.is_empty():
+			continue
+		owned_counts[hid] = int(owned_counts.get(hid, 0)) + 1
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not bool(slot.get_meta("occupied", false)):
+			continue
+		var equipped: Node3D = slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		var eq_data: Dictionary = equipped.get_meta("card_data", {}) as Dictionary
+		if not _is_treasure_card_data(eq_data):
+			continue
+		var eid: String = str(eq_data.get("id", "")).strip_edges()
+		if eid.is_empty():
+			continue
+		owned_counts[eid] = int(owned_counts.get(eid, 0)) + 1
+	var rebuild_cards: Array[Dictionary] = []
+	for entry_any in CardDatabase.deck_treasures:
+		if not (entry_any is Dictionary):
+			continue
+		var entry: Dictionary = entry_any as Dictionary
+		if str(entry.get("set", "")) != "GnG":
+			continue
+		var id: String = str(entry.get("id", "")).strip_edges()
+		if not id.is_empty():
+			var pending_owned: int = int(owned_counts.get(id, 0))
+			if pending_owned > 0:
+				owned_counts[id] = pending_owned - 1
+				continue
+		rebuild_cards.append(entry)
+	if rebuild_cards.is_empty():
+		return false
+	DECK_UTILS.shuffle_deck(rebuild_cards)
+	for i in rebuild_cards.size():
+		var data: Dictionary = rebuild_cards[i]
+		var card: Node3D = CARD_SCENE.instantiate()
+		card.color = Color(0.2, 0.2, 0.4, 1.0)
+		add_child(card)
+		card.global_position = treasure_deck_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
+		card.rotate_x(-PI / 2.0)
+		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
+		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
+		card.set_meta("in_treasure_stack", true)
+		card.set_meta("card_data", data)
+		card.set_meta("in_treasure_market", false)
+		card.set_meta("stack_index", i)
+		var image_path: String = str(data.get("image", ""))
+		if not image_path.is_empty() and card.has_method("set_card_texture"):
+			card.call_deferred("set_card_texture", image_path)
+		if card.has_method("set_back_texture"):
+			card.call_deferred("set_back_texture", "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png")
+		if card.has_method("set_face_up"):
+			card.call_deferred("set_face_up", false)
+		if card.has_method("set_sorting_offset"):
+			card.call_deferred("set_sorting_offset", i)
 	revealed_treasure_count = 0
 	return true
 
@@ -1564,6 +1792,23 @@ func _create_battlefield_warning() -> void:
 
 func _show_battlefield_warning() -> void:
 	BATTLEFIELD_WARNING.show(self)
+
+func _show_match_end_message(message: String) -> void:
+	if match_closed:
+		return
+	match_closed = true
+	_hide_purchase_prompt()
+	_hide_final_boss_prompt()
+	_hide_adventure_prompt()
+	_hide_action_prompt()
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text(message))
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", false)
+	if battlefield_warning_panel != null and battlefield_warning_label != null:
+		battlefield_warning_label.text = _ui_text(message)
+		battlefield_warning_panel.visible = true
+		_center_battlefield_warning()
 
 func _hide_battlefield_warning() -> void:
 	BATTLEFIELD_WARNING.hide(self)
@@ -2128,14 +2373,21 @@ func _create_dice_drop_prompt() -> void:
 	dice_drop_panel.add_child(content)
 	prompt_layer.add_child(dice_drop_panel)
 
-func _show_drop_half_prompt(count: int) -> void:
+func _show_drop_half_prompt(count: int, mode: String = "drop_half") -> void:
 	if dice_drop_panel == null or dice_drop_label == null:
 		return
-	dice_drop_label.text = _ui_text("Seleziona %d dadi che vuoi tenere." % count)
+	dice_drop_mode = mode
+	if mode == "sacrifice_remove":
+		dice_drop_label.text = _ui_text("Approccio alternativo: seleziona %d dado/i da rimuovere." % count)
+	else:
+		dice_drop_label.text = _ui_text("Seleziona %d dadi che vuoi tenere." % count)
 	dice_drop_panel.visible = true
 	_center_drop_half_prompt()
 	if hand_ui != null and hand_ui.has_method("set_info"):
-		hand_ui.call("set_info", _ui_text("Scegli %d dadi e premi Ok." % count))
+		if mode == "sacrifice_remove":
+			hand_ui.call("set_info", _ui_text("Approccio alternativo: scegli %d dado/i da rimuovere e premi Ok." % count))
+		else:
+			hand_ui.call("set_info", _ui_text("Scegli %d dadi e premi Ok." % count))
 
 func _get_pending_drop_half_count() -> int:
 	return GNG_RULES.get_pending_drop_half_count(self)
@@ -2151,7 +2403,25 @@ func _deck_apply_roll_overrides(values: Array[int]) -> void:
 
 func _deck_after_roll_setup() -> void:
 	GNG_RULES.start_drop_half_if_pending(self, last_roll_values.size())
+	if _get_pending_drop_half_count() <= 0:
+		_start_pending_adventure_sacrifice_die_removal_choice()
 	GNG_RULES.finalize_roll_for_clone(self)
+
+func _start_pending_adventure_sacrifice_die_removal_choice() -> void:
+	if not pending_adventure_sacrifice_sequence_active:
+		return
+	if pending_adventure_sacrifice_remove_after_roll_count <= 0:
+		return
+	var available: int = max(0, int(last_roll_values.size()))
+	if available <= 0:
+		pending_adventure_sacrifice_remove_after_roll_count = 0
+		pending_adventure_sacrifice_remove_choice_count = 0
+		pending_adventure_sacrifice_sequence_active = false
+		return
+	pending_adventure_sacrifice_remove_choice_count = min(pending_adventure_sacrifice_remove_after_roll_count, available)
+	pending_adventure_sacrifice_remove_after_roll_count = 0
+	if pending_adventure_sacrifice_remove_choice_count > 0:
+		_show_drop_half_prompt(pending_adventure_sacrifice_remove_choice_count, "sacrifice_remove")
 
 func _center_drop_half_prompt() -> void:
 	if dice_drop_panel == null:
@@ -2169,9 +2439,11 @@ func _hide_drop_half_prompt() -> void:
 		dice_drop_panel.visible = false
 
 func _confirm_drop_half_selection() -> void:
-	var pending_count := _get_pending_drop_half_count()
+	var mode := dice_drop_mode
+	var pending_count := _get_pending_roll_dice_choice_count()
 	if pending_count <= 0:
 		_hide_drop_half_prompt()
+		dice_drop_mode = "drop_half"
 		return
 	if selected_roll_dice.size() != pending_count:
 		if hand_ui != null and hand_ui.has_method("set_info"):
@@ -2181,15 +2453,19 @@ func _confirm_drop_half_selection() -> void:
 	for idx in selected_roll_dice:
 		var i := int(idx)
 		if i >= 0 and i < last_roll_values.size() and i < active_dice.size():
-			var die: RigidBody3D = active_dice[i]
-			if die != null and die.has_method("get_dice_type"):
-				var dtype := str(die.call("get_dice_type"))
-				if dtype == "green":
-					continue
+			if mode == "drop_half":
+				var die: RigidBody3D = active_dice[i]
+				if die != null and die.has_method("get_dice_type"):
+					var dtype := str(die.call("get_dice_type"))
+					if dtype == "green":
+						continue
 			drop_indices.append(i)
 	if drop_indices.size() != pending_count:
 		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Puoi eliminare solo dadi blu."))
+			if mode == "drop_half":
+				hand_ui.call("set_info", _ui_text("Puoi eliminare solo dadi blu."))
+			else:
+				hand_ui.call("set_info", _ui_text("Seleziona esattamente %d dadi." % pending_count))
 		return
 	drop_indices.sort()
 	for i in range(drop_indices.size() - 1, -1, -1):
@@ -2201,11 +2477,19 @@ func _confirm_drop_half_selection() -> void:
 			active_dice.remove_at(drop_idx)
 		if drop_idx >= 0 and drop_idx < last_roll_values.size():
 			last_roll_values.remove_at(drop_idx)
-	_set_pending_drop_half_count(0)
+	if mode == "sacrifice_remove":
+		pending_adventure_sacrifice_remove_choice_count = max(0, pending_adventure_sacrifice_remove_choice_count - pending_count)
+		if pending_adventure_sacrifice_remove_choice_count <= 0 and pending_adventure_sacrifice_remove_after_roll_count <= 0:
+			pending_adventure_sacrifice_sequence_active = false
+	else:
+		_set_pending_drop_half_count(0)
 	selected_roll_dice.clear()
 	DICE_FLOW.recalculate_last_roll_total(self)
 	DICE_FLOW.refresh_roll_dice_buttons(self)
 	_hide_drop_half_prompt()
+	dice_drop_mode = "drop_half"
+	if _get_pending_drop_half_count() <= 0:
+		_start_pending_adventure_sacrifice_die_removal_choice()
 
 func _create_adventure_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -2299,6 +2583,35 @@ func _create_chain_choice_prompt() -> void:
 	prompt_layer.add_child(chain_choice_panel)
 	_center_chain_choice_prompt()
 
+func _create_flip_choice_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 13
+	add_child(prompt_layer)
+	flip_choice_panel = PanelContainer.new()
+	flip_choice_panel.visible = false
+	flip_choice_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flip_choice_panel.z_index = 221
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.8)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.45)
+	flip_choice_panel.add_theme_stylebox_override("panel", panel_style)
+	flip_choice_label = Label.new()
+	flip_choice_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	flip_choice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	flip_choice_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	flip_choice_label.custom_minimum_size = Vector2(760, 64)
+	flip_choice_label.text = _ui_text("Penalita Flip: scegli 1 equipaggiamento da girare.")
+	flip_choice_label.add_theme_font_override("font", UI_FONT)
+	flip_choice_label.add_theme_font_size_override("font_size", 30)
+	flip_choice_label.add_theme_constant_override("font_spacing/space", 8)
+	flip_choice_panel.add_child(flip_choice_label)
+	prompt_layer.add_child(flip_choice_panel)
+	_center_flip_choice_prompt()
+
 func _show_chain_choice_prompt(text: String = "") -> void:
 	if chain_choice_panel == null:
 		return
@@ -2322,6 +2635,30 @@ func _center_chain_choice_prompt() -> void:
 	var view_size := get_viewport().get_visible_rect().size
 	var size := chain_choice_panel.size
 	chain_choice_panel.position = Vector2((view_size.x - size.x) * 0.5, 150.0)
+
+func _show_flip_choice_prompt(text: String = "") -> void:
+	if flip_choice_panel == null:
+		return
+	if flip_choice_label != null and text != "":
+		flip_choice_label.text = _ui_text(text)
+	flip_choice_panel.visible = true
+	_center_flip_choice_prompt()
+
+func _hide_flip_choice_prompt() -> void:
+	if flip_choice_panel == null:
+		return
+	flip_choice_panel.visible = false
+
+func _center_flip_choice_prompt() -> void:
+	if flip_choice_panel == null:
+		return
+	flip_choice_panel.custom_minimum_size = Vector2.ZERO
+	flip_choice_panel.reset_size()
+	flip_choice_panel.custom_minimum_size = flip_choice_panel.get_combined_minimum_size()
+	flip_choice_panel.reset_size()
+	var view_size := get_viewport().get_visible_rect().size
+	var size := flip_choice_panel.size
+	flip_choice_panel.position = Vector2((view_size.x - size.x) * 0.5, 240.0)
 
 func _spawn_hand_ui() -> void:
 	var hand_layer := CanvasLayer.new()
@@ -2436,15 +2773,13 @@ func _apply_chain_card_effects(card: Node3D, effects: Array) -> void:
 		var name := str(effect).strip_edges()
 		if name.is_empty():
 			continue
-		match name:
-			"next_roll_plus_3":
-				pending_chain_bonus += 3
-				_update_adventure_value_box()
-				_hide_outcome()
-			"reveal_2_keep_1":
-				_reveal_two_adventures_for_choice()
-			_:
-				pass
+		var chain_effect_context := {
+			"main": self,
+			"effect_name": name
+		}
+		AbilityRegistry.apply("chain_effect_router", chain_effect_context)
+		if bool(chain_effect_context.get("handled", false)):
+			continue
 
 func _get_roll_total_with_chain_bonus() -> int:
 	return ADVENTURE_BATTLE_CORE.get_roll_total_with_chain_bonus(self)
@@ -2510,6 +2845,51 @@ func _get_top_adventure_cards(count: int) -> Array[Node3D]:
 	if cards.size() > count:
 		cards.resize(count)
 	return cards
+
+func _get_flippable_equipped_cards() -> Array[Node3D]:
+	var cards: Array[Node3D] = []
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not bool(slot.get_meta("occupied", false)):
+			continue
+		var equipped := slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		if bool(equipped.get_meta("equipped_flipped", false)):
+			continue
+		cards.append(equipped)
+	return cards
+
+func _start_flip_equipment_choice(cards: Array[Node3D]) -> void:
+	pending_flip_equip_choice_cards.clear()
+	for card in cards:
+		if card == null or not is_instance_valid(card):
+			continue
+		pending_flip_equip_choice_cards.append(card)
+	if pending_flip_equip_choice_cards.is_empty():
+		pending_flip_equip_choice_active = false
+		return
+	pending_flip_equip_choice_active = true
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", false)
+	_show_flip_choice_prompt("Penalita Flip: scegli 1 equipaggiamento da girare.")
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Penalita Flip: scegli quale equipaggiamento girare."))
+
+func _resolve_flip_equipment_choice(chosen: Node3D) -> void:
+	if chosen == null or not is_instance_valid(chosen):
+		return
+	if not pending_flip_equip_choice_cards.has(chosen):
+		return
+	_apply_flip_to_equipment_card(chosen)
+	pending_flip_equip_choice_cards.clear()
+	pending_flip_equip_choice_active = false
+	_hide_flip_choice_prompt()
+	_continue_pending_flip_penalties()
+	_try_resolve_pending_adventure_sacrifice_after_cost()
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", not _is_mandatory_action_locked())
 
 func _resolve_chain_choice(chosen: Node3D) -> void:
 	if chosen == null or not is_instance_valid(chosen):
@@ -2578,12 +2958,34 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 func _cleanup_chain_cards_after_victory() -> void:
 	ADVENTURE_BATTLE_CORE.cleanup_chain_cards_after_victory(self)
 	pending_chain_reveal_lock = false
-	_hide_chain_choice_prompt()
+	if not pending_flip_equip_choice_active:
+		_hide_chain_choice_prompt()
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
-		hand_ui.call("set_phase_button_enabled", pending_curse_unequip_count <= 0)
+		hand_ui.call("set_phase_button_enabled", not _is_mandatory_action_locked())
 
 func _is_chain_resolution_locked() -> bool:
-	return pending_chain_choice_active or pending_chain_reveal_lock
+	return pending_chain_choice_active or pending_chain_reveal_lock or pending_flip_equip_choice_active
+
+func _is_mandatory_action_locked() -> bool:
+	if match_closed:
+		return true
+	if pending_curse_unequip_count > 0:
+		return true
+	if pending_penalty_discards > 0:
+		return true
+	if pending_mandatory_draw_locks > 0:
+		return true
+	return _is_chain_resolution_locked()
+
+func _begin_mandatory_draw_lock() -> void:
+	pending_mandatory_draw_locks += 1
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", not _is_mandatory_action_locked())
+
+func _end_mandatory_draw_lock() -> void:
+	pending_mandatory_draw_locks = max(0, pending_mandatory_draw_locks - 1)
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", not _is_mandatory_action_locked())
 
 func _apply_player_heart_loss(amount: int) -> void:
 	if amount <= 0:
@@ -2601,6 +3003,8 @@ func _apply_player_heart_loss(amount: int) -> void:
 	_update_character_form_for_hearts()
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
+	if player_current_hearts <= 0:
+		_show_match_end_message("Game Over: hai finito i cuori.")
 
 func _consume_equipped_prevent_heart_loss() -> bool:
 	for slot in equipment_slots:
@@ -2611,15 +3015,15 @@ func _consume_equipped_prevent_heart_loss() -> bool:
 		var equipped := slot.get_meta("equipped_card", null) as Node3D
 		if equipped == null or not is_instance_valid(equipped):
 			continue
+		if bool(equipped.get_meta("equipped_flipped", false)):
+			continue
 		var data: Dictionary = equipped.get_meta("card_data", {})
 		if not _card_has_timed_effect(data, "sacrifice_prevent_heart_loss", "on_heart_loss"):
 			continue
 		slot.set_meta("occupied", false)
 		slot.set_meta("equipped_card", null)
-		var extra := int(equipped.get_meta("extra_slots", 0))
-		if extra > 0:
-			_remove_equipment_slots(extra)
 		equipped.queue_free()
+		_apply_equipment_slot_limit_after_curse()
 		return true
 	return false
 
@@ -2656,6 +3060,8 @@ func _has_equipped_effect(effect_name: String) -> bool:
 		var equipped := slot.get_meta("equipped_card", null) as Node3D
 		if equipped == null or not is_instance_valid(equipped):
 			continue
+		if bool(equipped.get_meta("equipped_flipped", false)):
+			continue
 		var data: Dictionary = equipped.get_meta("card_data", {})
 		var effects: Array = data.get("effects", [])
 		if effects.has(effect_name):
@@ -2689,66 +3095,46 @@ func _are_all_roll_values_different(values: Array[int]) -> bool:
 		seen[value] = true
 	return true
 
+func _get_current_battlefield_hearts_for_penalty(card_data: Dictionary) -> int:
+	var battlefield := _get_battlefield_card()
+	if battlefield == null or not is_instance_valid(battlefield):
+		return -1
+	var battlefield_data: Dictionary = battlefield.get_meta("card_data", {})
+	var requested_id := str(card_data.get("id", "")).strip_edges()
+	var battlefield_id := str(battlefield_data.get("id", "")).strip_edges()
+	if requested_id != "" and battlefield_id != "" and requested_id != battlefield_id:
+		return -1
+	return int(battlefield.get_meta("battlefield_hearts", -1))
+
+func _force_end_turn_from_failure() -> void:
+	if phase_index != 1:
+		return
+	if hand_ui == null or not hand_ui.has_method("set_phase"):
+		return
+	var turn_idx := 1
+	if hand_ui.has_method("get_turn_index"):
+		turn_idx = max(1, int(hand_ui.call("get_turn_index")))
+	hand_ui.call("set_phase", 2, turn_idx)
+
 func _apply_failure_penalty(card_data: Dictionary, total: int) -> void:
 	var penalties: Array = card_data.get("penalty_violet", [])
 	if penalties.is_empty():
 		return
 	var applied: Array[String] = []
+	var battlefield_hearts := _get_current_battlefield_hearts_for_penalty(card_data)
 	for penalty in penalties:
 		var code := str(penalty).strip_edges()
 		if code.is_empty():
 			continue
-		if code.begins_with("lose_heart_"):
-			var amount := int(code.get_slice("_", 2))
-			_apply_player_heart_loss(max(1, amount))
-			applied.append("-%d cuore" % max(1, amount))
-			continue
-		if code.begins_with("lose_coins_"):
-			var coins := int(code.get_slice("_", 2))
-			_apply_coin_penalty(max(0, coins))
-			applied.append("-%d monete" % max(0, coins))
-			continue
-		if code == "add_green_die":
-			green_dice += 1
-			dice_count = DICE_FLOW.get_total_dice(self)
-			applied.append("+1 dado verde")
-			continue
-		if code == "discard_hand_card_1":
-			if _discard_one_card_for_penalty():
-				applied.append("scarta 1 carta")
-			continue
-		if code == "flip_equipment":
-			if _discard_one_equipped_card():
-				applied.append("rimuovi 1 equip")
-			continue
-		if code.begins_with("fail_even_lose_3_coins_or_odd_lose_heart"):
-			if int(total) % 2 == 0:
-				_apply_coin_penalty(3)
-				applied.append("-3 monete")
-			else:
-				_apply_player_heart_loss(1)
-				applied.append("-1 cuore")
-			continue
-		if code.begins_with("fail_even_discard_or_odd_lose_heart"):
-			if int(total) % 2 == 0:
-				if _discard_one_card_for_penalty():
-					applied.append("scarta 1 carta")
-			else:
-				_apply_player_heart_loss(1)
-				applied.append("-1 cuore")
-			continue
-		if code.begins_with("fail_even_flip_or_odd_lose_heart"):
-			if int(total) % 2 == 0:
-				if _discard_one_equipped_card():
-					applied.append("rimuovi 1 equip")
-			else:
-				_apply_player_heart_loss(1)
-				applied.append("-1 cuore")
-			continue
-		if code.begins_with("fail_even_poison_or_odd_lose_heart"):
-			# Poison is not modeled yet; fallback to heart loss to keep gameplay consistent.
-			_apply_player_heart_loss(1)
-			applied.append("-1 cuore")
+		var penalty_context := {
+			"main": self,
+			"code": code,
+			"total": int(total),
+			"battlefield_hearts": battlefield_hearts,
+			"applied": applied
+		}
+		AbilityRegistry.apply("penalty_code_router", penalty_context)
+		if bool(penalty_context.get("handled", false)):
 			continue
 	if pending_penalty_discards > 0:
 		return
@@ -2772,12 +3158,16 @@ func _set_hand_discard_mode(active: bool, reason: String = "") -> void:
 	HAND_FLOW_CORE.set_hand_discard_mode(self, active, reason)
 
 func _on_hand_request_discard_card(card: Dictionary) -> void:
-	if _is_chain_resolution_locked():
-		return
+	if _is_mandatory_action_locked():
+		if pending_penalty_discards <= 0:
+			return
+		if pending_curse_unequip_count > 0 or pending_mandatory_draw_locks > 0 or _is_chain_resolution_locked():
+			return
 	HAND_FLOW_CORE.on_hand_request_discard_card(self, card)
+	_try_resolve_pending_adventure_sacrifice_after_cost()
 
 func _on_hand_request_sell_card(card: Dictionary) -> void:
-	if _is_chain_resolution_locked():
+	if _is_mandatory_action_locked():
 		return
 	if phase_index != 0:
 		return
@@ -2785,7 +3175,7 @@ func _on_hand_request_sell_card(card: Dictionary) -> void:
 	_show_sell_prompt(resolved)
 
 func _on_hand_request_play_boss(card: Dictionary) -> void:
-	if _is_chain_resolution_locked():
+	if _is_mandatory_action_locked():
 		return
 	if phase_index != 0:
 		return
@@ -2843,14 +3233,61 @@ func _discard_one_equipped_card() -> bool:
 		var card_data: Dictionary = equipped.get_meta("card_data", {})
 		if card_data.is_empty():
 			card_data = {"image": ""}
-		var extra := int(equipped.get_meta("extra_slots", 0))
-		if extra > 0:
-			_remove_equipment_slots(extra)
 		player_hand.append(card_data)
 		equipped.queue_free()
+		_apply_equipment_slot_limit_after_curse()
 		_refresh_hand_ui()
 		return true
 	return false
+
+func _flip_one_equipped_card() -> bool:
+	if pending_flip_equip_choice_active:
+		pending_flip_penalties_to_resolve += 1
+		return true
+	var cards := _get_flippable_equipped_cards()
+	if cards.is_empty():
+		# No valid targets (none equipped or all already flipped): penalty resolves automatically.
+		return false
+	if cards.size() == 1:
+		return _apply_flip_to_equipment_card(cards[0])
+	_start_flip_equipment_choice(cards)
+	return true
+
+func _continue_pending_flip_penalties() -> void:
+	while pending_flip_penalties_to_resolve > 0 and not pending_flip_equip_choice_active:
+		pending_flip_penalties_to_resolve -= 1
+		# Resolve one pending flip at a time.
+		_flip_one_equipped_card()
+
+func _apply_flip_to_equipment_card(card: Node3D) -> bool:
+	if card == null or not is_instance_valid(card):
+		return false
+	if bool(card.get_meta("equipped_flipped", false)):
+		return false
+	card.set_meta("equipped_flipped", true)
+	if card.has_method("set_face_up"):
+		card.call_deferred("set_face_up", false)
+	_apply_equipment_slot_limit_after_curse()
+	return true
+
+func _restore_flipped_equipment() -> void:
+	var changed := false
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not slot.has_meta("occupied") or not slot.get_meta("occupied", false):
+			continue
+		var equipped := slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		if not bool(equipped.get_meta("equipped_flipped", false)):
+			continue
+		equipped.set_meta("equipped_flipped", false)
+		if equipped.has_method("set_face_up"):
+			equipped.call_deferred("set_face_up", true)
+		changed = true
+	if changed:
+		_apply_equipment_slot_limit_after_curse()
 
 func _spawn_defeat_explosion(world_pos: Vector3) -> void:
 	var tex := ResourceLoader.load(EXPLOSION_SHEET) as Texture2D
@@ -2905,7 +3342,7 @@ func _apply_curse(card_data: Dictionary) -> void:
 	_apply_character_texture_override()
 	_init_character_stats(true)
 	player_current_hearts = clamp(player_current_hearts, 0, player_max_hearts)
-	_apply_equipment_slot_limit_after_curse()
+	_apply_equipment_slot_limit_after_curse("Maledizione")
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
 
@@ -3245,6 +3682,30 @@ func _get_equipped_cards_sorted() -> Array[Node3D]:
 		out.append(equipped)
 	return out
 
+func _get_equipment_bonus_slots_from_card_data(card_data: Dictionary) -> int:
+	if card_data.is_empty():
+		return 0
+	var effects: Array = card_data.get("effects", [])
+	var extra: int = 0
+	for effect in effects:
+		var name := str(effect)
+		if name == "armor_extra_slot_1":
+			extra += 1
+		elif name == "armor_extra_slot_2":
+			extra += 2
+	return max(0, extra)
+
+func _get_active_equipment_bonus_slots() -> int:
+	var extra: int = 0
+	for card in _get_equipped_cards_sorted():
+		if card == null or not is_instance_valid(card):
+			continue
+		if bool(card.get_meta("equipped_flipped", false)):
+			continue
+		var card_data: Dictionary = card.get_meta("card_data", {})
+		extra += _get_equipment_bonus_slots_from_card_data(card_data)
+	return max(0, extra)
+
 func _compact_equipment_slots() -> void:
 	var equipped_cards: Array[Node3D] = _get_equipped_cards_sorted()
 	for slot in equipment_slots:
@@ -3268,37 +3729,44 @@ func _compact_equipment_slots() -> void:
 		target_slot.set_meta("occupied", true)
 		target_slot.set_meta("equipped_card", card)
 
-func _apply_equipment_slot_limit_after_curse() -> void:
+func _request_forced_unequip(count: int, reason: String = "Slot equip ridotti") -> void:
+	pending_curse_unequip_count = max(0, count)
+	if not reason.strip_edges().is_empty():
+		pending_forced_unequip_reason = reason.strip_edges()
+	_update_curse_unequip_prompt()
+
+func _apply_equipment_slot_limit_after_curse(reason: String = "Slot equip ridotti") -> void:
 	if equipment_slots_root == null or character_card == null:
 		return
-	var target_slots: int = max(0, _get_character_max_slots())
+	if not reason.strip_edges().is_empty():
+		pending_forced_unequip_reason = reason.strip_edges()
+	var target_slots: int = max(0, _get_character_max_slots() + _get_active_equipment_bonus_slots())
 	if equipment_slots.size() < target_slots:
 		_add_equipment_slots(target_slots - equipment_slots.size())
+		_request_forced_unequip(0, pending_forced_unequip_reason)
 		return
 	_compact_equipment_slots()
 	var equipped_cards: Array[Node3D] = _get_equipped_cards_sorted()
 	var equipped_count: int = equipped_cards.size()
 	var must_unequip: int = max(0, equipped_count - target_slots)
 	if must_unequip > 0:
-		pending_curse_unequip_count = must_unequip
-		_update_curse_unequip_prompt()
+		_request_forced_unequip(must_unequip, pending_forced_unequip_reason)
 		return
 	var extra_slots: int = equipment_slots.size() - target_slots
 	if extra_slots > 0:
 		_remove_equipment_slots(extra_slots)
-	pending_curse_unequip_count = 0
-	_update_curse_unequip_prompt()
+	_request_forced_unequip(0, pending_forced_unequip_reason)
 
 func _update_curse_unequip_prompt() -> void:
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
-		hand_ui.call("set_phase_button_enabled", pending_curse_unequip_count <= 0 and not _is_chain_resolution_locked())
+		hand_ui.call("set_phase_button_enabled", not _is_mandatory_action_locked())
 	if pending_curse_unequip_count <= 0:
 		return
 	if hand_ui != null and hand_ui.has_method("set_info"):
-		hand_ui.call("set_info", _ui_text("Maledizione: riprendi %d equipaggiamenti in mano." % pending_curse_unequip_count))
+		hand_ui.call("set_info", _ui_text("%s: riprendi %d equipaggiamenti in mano." % [pending_forced_unequip_reason, pending_curse_unequip_count]))
 
 func _on_hand_request_place_equipment(card: Dictionary, screen_pos: Vector2) -> void:
-	if _is_chain_resolution_locked():
+	if _is_mandatory_action_locked():
 		return
 	if phase_index != 0:
 		return
@@ -3366,22 +3834,13 @@ func _place_equipment_in_slot(slot: Area3D, card_data: Dictionary) -> void:
 	slot.set_meta("occupied", true)
 	slot.set_meta("equipped_card", card)
 	card.set_meta("equipped_slot", slot)
+	card.set_meta("equipped_flipped", false)
 	var extra := _apply_equipment_extra_slots(card_data)
 	card.set_meta("extra_slots", extra)
+	_apply_equipment_slot_limit_after_curse()
 
 func _apply_equipment_extra_slots(card_data: Dictionary) -> int:
-	var effects: Array = card_data.get("effects", [])
-	var extra: int = 0
-	for effect in effects:
-		var name := str(effect)
-		if name == "armor_extra_slot_1":
-			extra += 1
-		elif name == "armor_extra_slot_2":
-			extra += 2
-	if extra <= 0:
-		return 0
-	_add_equipment_slots(extra)
-	return extra
+	return _get_equipment_bonus_slots_from_card_data(card_data)
 
 func _add_equipment_slots(extra: int) -> void:
 	if equipment_slots_root == null:
@@ -3469,15 +3928,13 @@ func _force_return_equipped_to_hand(card: Node3D) -> void:
 		card_data = {
 			"image": ""
 		}
-	var extra := int(card.get_meta("extra_slots", 0))
-	if extra > 0:
-		_remove_equipment_slots(extra)
 	player_hand.append(card_data)
 	card.queue_free()
+	_apply_equipment_slot_limit_after_curse()
 	_refresh_hand_ui()
 
 func _on_hand_request_use_magic(card: Dictionary) -> void:
-	if _is_chain_resolution_locked():
+	if _is_mandatory_action_locked():
 		return
 	if phase_index != 1:
 		return
@@ -3485,10 +3942,25 @@ func _on_hand_request_use_magic(card: Dictionary) -> void:
 	var card_type := str(resolved.get("type", "")).strip_edges().to_lower()
 	if card_type != "istantaneo":
 		return
+	if _is_adventure_sacrifice_resolution_pending():
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Completa prima l'approccio alternativo: lancia e rimuovi i dadi richiesti."))
+		return
 	if not CARD_TIMING.is_card_activation_allowed_now(self, resolved):
 		CARD_TIMING.show_card_timing_hint(self, resolved)
 		return
 	_show_action_prompt(resolved, true, null)
+
+func _get_pending_roll_dice_choice_count() -> int:
+	if dice_drop_mode == "sacrifice_remove":
+		return max(0, pending_adventure_sacrifice_remove_choice_count)
+	return _get_pending_drop_half_count()
+
+func _is_drop_half_prompt_mode() -> bool:
+	return dice_drop_mode == "drop_half"
+
+func _is_adventure_sacrifice_resolution_pending() -> bool:
+	return pending_adventure_sacrifice_sequence_active or pending_adventure_sacrifice_remove_after_roll_count > 0 or pending_adventure_sacrifice_remove_choice_count > 0
 
 func _resolve_card_data(card: Dictionary) -> Dictionary:
 	return HAND_FLOW_CORE.resolve_card_data(self, card)

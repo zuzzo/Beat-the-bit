@@ -132,21 +132,50 @@ static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
 static func _apply_regno_reward(main: Node, code: String) -> void:
 	match code:
 		"reward_group_vaso_di_coccio":
-			main._spawn_reward_tokens_with_code(1, main.TOKEN_VASO, code, main._get_reward_drop_center())
+			_claim_treasure_from_group(main, "vaso_di_coccio")
 		"reward_group_chest":
-			main._spawn_reward_tokens_with_code(1, main.TOKEN_CHEST, code, main._get_reward_drop_center())
+			_claim_treasure_from_group(main, "chest")
 		"reward_group_teca":
-			main._spawn_reward_tokens_with_code(1, main.TOKEN_TECA, code, main._get_reward_drop_center())
+			_claim_treasure_from_group(main, "teca")
 		"gain_heart":
-			main.player_current_hearts = min(main.player_max_hearts, main.player_current_hearts + 1)
-			main._update_hand_ui_stats()
-			main._refresh_character_hearts_tokens()
+			if main.player_current_hearts < main.player_max_hearts:
+				main.player_current_hearts = min(main.player_max_hearts, main.player_current_hearts + 1)
+				main._update_hand_ui_stats()
+				main._refresh_character_hearts_tokens()
 		"boss":
 			main._claim_boss_to_hand_from_regno()
 		"boss_finale":
 			main._reveal_final_boss_from_regno()
 		_:
 			pass
+
+static func _claim_treasure_from_group(main: Node, group_key: String) -> void:
+	var wanted: String = group_key.strip_edges().to_lower()
+	if wanted.is_empty():
+		return
+	while true:
+		var top: Node3D = main._get_top_treasure_card() as Node3D
+		if top == null:
+			if main._ensure_treasure_stack_from_market_if_empty():
+				top = main._get_top_treasure_card() as Node3D
+			if top == null:
+				return
+		var card_data: Dictionary = top.get_meta("card_data", {}) as Dictionary
+		var group: String = str(card_data.get("group", "")).strip_edges().to_lower()
+		top.set_meta("in_treasure_stack", false)
+		if top.has_method("set_face_up"):
+			top.call("set_face_up", true)
+		if group == wanted:
+			main.player_hand.append(card_data)
+			top.queue_free()
+			main._refresh_hand_ui()
+			return
+		var market_index: int = int(main._reserve_next_market_index())
+		top.set_meta("market_index", market_index)
+		top.set_meta("in_treasure_market", true)
+		top.global_position = main.treasure_reveal_pos + Vector3(0.0, float(main.revealed_treasure_count) * main.TREASURE_REVEALED_Y_STEP, 0.0)
+		main.revealed_treasure_count += 1
+		main._reposition_market_stack()
 
 static func get_next_chain_pos(main: Node, base_pos: Vector3) -> Vector3:
 	# Place chained cards progressively upward on screen (negative Z in this camera setup).

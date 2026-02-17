@@ -355,16 +355,17 @@ static func _apply_roll_die_button_theme(btn: Button, die_type: String) -> void:
 	btn.add_theme_color_override("font_pressed_color", fg)
 
 static func on_roll_die_button_pressed(main: Node, index: int) -> void:
-	if main._get_pending_drop_half_count() > 0:
-		if main.active_dice[index] != null and is_instance_valid(main.active_dice[index]):
-			var dice_type := ""
-			if main.active_dice[index].has_method("get_dice_type"):
-				dice_type = str(main.active_dice[index].call("get_dice_type"))
-			if dice_type == "green":
-				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-					main.hand_ui.call("set_info", main._ui_text("Non puoi eliminare dadi verdi."))
-				refresh_roll_dice_buttons(main)
-				return
+	if main._get_pending_roll_dice_choice_count() > 0:
+		if main._is_drop_half_prompt_mode():
+			if main.active_dice[index] != null and is_instance_valid(main.active_dice[index]):
+				var dice_type := ""
+				if main.active_dice[index].has_method("get_dice_type"):
+					dice_type = str(main.active_dice[index].call("get_dice_type"))
+				if dice_type == "green":
+					if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+						main.hand_ui.call("set_info", main._ui_text("Non puoi eliminare dadi verdi."))
+					refresh_roll_dice_buttons(main)
+					return
 		if main.selected_roll_dice.has(index):
 			main.selected_roll_dice.erase(index)
 		else:

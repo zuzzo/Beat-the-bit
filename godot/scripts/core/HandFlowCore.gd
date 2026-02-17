@@ -64,7 +64,8 @@ static func set_hand_discard_mode(main: Node, active: bool, reason: String = "")
 	main.pending_discard_reason = reason if active else ""
 	main.hand_ui.call("set_discard_mode", active)
 	if main.hand_ui.has_method("set_phase_button_enabled"):
-		main.hand_ui.call("set_phase_button_enabled", not active)
+		var can_pass: bool = (not active) and (not main._is_mandatory_action_locked())
+		main.hand_ui.call("set_phase_button_enabled", can_pass)
 	if active and main.hand_ui.has_method("set_info"):
 		if main.pending_discard_reason == "hand_limit":
 			main.hand_ui.call("set_info", "Fine turno: scegli carte dalla mano da scartare.")

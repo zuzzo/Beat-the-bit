@@ -60,13 +60,15 @@ static func update_adventure_value_box(main: Node) -> void:
 			main.player_value_label.text = main._ui_text("Tuo tiro: -")
 	main.DICE_FLOW.refresh_roll_dice_buttons(main)
 	if main.compare_button != null:
-		main.compare_button.disabled = (not main.roll_pending_apply) or main._get_pending_drop_half_count() > 0 or main._is_chain_resolution_locked()
+		main.compare_button.disabled = (not main.roll_pending_apply) or main._get_pending_roll_dice_choice_count() > 0 or main._is_mandatory_action_locked()
 	main.adventure_value_panel.visible = true
 
 static func on_compare_pressed(main: Node) -> void:
-	if main._is_chain_resolution_locked():
+	if main._is_mandatory_action_locked():
 		return
 	if not main.roll_pending_apply:
+		return
+	if main._get_pending_roll_dice_choice_count() > 0:
 		return
 	var battlefield: Node3D = main._get_battlefield_card() as Node3D
 	if battlefield == null:
@@ -100,6 +102,7 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 		main.last_roll_values.clear()
 		main.selected_roll_dice.clear()
 		main.post_roll_effects.clear()
+		main._consume_pending_adventure_sacrifice_die_removal()
 		if main.hand_ui != null and main.hand_ui.has_method("set_phase_button_enabled"):
 			main.hand_ui.call("set_phase_button_enabled", true)
 		if main.adventure_value_panel != null:
@@ -121,6 +124,7 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 		main.last_roll_values.clear()
 		main.selected_roll_dice.clear()
 		main.post_roll_effects.clear()
+		main._consume_pending_adventure_sacrifice_die_removal()
 		cleanup_chain_cards_after_victory(main)
 		if main.hand_ui != null and main.hand_ui.has_method("set_phase_button_enabled"):
 			main.hand_ui.call("set_phase_button_enabled", true)
@@ -140,6 +144,8 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 			main._move_adventure_to_discard(card)
 			main._spawn_defeat_explosion(defeated_pos)
 			cleanup_chain_cards_after_victory(main)
+			if card_type == "boss_finale":
+				main._show_match_end_message("Vittoria: Boss finale sconfitto.")
 		main.last_roll_success = true
 		if total == difficulty:
 			main._show_outcome("SUCCESSO PERFETTO", Color(1.0, 0.9, 0.2))
@@ -153,6 +159,7 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 	main.last_roll_values.clear()
 	main.selected_roll_dice.clear()
 	main.post_roll_effects.clear()
+	main._consume_pending_adventure_sacrifice_die_removal()
 	if main.hand_ui != null and main.hand_ui.has_method("set_phase_button_enabled"):
 		main.hand_ui.call("set_phase_button_enabled", true)
 	if main.adventure_value_panel != null:
