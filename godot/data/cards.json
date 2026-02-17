@@ -54,6 +54,42 @@
 		"type": "scontro"
 	},
 	{
+		"difficulty": 8.0,
+		"id": "enemy_demone_2",
+		"name": "Demone",
+		"penalty_violet": [
+			"lose_heart_1"
+		],
+		"reward_brown": [
+			"reward_coin_5"
+		],
+		"reward_silver": [
+			"reward_group_chest"
+		],
+		"sacrifice_cost": "discard_hand_card_1",
+		"sacrifice_effect": "extra_die_then_remove_blue",
+		"set": "GnG",
+		"type": "scontro"
+	},
+	{
+		"difficulty": 12.0,
+		"id": "enemy_pipistrello_2",
+		"name": "Pipistrello",
+		"penalty_violet": [
+			"lose_heart_1"
+		],
+		"reward_brown": [
+			"reward_coin_3"
+		],
+		"reward_silver": [
+			"reward_group_vaso_di_coccio"
+		],
+		"sacrifice_cost": "discard_hand_card_1",
+		"sacrifice_effect": "extra_die_then_remove_blue",
+		"set": "GnG",
+		"type": "scontro"
+	},
+	{
 		"difficulty": 10.0,
 		"id": "enemy_cavaliere_fantasma",
 		"name": "Cavaliere fantasma",
@@ -181,7 +217,43 @@
 	},
 	{
 		"difficulty": 11.0,
+		"id": "enemy_imp_2",
+		"name": "Imp",
+		"penalty_violet": [
+			"lose_coins_3"
+		],
+		"reward_brown": [
+			"reward_coin_3"
+		],
+		"reward_silver": [
+			"reward_group_vaso_di_coccio"
+		],
+		"sacrifice_cost": "discard_hand_card_1",
+		"sacrifice_effect": "extra_die_then_remove_blue",
+		"set": "GnG",
+		"type": "scontro"
+	},
+	{
+		"difficulty": 11.0,
 		"id": "enemy_spettro",
+		"name": "Spettro",
+		"penalty_violet": [
+			"discard_hand_card_1"
+		],
+		"reward_brown": [
+			"reward_token_tombstone"
+		],
+		"reward_silver": [
+			"reward_group_vaso_di_coccio"
+		],
+		"sacrifice_cost": "lose_heart_1",
+		"sacrifice_effect": "extra_die_then_remove_blue",
+		"set": "GnG",
+		"type": "scontro"
+	},
+	{
+		"difficulty": 11.0,
+		"id": "enemy_spettro_2",
 		"name": "Spettro",
 		"penalty_violet": [
 			"discard_hand_card_1"

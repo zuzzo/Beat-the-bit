@@ -144,6 +144,13 @@ var adventure_prompt_label: Label
 var adventure_prompt_yes: Button
 var adventure_prompt_no: Button
 var pending_adventure_card: Node3D
+var adventure_sacrifice_prompt_panel: PanelContainer
+var adventure_sacrifice_prompt_label: Label
+var adventure_sacrifice_prompt_yes: Button
+var adventure_sacrifice_prompt_no: Button
+var pending_adventure_sacrifice_prompt_card: Node3D
+var pending_adventure_sacrifice_roll_lock: bool = false
+var pending_adventure_sacrifice_roll_lock_card: Node3D
 var action_prompt_panel: PanelContainer
 var action_prompt_label: Label
 var action_prompt_yes: Button
@@ -284,6 +291,7 @@ func _ready() -> void:
 	_create_coin_total_label()
 	_update_phase_info()
 	_create_adventure_prompt()
+	_create_adventure_sacrifice_prompt()
 	_create_final_boss_prompt()
 	_create_chain_choice_prompt()
 	_create_flip_choice_prompt()
@@ -296,6 +304,15 @@ func _ready() -> void:
 	DECK_UTILS.shuffle_deck(example_deck)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if adventure_sacrifice_prompt_panel != null and adventure_sacrifice_prompt_panel.visible:
+		if event is InputEventMouseButton and event.pressed:
+			if adventure_sacrifice_prompt_yes != null and adventure_sacrifice_prompt_yes.get_global_rect().has_point(event.position):
+				_confirm_adventure_sacrifice_prompt()
+				return
+			if adventure_sacrifice_prompt_no != null and adventure_sacrifice_prompt_no.get_global_rect().has_point(event.position):
+				_hide_adventure_sacrifice_prompt()
+				return
+		return
 	if final_boss_prompt_panel != null and final_boss_prompt_panel.visible and event is InputEventMouseButton and event.pressed:
 		if final_boss_prompt_yes != null and final_boss_prompt_yes.get_global_rect().has_point(event.position):
 			_confirm_final_boss_prompt()
@@ -618,6 +635,8 @@ func _process(_delta: float) -> void:
 	_update_adventure_prompt_position()
 	if final_boss_prompt_panel != null and final_boss_prompt_panel.visible:
 		_center_final_boss_prompt()
+	if adventure_sacrifice_prompt_panel != null and adventure_sacrifice_prompt_panel.visible:
+		_center_adventure_sacrifice_prompt()
 	if chain_choice_panel != null and chain_choice_panel.visible:
 		_center_chain_choice_prompt()
 	if flip_choice_panel != null and flip_choice_panel.visible:
@@ -905,6 +924,7 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 		_hide_final_boss_prompt()
 	if phase_index != 1:
 		_hide_adventure_prompt()
+		_hide_adventure_sacrifice_prompt()
 	if phase_index == 2:
 		_restore_flipped_equipment()
 		await _cleanup_battlefield_rewards_for_recovery()
@@ -1103,8 +1123,39 @@ func _try_activate_adventure_sacrifice(card: Node3D) -> bool:
 		return false
 	if not bool(card.get_meta("in_battlefield", false)):
 		return false
+	if pending_adventure_sacrifice_roll_lock and card == pending_adventure_sacrifice_roll_lock_card:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Hai gia accettato l'approccio alternativo: prima effettua un tiro di dadi."))
+		return true
 	if pending_adventure_sacrifice_waiting_cost:
 		return true
+	var card_data: Dictionary = card.get_meta("card_data", {})
+	if card_data.is_empty():
+		return false
+	var ctype := str(card_data.get("type", "")).strip_edges().to_lower()
+	if ctype != "scontro" and ctype != "maledizione":
+		return false
+	if bool(card.get_meta("sacrifice_used", false)):
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Approccio alternativo gia usato per questa carta."))
+		return true
+	if roll_pending_apply or roll_in_progress:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Usa l'approccio alternativo prima del lancio dadi."))
+		return true
+	var sacrifice_effect := str(card_data.get("sacrifice_effect", "")).strip_edges()
+	if sacrifice_effect.is_empty():
+		return false
+	_show_adventure_sacrifice_prompt(card)
+	return true
+
+func _execute_adventure_sacrifice(card: Node3D) -> bool:
+	if phase_index != 1:
+		return false
+	if card == null or not is_instance_valid(card):
+		return false
+	if not bool(card.get_meta("in_battlefield", false)):
+		return false
 	var card_data: Dictionary = card.get_meta("card_data", {})
 	if card_data.is_empty():
 		return false
@@ -1130,6 +1181,28 @@ func _try_activate_adventure_sacrifice(card: Node3D) -> bool:
 		return true
 	_apply_adventure_sacrifice_effect(card, sacrifice_effect)
 	return true
+
+func _show_adventure_sacrifice_prompt(card: Node3D) -> void:
+	pending_adventure_sacrifice_prompt_card = card
+	if adventure_sacrifice_prompt_panel == null or adventure_sacrifice_prompt_label == null:
+		return
+	adventure_sacrifice_prompt_label.text = _ui_text("Usare l'effetto della carta Avventura?")
+	adventure_sacrifice_prompt_panel.visible = true
+	_center_adventure_sacrifice_prompt()
+
+func _hide_adventure_sacrifice_prompt() -> void:
+	pending_adventure_sacrifice_prompt_card = null
+	if adventure_sacrifice_prompt_panel != null:
+		adventure_sacrifice_prompt_panel.visible = false
+
+func _confirm_adventure_sacrifice_prompt() -> void:
+	var card := pending_adventure_sacrifice_prompt_card
+	_hide_adventure_sacrifice_prompt()
+	if card == null or not is_instance_valid(card):
+		return
+	pending_adventure_sacrifice_roll_lock = true
+	pending_adventure_sacrifice_roll_lock_card = card
+	_execute_adventure_sacrifice(card)
 
 func _pay_adventure_sacrifice_cost(cost_code: String, card: Node3D, sacrifice_effect: String) -> int:
 	var code := cost_code.strip_edges().to_lower()
@@ -1800,6 +1873,7 @@ func _show_match_end_message(message: String) -> void:
 	_hide_purchase_prompt()
 	_hide_final_boss_prompt()
 	_hide_adventure_prompt()
+	_hide_adventure_sacrifice_prompt()
 	_hide_action_prompt()
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", _ui_text(message))
@@ -2396,6 +2470,9 @@ func _set_pending_drop_half_count(value: int) -> void:
 	GNG_RULES.set_pending_drop_half_count(self, value)
 
 func _deck_prepare_roll() -> void:
+	if pending_adventure_sacrifice_roll_lock:
+		pending_adventure_sacrifice_roll_lock = false
+		pending_adventure_sacrifice_roll_lock_card = null
 	GNG_RULES.prepare_roll_for_clone(self)
 
 func _deck_apply_roll_overrides(values: Array[int]) -> void:
@@ -2553,6 +2630,80 @@ func _create_adventure_prompt() -> void:
 
 	adventure_prompt_panel.add_child(content)
 	prompt_layer.add_child(adventure_prompt_panel)
+
+func _create_adventure_sacrifice_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 12
+	add_child(prompt_layer)
+	adventure_sacrifice_prompt_panel = PanelContainer.new()
+	adventure_sacrifice_prompt_panel.visible = false
+	adventure_sacrifice_prompt_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	adventure_sacrifice_prompt_panel.z_index = 211
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.75)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	adventure_sacrifice_prompt_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var content := VBoxContainer.new()
+	content.anchor_left = 0.0
+	content.anchor_right = 1.0
+	content.anchor_top = 0.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_right = -16.0
+	content.offset_top = 12.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 10)
+
+	adventure_sacrifice_prompt_label = Label.new()
+	adventure_sacrifice_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	adventure_sacrifice_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	adventure_sacrifice_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	adventure_sacrifice_prompt_label.custom_minimum_size = Vector2(420, 0)
+	adventure_sacrifice_prompt_label.text = _ui_text("Usare l'effetto della carta Avventura?")
+	adventure_sacrifice_prompt_label.add_theme_font_override("font", UI_FONT)
+	adventure_sacrifice_prompt_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	adventure_sacrifice_prompt_label.add_theme_constant_override("font_spacing/space", 8)
+	content.add_child(adventure_sacrifice_prompt_label)
+
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.set("theme_override_constants/separation", 20)
+	adventure_sacrifice_prompt_yes = Button.new()
+	adventure_sacrifice_prompt_yes.text = _ui_text("Si")
+	adventure_sacrifice_prompt_yes.add_theme_font_override("font", UI_FONT)
+	adventure_sacrifice_prompt_yes.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	adventure_sacrifice_prompt_yes.add_theme_constant_override("font_spacing/space", 8)
+	adventure_sacrifice_prompt_yes.pressed.connect(_confirm_adventure_sacrifice_prompt)
+	adventure_sacrifice_prompt_no = Button.new()
+	adventure_sacrifice_prompt_no.text = _ui_text("No")
+	adventure_sacrifice_prompt_no.add_theme_font_override("font", UI_FONT)
+	adventure_sacrifice_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	adventure_sacrifice_prompt_no.add_theme_constant_override("font_spacing/space", 8)
+	adventure_sacrifice_prompt_no.pressed.connect(_hide_adventure_sacrifice_prompt)
+	button_row.add_child(adventure_sacrifice_prompt_yes)
+	button_row.add_child(adventure_sacrifice_prompt_no)
+	content.add_child(button_row)
+
+	adventure_sacrifice_prompt_panel.add_child(content)
+	prompt_layer.add_child(adventure_sacrifice_prompt_panel)
+
+func _center_adventure_sacrifice_prompt() -> void:
+	if adventure_sacrifice_prompt_panel == null:
+		return
+	adventure_sacrifice_prompt_panel.custom_minimum_size = Vector2.ZERO
+	adventure_sacrifice_prompt_panel.reset_size()
+	adventure_sacrifice_prompt_panel.custom_minimum_size = adventure_sacrifice_prompt_panel.get_combined_minimum_size()
+	adventure_sacrifice_prompt_panel.reset_size()
+	var view_size := get_viewport().get_visible_rect().size
+	var size := adventure_sacrifice_prompt_panel.size
+	adventure_sacrifice_prompt_panel.position = Vector2((view_size.x - size.x) * 0.5, (view_size.y - size.y) * 0.5)
 
 func _create_chain_choice_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -2968,6 +3119,8 @@ func _is_chain_resolution_locked() -> bool:
 
 func _is_mandatory_action_locked() -> bool:
 	if match_closed:
+		return true
+	if adventure_sacrifice_prompt_panel != null and adventure_sacrifice_prompt_panel.visible:
 		return true
 	if pending_curse_unequip_count > 0:
 		return true
