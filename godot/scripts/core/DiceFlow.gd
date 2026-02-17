@@ -58,13 +58,16 @@ static func reset_roll_trigger(main: Node) -> void:
 	main.roll_trigger_reset = true
 
 static func spawn_dice_preview(main: Node) -> void:
-	var count: int = get_total_dice(main)
+	var preview_types: Array[String] = _build_preview_dice_types(main)
+	var count: int = preview_types.size()
 	var center: Vector3 = main.adventure_deck_pos + main.DICE_PREVIEW_OFFSET
 	for i in count:
 		var dice: RigidBody3D = main.DICE_SCENE.instantiate() as RigidBody3D
 		main.add_child(dice)
 		dice.freeze = true
 		dice.global_position = center + Vector3(i * 0.5, 0.3, 0.0)
+		if dice.has_method("set_dice_type"):
+			dice.call("set_dice_type", preview_types[i])
 		main.dice_preview.append(dice)
 
 static func ensure_idle_dice_preview(main: Node) -> void:
@@ -74,11 +77,38 @@ static func ensure_idle_dice_preview(main: Node) -> void:
 		return
 	if not main.active_dice.is_empty():
 		return
-	var desired: int = get_total_dice(main)
-	if main.dice_preview.size() == desired:
+	var preview_types: Array[String] = _build_preview_dice_types(main)
+	var desired: int = preview_types.size()
+	if main.dice_preview.size() == desired and _preview_dice_types_match(main, preview_types):
 		return
 	clear_dice_preview(main)
 	spawn_dice_preview(main)
+
+static func _build_preview_dice_types(main: Node) -> Array[String]:
+	var out: Array[String] = []
+	for _i in int(main.blue_dice):
+		out.append("blue")
+	for _i in int(main.green_dice):
+		out.append("green")
+	for _i in int(main.red_dice):
+		out.append("red")
+	if out.is_empty():
+		out.append("blue")
+	return out
+
+static func _preview_dice_types_match(main: Node, expected: Array[String]) -> bool:
+	if main.dice_preview.size() != expected.size():
+		return false
+	for i in expected.size():
+		var die: RigidBody3D = main.dice_preview[i] as RigidBody3D
+		if die == null or not is_instance_valid(die):
+			return false
+		var dtype: String = "blue"
+		if die.has_method("get_dice_type"):
+			dtype = str(die.call("get_dice_type"))
+		if dtype != expected[i]:
+			return false
+	return true
 
 static func update_dice_hold(main: Node, mouse_pos: Vector2) -> void:
 	if main.dice_preview.is_empty():
