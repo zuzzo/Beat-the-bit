@@ -22,6 +22,16 @@ static func on_end_turn_with_battlefield(main: Node) -> void:
 	var battlefield: Node3D = main._get_blocking_adventure_card() as Node3D
 	if battlefield == null:
 		return
+	var card_data: Dictionary = battlefield.get_meta("card_data", {})
+	var card_type := str(card_data.get("type", "")).strip_edges().to_lower()
+	if card_type == "boss_finale":
+		var hearts: int = int(battlefield.get_meta("battlefield_hearts", 1))
+		if hearts > 0:
+			main._return_final_boss_to_area(battlefield)
+			return
+	if main._is_portale_infernale_card(battlefield):
+		main._return_portale_infernale_to_event_row(battlefield)
+		return
 	main._show_battlefield_warning()
 	var hearts: int = int(battlefield.get_meta("battlefield_hearts", 1))
 	battlefield.set_meta("battlefield_hearts", hearts + 1)

@@ -16,9 +16,12 @@ static func apply_direct_card_effect(main: Node, effect_name: String, _card_data
 		"discard_revealed_adventure":
 			main._discard_revealed_adventure_card()
 			return true
-		"regno_del_male_portal", "sacrifice_open_portal":
+		"regno_del_male_portal":
 			main._try_advance_regno_track()
 			main._update_regno_reward_label()
+			return true
+		"sacrifice_open_portal":
+			main._apply_sacrifice_open_portal()
 			return true
 		"reset_hearts_and_dice":
 			main.player_current_hearts = main.player_max_hearts

@@ -60,10 +60,12 @@ static func update_adventure_value_box(main: Node) -> void:
 			main.player_value_label.text = main._ui_text("Tuo tiro: -")
 	main.DICE_FLOW.refresh_roll_dice_buttons(main)
 	if main.compare_button != null:
-		main.compare_button.disabled = (not main.roll_pending_apply) or main._get_pending_drop_half_count() > 0
+		main.compare_button.disabled = (not main.roll_pending_apply) or main._get_pending_drop_half_count() > 0 or main._is_chain_resolution_locked()
 	main.adventure_value_panel.visible = true
 
 static func on_compare_pressed(main: Node) -> void:
+	if main._is_chain_resolution_locked():
+		return
 	if not main.roll_pending_apply:
 		return
 	var battlefield: Node3D = main._get_battlefield_card() as Node3D
@@ -81,6 +83,28 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 	var difficulty: int = int(diff_info.get("effective", card_data.get("difficulty", 0)))
 	var hearts: int = int(card.get_meta("battlefield_hearts", 1))
 	var card_type: String = str(card_data.get("type", "")).strip_edges().to_lower()
+	var card_id: String = str(card_data.get("id", "")).strip_edges()
+	if card_id == "event_portale_infernale":
+		if total <= difficulty:
+			main._resolve_portale_infernale_success(card, total, difficulty)
+			main.last_roll_success = true
+			if total == difficulty:
+				main._show_outcome("SUCCESSO PERFETTO", Color(1.0, 0.9, 0.2))
+			else:
+				main._show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
+		else:
+			main._apply_failure_penalty(card_data, total)
+			main.last_roll_penalty = true
+			main._show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
+		main.roll_pending_apply = false
+		main.last_roll_values.clear()
+		main.selected_roll_dice.clear()
+		main.post_roll_effects.clear()
+		if main.hand_ui != null and main.hand_ui.has_method("set_phase_button_enabled"):
+			main.hand_ui.call("set_phase_button_enabled", true)
+		if main.adventure_value_panel != null:
+			main.adventure_value_panel.visible = false
+		return
 	if card_type == "maledizione" and main._has_equipped_effect("ignore_fatigue_if_all_different") and main._are_all_roll_values_different(main.last_roll_values):
 		total = min(total, difficulty)
 	if card_type == "maledizione":

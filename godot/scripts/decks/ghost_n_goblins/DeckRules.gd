@@ -99,6 +99,23 @@ static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
 		return true
 	var max_index: int = main.regno_track_rewards.size() - 1
 	if main.regno_track_index >= max_index:
+		var final_code := str(main.regno_track_rewards[main.regno_track_index])
+		if final_code == "boss_finale":
+			if main.regno_final_boss_spawned:
+				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+					main.hand_ui.call("set_info", main._ui_text("Boss finale gia evocato."))
+				return true
+			if main._get_blocking_adventure_card() != null:
+				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+					main.hand_ui.call("set_info", main._ui_text("C'e gia un nemico in campo."))
+				return true
+			main.player_tombstones -= 1
+			if main.hand_ui != null and main.hand_ui.has_method("set_tokens"):
+				main.hand_ui.call("set_tokens", main.player_tombstones)
+			main._reveal_final_boss_from_regno()
+			if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+				main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: evocato Boss finale."))
+			return true
 		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
 			main.hand_ui.call("set_info", main._ui_text("Il Regno del Male e gia al massimo."))
 		return true
@@ -404,6 +421,19 @@ static func spawn_astaroth(main: Node) -> void:
 	main.add_child(card)
 	card.global_position = main.astaroth_pos
 	card.rotate_x(-PI / 2.0)
+	card.set_meta("is_final_boss_table", true)
+	card.set_meta("in_battlefield", false)
+	card.set_meta("adventure_blocking", false)
+	if not CardDatabase.deck_boss_finale.is_empty():
+		card.set_meta("card_data", CardDatabase.deck_boss_finale[0])
+	else:
+		card.set_meta("card_data", {
+			"id": "boss_finale_astaroth",
+			"name": "Astaroth",
+			"type": "boss_finale",
+			"cost": main.FINAL_BOSS_DEFAULT_COST
+		})
+	main.final_boss_table_card = card
 	if card.has_method("set_card_texture"):
 		card.call_deferred("set_card_texture", main.ASTAROTH_FRONT)
 	if card.has_method("set_back_texture"):

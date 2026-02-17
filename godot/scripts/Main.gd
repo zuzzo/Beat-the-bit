@@ -126,6 +126,12 @@ var purchase_yes_button: Button
 var purchase_no_button: Button
 var purchase_card: Node3D
 var purchase_content: VBoxContainer
+var final_boss_prompt_panel: PanelContainer
+var final_boss_prompt_label: Label
+var final_boss_prompt_yes: Button
+var final_boss_prompt_no: Button
+var pending_final_boss_cost: int = 0
+var final_boss_table_card: Node3D
 var sell_prompt_panel: PanelContainer
 var sell_prompt_label: Label
 var sell_prompt_yes: Button
@@ -142,6 +148,8 @@ var action_prompt_label: Label
 var action_prompt_yes: Button
 var action_prompt_no: Button
 var action_prompt_block_until_ms: int = 0
+var chain_choice_panel: PanelContainer
+var chain_choice_label: Label
 var pending_action_card_data: Dictionary = {}
 var pending_action_is_magic: bool = false
 var pending_action_source_card: Node3D
@@ -174,6 +182,7 @@ var curse_texture_override: String = ""
 var pending_curse_unequip_count: int = 0
 var active_character_id: String = "character_sir_arthur_a"
 const PURCHASE_FONT_SIZE := 44
+const FINAL_BOSS_DEFAULT_COST := 20
 var treasure_deck_pos := Vector3(-3, 0.0179999992251396, 0)
 var treasure_reveal_pos := Vector3(-5.05, 0.0240000002086163, 0.315)
 var revealed_treasure_count: int = 0
@@ -260,6 +269,8 @@ func _ready() -> void:
 	_create_coin_total_label()
 	_update_phase_info()
 	_create_adventure_prompt()
+	_create_final_boss_prompt()
+	_create_chain_choice_prompt()
 	_create_battlefield_warning()
 	_setup_regno_overlay()
 	print("Deck selezionato:", GameConfig.selected_deck_id)
@@ -269,6 +280,24 @@ func _ready() -> void:
 	DECK_UTILS.shuffle_deck(example_deck)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if final_boss_prompt_panel != null and final_boss_prompt_panel.visible and event is InputEventMouseButton and event.pressed:
+		if final_boss_prompt_yes != null and final_boss_prompt_yes.get_global_rect().has_point(event.position):
+			_confirm_final_boss_prompt()
+			return
+		if final_boss_prompt_no != null and final_boss_prompt_no.get_global_rect().has_point(event.position):
+			_hide_final_boss_prompt()
+			return
+		return
+	if _is_chain_resolution_locked():
+		if event is InputEventKey and event.pressed:
+			if event.keycode == KEY_ESCAPE:
+				get_tree().quit()
+			return
+		if event is InputEventMouseButton:
+			if pending_chain_choice_active and event.button_index == MOUSE_BUTTON_LEFT:
+				_handle_mouse_button(event)
+			return
+		return
 	if action_prompt_panel != null and action_prompt_panel.visible and event is InputEventMouseButton and event.pressed:
 		if action_prompt_yes != null and action_prompt_yes.get_global_rect().has_point(event.position):
 			_confirm_action_prompt()
@@ -383,10 +412,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				if phase_index == 0 and card.has_meta("in_mission_side") and card.get_meta("in_mission_side", false):
 					_try_claim_mission(card)
 					return
+				if phase_index == 1 and _try_activate_portale_infernale(card):
+					return
 				if phase_index == 0 and card.has_meta("in_boss_stack") and card.get_meta("in_boss_stack", false):
 					_claim_boss_to_hand_from_stack()
 					return
 				if phase_index == 0 and _try_spend_tombstone_on_regno(card):
+					return
+				if phase_index == 0 and _try_show_final_boss_prompt(card):
 					return
 				if phase_index == 0:
 					var top_market_left := _get_top_market_card()
@@ -548,6 +581,10 @@ func _process(_delta: float) -> void:
 	_update_hover(last_mouse_pos)
 	_update_purchase_prompt_position()
 	_update_adventure_prompt_position()
+	if final_boss_prompt_panel != null and final_boss_prompt_panel.visible:
+		_center_final_boss_prompt()
+	if chain_choice_panel != null and chain_choice_panel.visible:
+		_center_chain_choice_prompt()
 	_update_coord_label()
 	_update_regno_overlay()
 	_update_adventure_value_box()
@@ -723,6 +760,82 @@ func _try_show_purchase_prompt(card: Node3D, require_gold: bool = true) -> bool:
 		return false
 	return PURCHASE_PROMPT.show(self, card, require_gold)
 
+func _get_final_boss_summon_cost() -> int:
+	var base_cost := FINAL_BOSS_DEFAULT_COST
+	if final_boss_table_card != null and is_instance_valid(final_boss_table_card):
+		var data: Dictionary = final_boss_table_card.get_meta("card_data", {})
+		if not data.is_empty() and data.has("cost"):
+			base_cost = max(0, int(data.get("cost", FINAL_BOSS_DEFAULT_COST)))
+	if _has_event_row_effect("boss_finale_cost_minus_5"):
+		base_cost = max(0, base_cost - 5)
+	return base_cost
+
+func _has_event_row_effect(effect_name: String) -> bool:
+	if effect_name.strip_edges() == "":
+		return false
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if not bool(child.get_meta("in_event_row", false)):
+			continue
+		var data: Dictionary = child.get_meta("card_data", {})
+		var effects: Array = data.get("effects", [])
+		if effects.has(effect_name):
+			return true
+	return false
+
+func _try_show_final_boss_prompt(card: Node3D) -> bool:
+	if phase_index != 0:
+		return false
+	if card == null:
+		return false
+	if final_boss_table_card == null or not is_instance_valid(final_boss_table_card):
+		return false
+	if card != final_boss_table_card:
+		return false
+	if regno_final_boss_spawned:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Boss finale gia evocato."))
+		return true
+	if _get_blocking_adventure_card() != null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("C'e gia un nemico in campo."))
+		return true
+	var cost := _get_final_boss_summon_cost()
+	if player_gold < cost:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Non hai abbastanza monete per evocare il boss finale (%d)." % cost))
+		return true
+	pending_final_boss_cost = cost
+	if final_boss_prompt_label != null:
+		final_boss_prompt_label.text = _ui_text("Evocare il Boss Finale pagando %d monete?" % cost)
+	if final_boss_prompt_panel != null:
+		final_boss_prompt_panel.visible = true
+		_center_final_boss_prompt()
+	return true
+
+func _hide_final_boss_prompt() -> void:
+	pending_final_boss_cost = 0
+	if final_boss_prompt_panel != null:
+		final_boss_prompt_panel.visible = false
+
+func _confirm_final_boss_prompt() -> void:
+	var cost := max(0, pending_final_boss_cost)
+	if regno_final_boss_spawned:
+		_hide_final_boss_prompt()
+		return
+	if _get_blocking_adventure_card() != null:
+		_hide_final_boss_prompt()
+		return
+	if player_gold < cost:
+		_hide_final_boss_prompt()
+		return
+	player_gold = max(0, player_gold - cost)
+	if hand_ui != null and hand_ui.has_method("set_gold"):
+		hand_ui.call("set_gold", player_gold)
+	_reveal_final_boss_from_regno()
+	_hide_final_boss_prompt()
+
 func _hide_purchase_prompt() -> void:
 	PURCHASE_PROMPT.hide(self)
 
@@ -736,6 +849,12 @@ func _confirm_purchase() -> void:
 	PURCHASE_PROMPT.confirm(self)
 
 func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
+	if _is_chain_resolution_locked():
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Completa prima la scelta Scala."))
+		if hand_ui != null and hand_ui.has_method("set_phase_silent"):
+			hand_ui.call("set_phase_silent", phase_index, _turn_index)
+		return
 	if new_phase_index == 0 and _block_turn_pass_if_hand_exceeds_limit(_turn_index):
 		return
 	phase_index = new_phase_index
@@ -746,6 +865,7 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 		_ensure_portale_infernale_on_top_for_gold_key()
 	if phase_index != 0:
 		_hide_purchase_prompt()
+		_hide_final_boss_prompt()
 	if phase_index != 1:
 		_hide_adventure_prompt()
 	if phase_index == 2:
@@ -896,6 +1016,134 @@ func _try_advance_regno_track() -> void:
 
 func _try_spend_tombstone_on_regno(card: Node3D) -> bool:
 	return GNG_RULES.try_spend_tombstone_on_regno(self, card)
+
+func _is_portale_infernale_card(card: Node3D) -> bool:
+	if card == null or not is_instance_valid(card):
+		return false
+	var data: Dictionary = card.get_meta("card_data", {})
+	return str(data.get("id", "")) == "event_portale_infernale"
+
+func _try_activate_portale_infernale(card: Node3D) -> bool:
+	if phase_index != 1:
+		return false
+	if card == null or not is_instance_valid(card):
+		return false
+	if not bool(card.get_meta("in_event_row", false)):
+		return false
+	if not _is_portale_infernale_card(card):
+		return false
+	if _get_blocking_adventure_card() != null:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("C'e gia un nemico in campo."))
+		return true
+	card.set_meta("portal_home_position", card.global_position)
+	card.set_meta("portal_home_rotation", card.rotation)
+	card.set_meta("in_event_row", false)
+	card.set_meta("in_battlefield", true)
+	card.set_meta("adventure_blocking", true)
+	card.set_meta("battlefield_hearts", 1)
+	card.call("flip_to_side", _get_battlefield_target_pos())
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Portale Infernale attivo: continua a lanciare finche fai 5 o meno."))
+	_update_adventure_value_box()
+	return true
+
+func _return_portale_infernale_to_event_row(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	card.set_meta("in_battlefield", false)
+	card.set_meta("adventure_blocking", false)
+	card.set_meta("in_event_row", true)
+	var home_pos: Vector3 = card.get_meta("portal_home_position", event_row_pos)
+	var home_rot: Vector3 = card.get_meta("portal_home_rotation", Vector3(-PI / 2.0, 0.0, 0.0))
+	card.global_position = home_pos
+	card.rotation = home_rot
+	if card.has_method("set_face_up"):
+		card.call("set_face_up", true)
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Portale Infernale non superato: torna in gioco."))
+	_update_adventure_value_box()
+
+func _resolve_portale_infernale_success(card: Node3D, total: int, difficulty: int) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var defeated_pos: Vector3 = card.global_position
+	var card_data: Dictionary = card.get_meta("card_data", {})
+	_report_battlefield_reward(card_data, total, difficulty)
+	_move_adventure_to_discard(card)
+	_spawn_defeat_explosion(defeated_pos)
+	_reveal_final_boss_from_regno()
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Portale Infernale sconfitto: Boss finale evocato!"))
+
+func _return_final_boss_to_area(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	card.set_meta("in_battlefield", false)
+	card.set_meta("adventure_blocking", false)
+	card.set_meta("battlefield_hearts", 0)
+	card.queue_free()
+	regno_final_boss_spawned = false
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Ritirata: il Boss finale torna nella sua area."))
+
+func _find_equipped_card_by_id(card_id: String) -> Node3D:
+	if card_id.strip_edges() == "":
+		return null
+	for slot in equipment_slots:
+		if slot == null:
+			continue
+		if not bool(slot.get_meta("occupied", false)):
+			continue
+		var equipped: Node3D = slot.get_meta("equipped_card", null) as Node3D
+		if equipped == null or not is_instance_valid(equipped):
+			continue
+		var data: Dictionary = equipped.get_meta("card_data", {})
+		if str(data.get("id", "")) == card_id:
+			return equipped
+	return null
+
+func _destroy_equipped_card(card: Node3D) -> bool:
+	if card == null or not is_instance_valid(card):
+		return false
+	if not card.has_meta("equipped_slot"):
+		return false
+	var slot := card.get_meta("equipped_slot") as Area3D
+	if slot != null:
+		slot.set_meta("occupied", false)
+		slot.set_meta("equipped_card", null)
+	var extra := int(card.get_meta("extra_slots", 0))
+	if extra > 0:
+		_remove_equipment_slots(extra)
+	card.queue_free()
+	_refresh_hand_ui()
+	return true
+
+func _consume_gold_key_for_sacrifice() -> bool:
+	var source := pending_action_source_card
+	if source != null and is_instance_valid(source):
+		var source_data: Dictionary = source.get_meta("card_data", {})
+		if str(source_data.get("id", "")) == "treasure_chiave_oro":
+			return _destroy_equipped_card(source)
+	var key_card := _find_equipped_card_by_id("treasure_chiave_oro")
+	if key_card != null and is_instance_valid(key_card):
+		return _destroy_equipped_card(key_card)
+	return false
+
+func _apply_sacrifice_open_portal() -> void:
+	var battlefield := _get_battlefield_card()
+	if battlefield == null or not _is_portale_infernale_card(battlefield):
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Puoi sacrificare la Chiave d'oro solo con Portale Infernale nel campo di battaglia."))
+		return
+	if not _consume_gold_key_for_sacrifice():
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Nessuna Chiave d'oro equipaggiata da sacrificare."))
+		return
+	_return_portale_infernale_to_event_row(battlefield)
+	_reveal_final_boss_from_regno()
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Sacrificata Chiave d'oro: il Portale si richiude e appare il Boss finale."))
 
 func _reset_dice_for_rest() -> void:
 	DICE_FLOW.clear_dice(self)
@@ -1100,6 +1348,9 @@ func _set_selection_error(message: String) -> void:
 
 func _confirm_adventure_prompt() -> void:
 	if pending_adventure_card == null or not is_instance_valid(pending_adventure_card):
+		pending_chain_reveal_lock = false
+		pending_chain_choice_active = false
+		_hide_chain_choice_prompt()
 		_hide_adventure_prompt()
 		return
 	if _get_blocking_adventure_card() != null:
@@ -1137,17 +1388,20 @@ func _confirm_adventure_prompt() -> void:
 		pending_adventure_card.set_meta("adventure_blocking", false)
 		pending_adventure_card.call("flip_to_side", chain_pos)
 		_apply_chain_card_effects(pending_adventure_card, effects)
-		_schedule_next_chain_reveal()
+		if not effects.has("reveal_2_keep_1"):
+			_schedule_next_chain_reveal()
 		_hide_adventure_prompt()
 		return
 	elif card_type == "evento":
 		pending_chain_reveal_lock = false
 		_reveal_event_card(pending_adventure_card, card_data)
+		_cleanup_chain_cards_after_victory()
 		_hide_adventure_prompt()
 		return
 	elif card_type == "missione":
 		pending_chain_reveal_lock = false
 		_reveal_mission_card(pending_adventure_card, card_data)
+		_cleanup_chain_cards_after_victory()
 		_hide_adventure_prompt()
 		return
 	else:
@@ -1518,6 +1772,80 @@ func _create_purchase_prompt() -> void:
 
 	purchase_panel.add_child(purchase_content)
 	prompt_layer.add_child(purchase_panel)
+
+func _create_final_boss_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 11
+	add_child(prompt_layer)
+	final_boss_prompt_panel = PanelContainer.new()
+	final_boss_prompt_panel.visible = false
+	final_boss_prompt_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	final_boss_prompt_panel.z_index = 210
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.75)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	final_boss_prompt_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var content := VBoxContainer.new()
+	content.anchor_left = 0.0
+	content.anchor_right = 1.0
+	content.anchor_top = 0.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_right = -16.0
+	content.offset_top = 12.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 10)
+
+	final_boss_prompt_label = Label.new()
+	final_boss_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	final_boss_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	final_boss_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	final_boss_prompt_label.custom_minimum_size = Vector2(460, 0)
+	final_boss_prompt_label.text = _ui_text("Evocare il Boss Finale?")
+	final_boss_prompt_label.add_theme_font_override("font", UI_FONT)
+	final_boss_prompt_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	final_boss_prompt_label.add_theme_constant_override("font_spacing/space", 8)
+	content.add_child(final_boss_prompt_label)
+
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.set("theme_override_constants/separation", 20)
+	final_boss_prompt_yes = Button.new()
+	final_boss_prompt_yes.text = _ui_text("Si")
+	final_boss_prompt_yes.add_theme_font_override("font", UI_FONT)
+	final_boss_prompt_yes.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	final_boss_prompt_yes.add_theme_constant_override("font_spacing/space", 8)
+	final_boss_prompt_yes.pressed.connect(_confirm_final_boss_prompt)
+	final_boss_prompt_no = Button.new()
+	final_boss_prompt_no.text = _ui_text("No")
+	final_boss_prompt_no.add_theme_font_override("font", UI_FONT)
+	final_boss_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	final_boss_prompt_no.add_theme_constant_override("font_spacing/space", 8)
+	final_boss_prompt_no.pressed.connect(_hide_final_boss_prompt)
+	button_row.add_child(final_boss_prompt_yes)
+	button_row.add_child(final_boss_prompt_no)
+	content.add_child(button_row)
+
+	final_boss_prompt_panel.add_child(content)
+	prompt_layer.add_child(final_boss_prompt_panel)
+
+func _center_final_boss_prompt() -> void:
+	if final_boss_prompt_panel == null:
+		return
+	final_boss_prompt_panel.custom_minimum_size = Vector2.ZERO
+	final_boss_prompt_panel.reset_size()
+	final_boss_prompt_panel.custom_minimum_size = final_boss_prompt_panel.get_combined_minimum_size()
+	final_boss_prompt_panel.reset_size()
+	var view_size: Vector2 = get_viewport().get_visible_rect().size
+	var size: Vector2 = final_boss_prompt_panel.size
+	final_boss_prompt_panel.position = Vector2((view_size.x - size.x) * 0.5, 170.0)
 
 func _create_sell_prompt() -> void:
 	var prompt_layer := CanvasLayer.new()
@@ -1942,6 +2270,59 @@ func _create_adventure_prompt() -> void:
 	adventure_prompt_panel.add_child(content)
 	prompt_layer.add_child(adventure_prompt_panel)
 
+func _create_chain_choice_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 12
+	add_child(prompt_layer)
+	chain_choice_panel = PanelContainer.new()
+	chain_choice_panel.visible = false
+	chain_choice_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chain_choice_panel.z_index = 220
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.8)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.45)
+	chain_choice_panel.add_theme_stylebox_override("panel", panel_style)
+	chain_choice_label = Label.new()
+	chain_choice_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	chain_choice_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chain_choice_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	chain_choice_label.custom_minimum_size = Vector2(760, 64)
+	chain_choice_label.text = _ui_text("Scala: scegli una carta Avventura da tenere.")
+	chain_choice_label.add_theme_font_override("font", UI_FONT)
+	chain_choice_label.add_theme_font_size_override("font_size", 30)
+	chain_choice_label.add_theme_constant_override("font_spacing/space", 8)
+	chain_choice_panel.add_child(chain_choice_label)
+	prompt_layer.add_child(chain_choice_panel)
+	_center_chain_choice_prompt()
+
+func _show_chain_choice_prompt(text: String = "") -> void:
+	if chain_choice_panel == null:
+		return
+	if chain_choice_label != null and text != "":
+		chain_choice_label.text = _ui_text(text)
+	chain_choice_panel.visible = true
+	_center_chain_choice_prompt()
+
+func _hide_chain_choice_prompt() -> void:
+	if chain_choice_panel == null:
+		return
+	chain_choice_panel.visible = false
+
+func _center_chain_choice_prompt() -> void:
+	if chain_choice_panel == null:
+		return
+	chain_choice_panel.custom_minimum_size = Vector2.ZERO
+	chain_choice_panel.reset_size()
+	chain_choice_panel.custom_minimum_size = chain_choice_panel.get_combined_minimum_size()
+	chain_choice_panel.reset_size()
+	var view_size := get_viewport().get_visible_rect().size
+	var size := chain_choice_panel.size
+	chain_choice_panel.position = Vector2((view_size.x - size.x) * 0.5, 150.0)
+
 func _spawn_hand_ui() -> void:
 	var hand_layer := CanvasLayer.new()
 	add_child(hand_layer)
@@ -2075,7 +2456,9 @@ func _reveal_two_adventures_for_choice() -> void:
 	if pending_chain_choice_active:
 		return
 	var cards := _get_top_adventure_cards(2)
-	if cards.is_empty():
+	if cards.size() <= 0:
+		# No available cards: Scala resolves automatically.
+		_cleanup_chain_cards_after_victory()
 		return
 	var base := _get_battlefield_target_pos()
 	var offset := CHAIN_ROW_SPACING * 0.55
@@ -2084,12 +2467,28 @@ func _reveal_two_adventures_for_choice() -> void:
 		if card == null or not is_instance_valid(card):
 			continue
 		card.set_meta("in_adventure_stack", false)
-		card.set_meta("in_battlefield", true)
+		card.set_meta("in_battlefield", false)
 		card.set_meta("adventure_blocking", false)
-		var pos := base + Vector3((i * 2 - 1) * offset, 0.0, 0.0)
+		card.set_meta("in_chain_preview", true)
+		var pos := base
+		if cards.size() > 1:
+			pos = base + Vector3((i * 2 - 1) * offset, 0.0, 0.0)
 		card.call("flip_to_side", pos)
+	if cards.size() == 1:
+		# One available card: no choice, keep it automatically.
+		var chosen := cards[0]
+		if chosen == null or not is_instance_valid(chosen):
+			_cleanup_chain_cards_after_victory()
+			return
+		chosen.set_meta("in_chain_preview", false)
+		pending_adventure_card = chosen
+		_confirm_adventure_prompt()
+		return
 	pending_chain_choice_cards = cards
 	pending_chain_choice_active = true
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", false)
+	_show_chain_choice_prompt("Scala: scegli quale carta Avventura tenere. L'altra va in fondo al mazzo.")
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", _ui_text("Scala: scegli quale avventura affrontare. L'altra torna in fondo al mazzo."))
 
@@ -2123,9 +2522,13 @@ func _resolve_chain_choice(chosen: Node3D) -> void:
 		break
 	pending_chain_choice_cards.clear()
 	pending_chain_choice_active = false
+	chosen.set_meta("in_chain_preview", false)
 	if other != null and is_instance_valid(other):
+		other.set_meta("in_chain_preview", false)
 		_put_adventure_card_on_bottom(other)
-	_try_show_adventure_prompt(chosen)
+	_hide_chain_choice_prompt()
+	pending_adventure_card = chosen
+	_confirm_adventure_prompt()
 
 func _put_adventure_card_on_bottom(card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
@@ -2147,6 +2550,7 @@ func _put_adventure_card_on_bottom(card: Node3D) -> void:
 		min_index = 0
 	card.set_meta("in_battlefield", false)
 	card.set_meta("adventure_blocking", false)
+	card.set_meta("in_chain_preview", false)
 	card.set_meta("in_adventure_stack", true)
 	card.set_meta("stack_index", min_index - 1)
 	if card.has_method("set_face_up"):
@@ -2173,6 +2577,13 @@ func _apply_battlefield_result(card: Node3D, total: int) -> void:
 
 func _cleanup_chain_cards_after_victory() -> void:
 	ADVENTURE_BATTLE_CORE.cleanup_chain_cards_after_victory(self)
+	pending_chain_reveal_lock = false
+	_hide_chain_choice_prompt()
+	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
+		hand_ui.call("set_phase_button_enabled", pending_curse_unequip_count <= 0)
+
+func _is_chain_resolution_locked() -> bool:
+	return pending_chain_choice_active or pending_chain_reveal_lock
 
 func _apply_player_heart_loss(amount: int) -> void:
 	if amount <= 0:
@@ -2361,15 +2772,21 @@ func _set_hand_discard_mode(active: bool, reason: String = "") -> void:
 	HAND_FLOW_CORE.set_hand_discard_mode(self, active, reason)
 
 func _on_hand_request_discard_card(card: Dictionary) -> void:
+	if _is_chain_resolution_locked():
+		return
 	HAND_FLOW_CORE.on_hand_request_discard_card(self, card)
 
 func _on_hand_request_sell_card(card: Dictionary) -> void:
+	if _is_chain_resolution_locked():
+		return
 	if phase_index != 0:
 		return
 	var resolved := _resolve_card_data(card)
 	_show_sell_prompt(resolved)
 
 func _on_hand_request_play_boss(card: Dictionary) -> void:
+	if _is_chain_resolution_locked():
+		return
 	if phase_index != 0:
 		return
 	if _get_blocking_adventure_card() != null:
@@ -2874,13 +3291,15 @@ func _apply_equipment_slot_limit_after_curse() -> void:
 
 func _update_curse_unequip_prompt() -> void:
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
-		hand_ui.call("set_phase_button_enabled", pending_curse_unequip_count <= 0)
+		hand_ui.call("set_phase_button_enabled", pending_curse_unequip_count <= 0 and not _is_chain_resolution_locked())
 	if pending_curse_unequip_count <= 0:
 		return
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", _ui_text("Maledizione: riprendi %d equipaggiamenti in mano." % pending_curse_unequip_count))
 
 func _on_hand_request_place_equipment(card: Dictionary, screen_pos: Vector2) -> void:
+	if _is_chain_resolution_locked():
+		return
 	if phase_index != 0:
 		return
 	var resolved := _resolve_card_data(card)
@@ -3058,6 +3477,8 @@ func _force_return_equipped_to_hand(card: Node3D) -> void:
 	_refresh_hand_ui()
 
 func _on_hand_request_use_magic(card: Dictionary) -> void:
+	if _is_chain_resolution_locked():
+		return
 	if phase_index != 1:
 		return
 	var resolved := _resolve_card_data(card)
