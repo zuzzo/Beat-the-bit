@@ -2454,14 +2454,14 @@ func _show_drop_half_prompt(count: int, mode: String = "drop_half") -> void:
 	if mode == "sacrifice_remove":
 		dice_drop_label.text = _ui_text("Approccio alternativo: seleziona %d dado/i da rimuovere." % count)
 	else:
-		dice_drop_label.text = _ui_text("Seleziona %d dadi che vuoi tenere." % count)
+		dice_drop_label.text = _ui_text("Seleziona %d dado/i da eliminare." % count)
 	dice_drop_panel.visible = true
 	_center_drop_half_prompt()
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		if mode == "sacrifice_remove":
 			hand_ui.call("set_info", _ui_text("Approccio alternativo: scegli %d dado/i da rimuovere e premi Ok." % count))
 		else:
-			hand_ui.call("set_info", _ui_text("Scegli %d dadi e premi Ok." % count))
+			hand_ui.call("set_info", _ui_text("Scegli %d dado/i da eliminare e premi Ok." % count))
 
 func _get_pending_drop_half_count() -> int:
 	return GNG_RULES.get_pending_drop_half_count(self)
@@ -2530,16 +2530,17 @@ func _confirm_drop_half_selection() -> void:
 	for idx in selected_roll_dice:
 		var i := int(idx)
 		if i >= 0 and i < last_roll_values.size() and i < active_dice.size():
-			if mode == "drop_half":
-				var die: RigidBody3D = active_dice[i]
-				if die != null and die.has_method("get_dice_type"):
-					var dtype := str(die.call("get_dice_type"))
-					if dtype == "green":
-						continue
+			var die: RigidBody3D = active_dice[i]
+			if die != null and die.has_method("get_dice_type"):
+				var dtype := str(die.call("get_dice_type"))
+				if mode == "drop_half" and dtype != "blue":
+					continue
+				if mode == "sacrifice_remove" and dtype != "blue":
+					continue
 			drop_indices.append(i)
 	if drop_indices.size() != pending_count:
 		if hand_ui != null and hand_ui.has_method("set_info"):
-			if mode == "drop_half":
+			if mode == "drop_half" or mode == "sacrifice_remove":
 				hand_ui.call("set_info", _ui_text("Puoi eliminare solo dadi blu."))
 			else:
 				hand_ui.call("set_info", _ui_text("Seleziona esattamente %d dadi." % pending_count))
@@ -3121,6 +3122,8 @@ func _is_mandatory_action_locked() -> bool:
 	if match_closed:
 		return true
 	if adventure_sacrifice_prompt_panel != null and adventure_sacrifice_prompt_panel.visible:
+		return true
+	if _is_sacrifice_remove_choice_locked():
 		return true
 	if pending_curse_unequip_count > 0:
 		return true
@@ -4112,8 +4115,18 @@ func _get_pending_roll_dice_choice_count() -> int:
 func _is_drop_half_prompt_mode() -> bool:
 	return dice_drop_mode == "drop_half"
 
+func _is_sacrifice_remove_prompt_mode() -> bool:
+	return dice_drop_mode == "sacrifice_remove"
+
 func _is_adventure_sacrifice_resolution_pending() -> bool:
 	return pending_adventure_sacrifice_sequence_active or pending_adventure_sacrifice_remove_after_roll_count > 0 or pending_adventure_sacrifice_remove_choice_count > 0
+
+func _is_sacrifice_remove_choice_locked() -> bool:
+	if dice_drop_mode != "sacrifice_remove":
+		return false
+	if dice_drop_panel == null or not dice_drop_panel.visible:
+		return false
+	return _get_pending_roll_dice_choice_count() > 0
 
 func _resolve_card_data(card: Dictionary) -> Dictionary:
 	return HAND_FLOW_CORE.resolve_card_data(self, card)
