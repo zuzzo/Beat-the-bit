@@ -153,29 +153,7 @@ static func _claim_treasure_from_group(main: Node, group_key: String) -> void:
 	var wanted: String = group_key.strip_edges().to_lower()
 	if wanted.is_empty():
 		return
-	while true:
-		var top: Node3D = main._get_top_treasure_card() as Node3D
-		if top == null:
-			if main._ensure_treasure_stack_from_market_if_empty():
-				top = main._get_top_treasure_card() as Node3D
-			if top == null:
-				return
-		var card_data: Dictionary = top.get_meta("card_data", {}) as Dictionary
-		var group: String = str(card_data.get("group", "")).strip_edges().to_lower()
-		top.set_meta("in_treasure_stack", false)
-		if top.has_method("set_face_up"):
-			top.call("set_face_up", true)
-		if group == wanted:
-			main.player_hand.append(card_data)
-			top.queue_free()
-			main._refresh_hand_ui()
-			return
-		var market_index: int = int(main._reserve_next_market_index())
-		top.set_meta("market_index", market_index)
-		top.set_meta("in_treasure_market", true)
-		top.global_position = main.treasure_reveal_pos + Vector3(0.0, float(main.revealed_treasure_count) * main.TREASURE_REVEALED_Y_STEP, 0.0)
-		main.revealed_treasure_count += 1
-		main._reposition_market_stack()
+	await main._draw_treasure_until_group(wanted)
 
 static func get_next_chain_pos(main: Node, base_pos: Vector3) -> Vector3:
 	# Place chained cards progressively upward on screen (negative Z in this camera setup).
@@ -185,6 +163,12 @@ static func get_next_chain_pos(main: Node, base_pos: Vector3) -> Vector3:
 
 static func schedule_next_chain_reveal(main: Node) -> void:
 	await main.get_tree().create_timer(1.0).timeout
+	if main.pending_chain_choice_active:
+		return
+	if main.pending_flip_equip_choice_active:
+		return
+	if main.pending_adventure_card != null and is_instance_valid(main.pending_adventure_card):
+		return
 	var top: Node3D = main._get_top_adventure_card()
 	if top == null or not is_instance_valid(top):
 		return

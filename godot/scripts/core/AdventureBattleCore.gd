@@ -96,6 +96,7 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 				main._show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
 		else:
 			main._apply_failure_penalty(card_data, total)
+			main._move_adventure_to_discard(card)
 			main.last_roll_penalty = true
 			main._show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
 		main.roll_pending_apply = false

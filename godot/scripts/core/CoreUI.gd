@@ -87,12 +87,20 @@ static func create_adventure_value_box(main: Node, ui_layer: CanvasLayer) -> voi
 	main.adventure_value_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	main.adventure_value_panel.z_index = 300
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0, 0, 0, 0)
-	panel_style.border_width_top = 0
-	panel_style.border_width_bottom = 0
-	panel_style.border_width_left = 0
-	panel_style.border_width_right = 0
-	panel_style.border_color = Color(1, 1, 1, 0)
+	panel_style.bg_color = Color(0.03, 0.08, 0.16, 0.86)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(0.78, 0.90, 1.0, 0.65)
+	panel_style.corner_radius_top_left = 10
+	panel_style.corner_radius_top_right = 10
+	panel_style.corner_radius_bottom_right = 10
+	panel_style.corner_radius_bottom_left = 10
+	panel_style.content_margin_left = 12
+	panel_style.content_margin_right = 12
+	panel_style.content_margin_top = 10
+	panel_style.content_margin_bottom = 10
 	main.adventure_value_panel.add_theme_stylebox_override("panel", panel_style)
 	ui_layer.add_child(main.adventure_value_panel)
 
@@ -170,7 +178,7 @@ static func center_adventure_value_box(main: Node) -> void:
 	main.adventure_value_panel.reset_size()
 	var view_size: Vector2 = main.get_viewport().get_visible_rect().size
 	var size: Vector2 = main.adventure_value_panel.size
-	main.adventure_value_panel.position = Vector2((view_size.x - size.x) * 0.5, 60.0)
+	main.adventure_value_panel.position = Vector2((view_size.x - size.x) * 0.5, 12.0)
 
 static func create_outcome_banner(main: Node, ui_layer: CanvasLayer) -> void:
 	main.outcome_panel = PanelContainer.new()

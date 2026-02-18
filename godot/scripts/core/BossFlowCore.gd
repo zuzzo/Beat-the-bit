@@ -42,10 +42,7 @@ static func claim_boss_to_hand_from_regno(main: Node) -> void:
 			main.hand_ui.call("set_info", main._ui_text("Boss non valido."))
 		boss.queue_free()
 		return
-	boss.set_meta("in_boss_stack", false)
-	boss.queue_free()
-	main.player_hand.append(data)
-	main._refresh_hand_ui()
+	await _animate_boss_claim_to_hand(main, boss, data)
 	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
 		main.hand_ui.call("set_info", main._ui_text("Boss aggiunto alla mano."))
 
@@ -58,6 +55,11 @@ static func claim_boss_to_hand_from_stack(main: Node) -> void:
 	var data: Dictionary = boss.get_meta("card_data", {})
 	if data.is_empty():
 		boss.queue_free()
+		return
+	await _animate_boss_claim_to_hand(main, boss, data)
+
+static func _animate_boss_claim_to_hand(main: Node, boss: Node3D, data: Dictionary) -> void:
+	if boss == null or not is_instance_valid(boss):
 		return
 	boss.set_meta("in_boss_stack", false)
 	var image_path := str(data.get("image", ""))
@@ -85,10 +87,16 @@ static func claim_boss_to_hand_from_stack(main: Node) -> void:
 	else:
 		reveal_card.global_position = reveal_pos
 		await main.get_tree().create_timer(0.2).timeout
+	var hand_target: Vector3 = main._get_hand_collect_target()
+	var move_tween := main.create_tween()
+	move_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	move_tween.tween_property(reveal_card, "global_position", hand_target, 0.36)
+	await move_tween.finished
 	if is_instance_valid(reveal_card):
 		reveal_card.queue_free()
 	main.player_hand.append(data)
-	boss.queue_free()
+	if is_instance_valid(boss):
+		boss.queue_free()
 	main._refresh_hand_ui()
 
 static func reveal_final_boss_from_regno(main: Node) -> void:

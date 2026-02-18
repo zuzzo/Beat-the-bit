@@ -206,7 +206,7 @@ var active_character_id: String = "character_sir_arthur_a"
 const PURCHASE_FONT_SIZE := 44
 const FINAL_BOSS_DEFAULT_COST := 20
 var treasure_deck_pos := Vector3(-3, 0.0179999992251396, 0)
-var treasure_reveal_pos := Vector3(-5.05, 0.0240000002086163, 0.315)
+var treasure_reveal_pos := Vector3(-3.5, 0.0240000002086163, 0.0)
 var revealed_treasure_count: int = 0
 var market_order_counter: int = 0
 var is_treasure_stack_hovered: bool = false
@@ -216,7 +216,7 @@ const TREASURE_CARD_THICKNESS_Y := 0.04
 var adventure_deck_pos := Vector3(4, 0.02, 0)
 var adventure_reveal_pos := Vector3(2, 0.2, 0)
 var battlefield_pos := Vector3(0, 0.02, 0)
-var adventure_discard_pos := Vector3(6.1, 0.026, 0.35)
+var adventure_discard_pos := Vector3(6.4, 0.026, 0.0)
 var event_row_pos := Vector3(-4.601, 0.04, 2.330)
 var revealed_adventure_count: int = 0
 var mission_side_count: int = 0
@@ -230,9 +230,9 @@ const EVENT_ROW_SPACING := 1.6
 const CHAIN_ROW_SPACING := 0.9
 const CHAIN_ROW_OFFSET := Vector3(-1.6, 0.0, 0.0)
 const CHAIN_Z_STEP := 2.0
-const TREASURE_REVEAL_OFFSET := Vector3(-2.05, 0.006, 0.315)
+const TREASURE_REVEAL_OFFSET := Vector3(-0.5, 0.006, 0.0)
 const ADVENTURE_REVEAL_OFFSET := Vector3(5, 0, 0.0)
-const ADVENTURE_DISCARD_OFFSET := Vector3(2.1, 0.006, 0.35)
+const ADVENTURE_DISCARD_OFFSET := Vector3(2.4, 0.006, 0.0)
 var adventure_image_index: Dictionary = {}
 var adventure_variant_cursor: Dictionary = {}
 const BOSS_X_EXTRA := 0.8
@@ -286,7 +286,6 @@ func _ready() -> void:
 	_spawn_regno_del_male()
 	_spawn_astaroth()
 	_spawn_coord_label()
-	_spawn_position_marker()
 	_spawn_hand_ui()
 	_create_coin_total_label()
 	_update_phase_info()
@@ -530,10 +529,12 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					pending_flip_card.set_meta("in_treasure_stack", false)
 					pending_flip_card.set_meta("in_treasure_market", true)
 					pending_flip_card.set_meta("market_index", _reserve_next_market_index())
+					pending_flip_card.set_meta("in_treasure_reveal_animation", true)
 					_lift_treasure_card_to_stack_top(pending_flip_card)
 					pending_flip_card.set_meta("flip_rotate_on_lifted_axis", true)
 					pending_flip_card.call("flip_to_side", target_pos)
 					revealed_treasure_count += 1
+					_finalize_treasure_reveal_animation(pending_flip_card, 1.45)
 			pending_flip_card = null
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
@@ -609,7 +610,7 @@ func _release_launch(mouse_pos: Vector2) -> void:
 	DICE_FLOW.launch_dice_at(self, hit, Vector3.ZERO)
 
 func _process(_delta: float) -> void:
-	if phase_index == 0:
+	if phase_index == 0 and not _has_active_treasure_reveal_animation():
 		_ensure_treasure_stack_from_market_if_empty()
 	if dragging_marker and position_marker != null and is_instance_valid(position_marker):
 		var hit := _ray_to_plane(last_mouse_pos)
@@ -762,6 +763,36 @@ func _set_card_pivot_right_edge(card: Node3D) -> void:
 			var node := child as Node3D
 			node.position.x -= width
 
+func _reset_card_pivot_center(card: Node3D) -> void:
+	if card == null:
+		return
+	var pivot := card.get_node_or_null("Pivot")
+	if pivot == null or not (pivot is Node3D):
+		return
+	var pivot_node := pivot as Node3D
+	var shift_x: float = pivot_node.position.x
+	if absf(shift_x) <= 0.001:
+		return
+	pivot_node.position.x = 0.0
+	for child in pivot_node.get_children():
+		if child is Node3D:
+			var node := child as Node3D
+			node.position.x += shift_x
+
+func _normalize_treasure_card_for_stack(card: Node3D, stack_index: int = -1) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	_reset_card_pivot_center(card)
+	card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
+	card.set_meta("in_treasure_reveal_animation", false)
+	card.set_meta("in_treasure_market", false)
+	card.set_meta("in_treasure_stack", true)
+	card.set_meta("market_index", -1)
+	if stack_index >= 0:
+		card.set_meta("stack_index", stack_index)
+	if card.has_method("set_face_up"):
+		card.call("set_face_up", false)
+
 func _get_top_treasure_card() -> Node3D:
 	return BOARD_CORE.get_top_treasure_card(self)
 
@@ -905,6 +936,12 @@ func _confirm_purchase() -> void:
 	PURCHASE_PROMPT.confirm(self)
 
 func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
+	if dice_hold_active or roll_in_progress:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Attendi la fine del lancio dadi prima di cambiare fase."))
+		if hand_ui != null and hand_ui.has_method("set_phase_silent"):
+			hand_ui.call("set_phase_silent", phase_index, _turn_index)
+		return
 	if _is_mandatory_action_locked():
 		if hand_ui != null and hand_ui.has_method("set_info"):
 			hand_ui.call("set_info", _ui_text("Completa prima l'azione obbligatoria in corso."))
@@ -960,6 +997,11 @@ func _has_equipped_card_id(card_id: String) -> bool:
 	return false
 
 func _is_portale_infernale_in_play() -> bool:
+	return _find_portale_infernale_in_play() != null
+
+func _find_portale_infernale_in_play() -> Node3D:
+	var found_event_or_mission: Node3D = null
+	var found_stack: Node3D = null
 	for child in get_children():
 		if not (child is Node3D):
 			continue
@@ -969,12 +1011,14 @@ func _is_portale_infernale_in_play() -> bool:
 		if str(data.get("id", "")) != "event_portale_infernale":
 			continue
 		if bool(child.get_meta("in_battlefield", false)):
-			return true
-		if bool(child.get_meta("in_event_row", false)):
-			return true
-		if bool(child.get_meta("in_mission_side", false)):
-			return true
-	return false
+			return child as Node3D
+		if found_event_or_mission == null and (bool(child.get_meta("in_event_row", false)) or bool(child.get_meta("in_mission_side", false))):
+			found_event_or_mission = child as Node3D
+		if found_stack == null and bool(child.get_meta("in_adventure_stack", false)):
+			found_stack = child as Node3D
+	if found_event_or_mission != null:
+		return found_event_or_mission
+	return found_stack
 
 func _move_portale_infernale_to_top_of_adventure_stack() -> void:
 	var portal_card: Node3D = null
@@ -1024,14 +1068,14 @@ func _resolve_reward_tokens_for_recovery() -> void:
 	await REWARD_RESOLUTION_CORE.resolve_reward_tokens_for_recovery(self)
 	_end_mandatory_draw_lock()
 
-func _consume_token_and_draw_treasure(token: RigidBody3D, group_key: String) -> void:
-	_begin_mandatory_draw_lock()
-	await REWARD_RESOLUTION_CORE.consume_token_and_draw_treasure(self, token, group_key)
-	_end_mandatory_draw_lock()
-
 func _draw_treasure_until_group(group_key: String) -> void:
 	_begin_mandatory_draw_lock()
 	await REWARD_RESOLUTION_CORE.draw_treasure_until_group(self, group_key)
+	_end_mandatory_draw_lock()
+
+func _consume_token_and_draw_treasure(token: RigidBody3D, group_key: String) -> void:
+	_begin_mandatory_draw_lock()
+	await REWARD_RESOLUTION_CORE.consume_token_and_draw_treasure(self, token, group_key)
 	_end_mandatory_draw_lock()
 
 func _flip_treasure_card_for_recovery(card: Node3D) -> void:
@@ -1050,10 +1094,14 @@ func _reveal_boss_from_regno() -> void:
 	BOSS_FLOW_CORE.reveal_boss_from_regno(self)
 
 func _claim_boss_to_hand_from_regno() -> void:
-	BOSS_FLOW_CORE.claim_boss_to_hand_from_regno(self)
+	_begin_mandatory_draw_lock()
+	await BOSS_FLOW_CORE.claim_boss_to_hand_from_regno(self)
+	_end_mandatory_draw_lock()
 
 func _claim_boss_to_hand_from_stack() -> void:
+	_begin_mandatory_draw_lock()
 	await BOSS_FLOW_CORE.claim_boss_to_hand_from_stack(self)
+	_end_mandatory_draw_lock()
 
 func _reveal_final_boss_from_regno() -> void:
 	BOSS_FLOW_CORE.reveal_final_boss_from_regno(self)
@@ -1347,19 +1395,19 @@ func _consume_gold_key_for_sacrifice() -> bool:
 	return false
 
 func _apply_sacrifice_open_portal() -> void:
-	var battlefield := _get_battlefield_card()
-	if battlefield == null or not _is_portale_infernale_card(battlefield):
+	var portal := _find_portale_infernale_in_play()
+	if portal == null or not is_instance_valid(portal) or not _is_portale_infernale_card(portal):
 		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Puoi sacrificare la Chiave d'oro solo con Portale Infernale nel campo di battaglia."))
+			hand_ui.call("set_info", _ui_text("Nessun Portale Infernale disponibile."))
 		return
 	if not _consume_gold_key_for_sacrifice():
 		if hand_ui != null and hand_ui.has_method("set_info"):
 			hand_ui.call("set_info", _ui_text("Nessuna Chiave d'oro equipaggiata da sacrificare."))
 		return
-	_return_portale_infernale_to_event_row(battlefield)
+	_move_adventure_to_discard(portal)
 	_reveal_final_boss_from_regno()
 	if hand_ui != null and hand_ui.has_method("set_info"):
-		hand_ui.call("set_info", _ui_text("Sacrificata Chiave d'oro: il Portale si richiude e appare il Boss finale."))
+		hand_ui.call("set_info", _ui_text("Sacrificata Chiave d'oro: Portale negli scarti, Boss finale evocato."))
 
 func _reset_dice_for_rest() -> void:
 	DICE_FLOW.clear_dice(self)
@@ -1720,32 +1768,55 @@ func _ensure_treasure_stack_from_market_if_empty() -> bool:
 	if _get_top_treasure_card() != null:
 		return false
 	var recycled: Array[Node3D] = []
+	var market_total: int = 0
+	var any_treasure_present: bool = false
 	for child in get_children():
 		if not (child is Node3D):
 			continue
 		var card := child as Node3D
+		if bool(card.get_meta("in_treasure_stack", false)) or bool(card.get_meta("in_treasure_market", false)):
+			any_treasure_present = true
 		if not card.has_meta("in_treasure_market"):
 			continue
 		if not bool(card.get_meta("in_treasure_market", false)):
 			continue
+		market_total += 1
+		if bool(card.get_meta("in_treasure_reveal_animation", false)):
+			continue
 		recycled.append(card)
 	if recycled.is_empty():
+		# Do not rebuild from database while real market/discard cards exist.
+		# Wait for reveal animations to finish, then reshuffle the real pile.
+		if market_total > 0 or any_treasure_present:
+			return false
 		return _rebuild_treasure_stack_from_database()
 	DECK_UTILS.shuffle_deck(recycled)
 	for i in recycled.size():
 		var card := recycled[i]
-		card.set_meta("in_treasure_market", false)
-		card.set_meta("in_treasure_stack", true)
-		card.set_meta("stack_index", i)
-		card.set_meta("market_index", -1)
+		_normalize_treasure_card_for_stack(card, i)
 		card.global_position = treasure_deck_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
-		card.rotation = Vector3(-PI / 2.0, deg_to_rad(randf_range(-1.0, 1.0)), deg_to_rad(randf_range(-0.6, 0.6)))
-		if card.has_method("set_face_up"):
-			card.call("set_face_up", false)
+		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
+		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
 		if card.has_method("set_sorting_offset"):
 			card.call("set_sorting_offset", float(i))
 	revealed_treasure_count = 0
 	return true
+
+func _has_active_treasure_reveal_animation() -> bool:
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		if bool(child.get_meta("in_treasure_reveal_animation", false)):
+			return true
+	return false
+
+func _finalize_treasure_reveal_animation(card: Node3D, delay_sec: float = 1.45) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	await get_tree().create_timer(maxf(0.1, delay_sec)).timeout
+	if card != null and is_instance_valid(card):
+		card.set_meta("in_treasure_reveal_animation", false)
+	_ensure_treasure_stack_from_market_if_empty()
 
 func _rebuild_treasure_stack_from_database() -> bool:
 	if _get_top_treasure_card() != null:
@@ -1902,21 +1973,6 @@ func _spawn_coord_label() -> void:
 	var ui := CanvasLayer.new()
 	ui.layer = 20
 	add_child(ui)
-	coord_label = Label.new()
-	coord_label.text = _ui_text("Coord: -")
-	coord_label.position = Vector2(20, 20)
-	coord_label.add_theme_font_override("font", UI_FONT)
-	coord_label.add_theme_font_size_override("font_size", 18)
-	ui.add_child(coord_label)
-	card_debug_label = Label.new()
-	card_debug_label.text = _ui_text("Carta: -")
-	var screen_size: Vector2 = get_viewport().get_visible_rect().size
-	card_debug_label.position = Vector2(max(20.0, screen_size.x - 940.0), 20.0)
-	card_debug_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	card_debug_label.custom_minimum_size = Vector2(900, 260)
-	card_debug_label.add_theme_font_override("font", UI_FONT)
-	card_debug_label.add_theme_font_size_override("font_size", 16)
-	ui.add_child(card_debug_label)
 	GNG_RULES.create_regno_reward_label(self, ui)
 	_create_outcome_banner(ui)
 	_create_adventure_value_box(ui)
@@ -1927,73 +1983,21 @@ func _spawn_coord_label() -> void:
 	_create_dice_drop_prompt()
 
 func _spawn_position_marker() -> void:
-	if POSITION_BOX_SCENE == null:
-		return
-	position_marker = POSITION_BOX_SCENE.instantiate()
-	if position_marker == null:
-		return
-	position_marker.set_meta("position_marker", true)
-	add_child(position_marker)
-	position_marker.global_position = Vector3(4.661, 0.04, 2.491)
-	if position_marker.has_method("set_label"):
-		position_marker.call_deferred("set_label", "Marker")
-	_update_coord_label()
+	return
 
 func _get_reward_drop_center() -> Vector3:
 	if position_marker != null and is_instance_valid(position_marker):
 		return position_marker.global_position
 	return battlefield_pos
 
+func _get_hand_collect_target() -> Vector3:
+	return REWARD_RESOLUTION_CORE.get_hand_collect_target(self)
+
 func _update_coord_label() -> void:
-	if coord_label == null:
-		return
-	if position_marker == null or not is_instance_valid(position_marker):
-		coord_label.text = _ui_text("Coord: -")
-		return
-	var pos := position_marker.global_position
-	coord_label.text = _ui_text("Coord: x=%.3f y=%.3f z=%.3f" % [pos.x, pos.y, pos.z])
+	return
 
 func _show_card_debug_info(card: Node3D) -> void:
-	if card_debug_label == null:
-		return
-	if card == null or not is_instance_valid(card):
-		card_debug_label.text = _ui_text("Carta: -")
-		return
-	var lines: PackedStringArray = PackedStringArray()
-	var name_text: String = card.name
-	if card.has_meta("card_data") and card.get_meta("card_data") is Dictionary:
-		var data: Dictionary = card.get_meta("card_data", {})
-		var card_name := str(data.get("name", "")).strip_edges()
-		if not card_name.is_empty():
-			name_text = card_name
-	var p: Vector3 = card.global_position
-	lines.append("Carta: %s" % name_text)
-	lines.append("Coord: x=%.3f y=%.3f z=%.3f" % [p.x, p.y, p.z])
-	var groups: PackedStringArray = card.get_groups()
-	lines.append("Gruppi: %s" % (", ".join(groups) if groups.size() > 0 else "-"))
-	var belongs: PackedStringArray = PackedStringArray()
-	if bool(card.get_meta("in_treasure_stack", false)):
-		belongs.append("mazzo_tesori")
-	if bool(card.get_meta("in_treasure_market", false)):
-		belongs.append("mercato_tesori")
-	if bool(card.get_meta("in_adventure_stack", false)):
-		belongs.append("mazzo_avventura")
-	if bool(card.get_meta("in_boss_stack", false)):
-		belongs.append("mazzo_boss")
-	if bool(card.get_meta("in_battlefield", false)):
-		belongs.append("campo_battaglia")
-	if bool(card.get_meta("in_mission_side", false)):
-		belongs.append("missioni_lato")
-	if belongs.is_empty():
-		belongs.append("nessuna")
-	lines.append("Appartenenza: %s" % ", ".join(belongs))
-	var keys: PackedStringArray = card.get_meta_list()
-	keys.sort()
-	var meta_dump: PackedStringArray = PackedStringArray()
-	for key in keys:
-		meta_dump.append("%s=%s" % [str(key), str(card.get_meta(key, null))])
-	lines.append("Meta: %s" % (" | ".join(meta_dump) if meta_dump.size() > 0 else "-"))
-	card_debug_label.text = _ui_text("\n".join(lines))
+	return
 
 func _create_music_toggle(ui_layer: CanvasLayer) -> void:
 	CORE_UI.create_music_toggle(self, ui_layer)
@@ -2533,8 +2537,6 @@ func _confirm_drop_half_selection() -> void:
 			var die: RigidBody3D = active_dice[i]
 			if die != null and die.has_method("get_dice_type"):
 				var dtype := str(die.call("get_dice_type"))
-				if mode == "drop_half" and dtype != "blue":
-					continue
 				if mode == "sacrifice_remove" and dtype != "blue":
 					continue
 			drop_indices.append(i)
@@ -2786,7 +2788,7 @@ func _center_chain_choice_prompt() -> void:
 	chain_choice_panel.reset_size()
 	var view_size := get_viewport().get_visible_rect().size
 	var size := chain_choice_panel.size
-	chain_choice_panel.position = Vector2((view_size.x - size.x) * 0.5, 150.0)
+	chain_choice_panel.position = Vector2((view_size.x - size.x) * 0.5, 12.0)
 
 func _show_flip_choice_prompt(text: String = "") -> void:
 	if flip_choice_panel == null:
@@ -2975,9 +2977,9 @@ func _reveal_two_adventures_for_choice() -> void:
 	pending_chain_choice_active = true
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):
 		hand_ui.call("set_phase_button_enabled", false)
-	_show_chain_choice_prompt("Scala: scegli quale carta Avventura tenere. L'altra va in fondo al mazzo.")
+	_show_chain_choice_prompt("Scala: scegli quale carta Avventura tenere. L'altra va negli scarti Avventura.")
 	if hand_ui != null and hand_ui.has_method("set_info"):
-		hand_ui.call("set_info", _ui_text("Scala: scegli quale avventura affrontare. L'altra torna in fondo al mazzo."))
+		hand_ui.call("set_info", _ui_text("Scala: scegli quale avventura affrontare. L'altra va negli scarti avventura."))
 
 func _get_top_adventure_cards(count: int) -> Array[Node3D]:
 	var cards: Array[Node3D] = []
@@ -3057,7 +3059,7 @@ func _resolve_chain_choice(chosen: Node3D) -> void:
 	chosen.set_meta("in_chain_preview", false)
 	if other != null and is_instance_valid(other):
 		other.set_meta("in_chain_preview", false)
-		_put_adventure_card_on_bottom(other)
+		_move_adventure_to_discard(other)
 	_hide_chain_choice_prompt()
 	pending_adventure_card = chosen
 	_confirm_adventure_prompt()
@@ -3083,11 +3085,19 @@ func _put_adventure_card_on_bottom(card: Node3D) -> void:
 	card.set_meta("in_battlefield", false)
 	card.set_meta("adventure_blocking", false)
 	card.set_meta("in_chain_preview", false)
+	card.set_meta("in_mission_side", false)
+	card.set_meta("in_event_row", false)
+	card.set_meta("in_adventure_discard", false)
+	card.remove_meta("adventure_discard_index")
 	card.set_meta("in_adventure_stack", true)
 	card.set_meta("stack_index", min_index - 1)
+	card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
 	if card.has_method("set_face_up"):
 		card.call("set_face_up", false)
+	if card.has_meta("adventure_type"):
+		card.remove_meta("adventure_type")
 	BOARD_CORE.reposition_stack(self, "in_adventure_stack", adventure_deck_pos)
+	BOARD_CORE.reposition_adventure_discard_stack(self)
 
 func _update_adventure_value_box() -> void:
 	ADVENTURE_BATTLE_CORE.update_adventure_value_box(self)

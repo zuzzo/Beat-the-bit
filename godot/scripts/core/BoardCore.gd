@@ -145,6 +145,13 @@ static func reposition_market_stack(main: Node) -> void:
 		if int(card.get_meta("market_index", -1)) < 0:
 			card.set_meta("market_index", i)
 		var pos: Vector3 = main.treasure_reveal_pos + Vector3(0.0, i * main.TREASURE_REVEALED_Y_STEP, 0.0)
+		# Cards added directly (without flip tween) keep pivot on the opposite side.
+		# Shift them left by one card width so they align with flipped cards in stack.
+		var pivot := card.get_node_or_null("Pivot") as Node3D
+		if pivot != null:
+			var y := wrapf(pivot.rotation.y, -PI, PI)
+			if absf(y) < 0.01:
+				pos.x -= 1.4
 		card.global_position = pos
 		card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
 
@@ -152,6 +159,10 @@ static func reposition_adventure_discard_stack(main: Node) -> void:
 	var cards: Array = []
 	for child in main.get_children():
 		if not (child is Node3D):
+			continue
+		if not child.has_meta("in_adventure_discard"):
+			continue
+		if not child.get_meta("in_adventure_discard", false):
 			continue
 		if not child.has_meta("adventure_discard_index"):
 			continue
@@ -168,18 +179,22 @@ static func reposition_adventure_discard_stack(main: Node) -> void:
 	for i in cards.size():
 		var card: Node3D = cards[i]
 		card.global_position = main.adventure_discard_pos + Vector3(0.0, i * main.REVEALED_Y_STEP, 0.0)
+		card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
 
 static func move_adventure_to_discard(main: Node, card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
+	card.set_meta("in_adventure_stack", false)
 	card.set_meta("in_battlefield", false)
 	card.set_meta("adventure_blocking", false)
 	card.set_meta("in_mission_side", false)
 	card.set_meta("in_event_row", false)
+	card.set_meta("in_chain_preview", false)
 	card.set_meta("in_adventure_discard", true)
 	card.set_meta("adventure_discard_index", main.discarded_adventure_count)
 	main.discarded_adventure_count += 1
 	card.global_position = main.adventure_discard_pos + Vector3(0.0, (main.discarded_adventure_count - 1) * main.REVEALED_Y_STEP, 0.0)
+	card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
 
 static func update_treasure_stack_position(main: Node, new_pos: Vector3) -> void:
 	var base := Vector3(new_pos.x, main.treasure_deck_pos.y, new_pos.z)

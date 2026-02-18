@@ -48,10 +48,30 @@ static func confirm(main: Node) -> void:
 			main.hand_ui.call("set_info", main._ui_text("Seleziona il dado richiesto e conferma."))
 		return
 	main._use_card_effects(main.pending_action_card_data, effects, action_window)
-	if main.pending_action_is_magic:
-		if not effects.has("return_to_hand"):
-			main.player_hand.erase(main.pending_action_card_data)
+	if main.pending_action_is_magic and not effects.has("return_to_hand"):
+		var card_id := str(main.pending_action_card_data.get("id", "")).strip_edges()
+		var had_card_in_hand := false
+		for item in main.player_hand:
+			if not (item is Dictionary):
+				continue
+			var data := item as Dictionary
+			if data == main.pending_action_card_data:
+				had_card_in_hand = true
+				break
+			if not card_id.is_empty() and str(data.get("id", "")).strip_edges() == card_id:
+				had_card_in_hand = true
+				break
+		if had_card_in_hand:
+			if main.has_method("_remove_hand_card"):
+				main._remove_hand_card(main.pending_action_card_data, main.pending_action_card_data)
+			else:
+				main.player_hand.erase(main.pending_action_card_data)
 			if main.has_method("_add_hand_card_to_treasure_market"):
 				main._add_hand_card_to_treasure_market(main.pending_action_card_data)
 			main._refresh_hand_ui()
+	# Ensure dice UI stays coherent after instant effects.
+	if main.has_method("_refresh_roll_dice_buttons"):
+		main._refresh_roll_dice_buttons()
+	if main.has_method("_update_adventure_value_box"):
+		main._update_adventure_value_box()
 	hide(main)

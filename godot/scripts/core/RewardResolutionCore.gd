@@ -50,6 +50,7 @@ static func consume_token_and_draw_treasure(main: Node, token: RigidBody3D, grou
 	await draw_treasure_until_group(main, group_key)
 
 static func draw_treasure_until_group(main: Node, group_key: String) -> void:
+	var hand_target: Vector3 = get_hand_collect_target(main)
 	while true:
 		var top: Node3D = main._get_top_treasure_card() as Node3D
 		if top == null:
@@ -62,9 +63,14 @@ static func draw_treasure_until_group(main: Node, group_key: String) -> void:
 		await flip_treasure_card_for_recovery(main, top)
 		var group := str(card_data.get("group", "")).strip_edges().to_lower()
 		if group == group_key:
+			var keep_tween := main.create_tween()
+			keep_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			keep_tween.tween_property(top, "global_position", hand_target, 0.34)
+			await keep_tween.finished
 			main.player_hand.append(card_data)
 			top.queue_free()
 			main._refresh_hand_ui()
+			main._ensure_treasure_stack_from_market_if_empty()
 			return
 		var market_index: int = int(main._reserve_next_market_index())
 		top.set_meta("market_index", market_index)
@@ -76,18 +82,22 @@ static func draw_treasure_until_group(main: Node, group_key: String) -> void:
 		await tween.finished
 		main.revealed_treasure_count += 1
 		main._reposition_market_stack()
+		main._ensure_treasure_stack_from_market_if_empty()
 
 static func flip_treasure_card_for_recovery(main: Node, card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
 	var reveal_pos: Vector3 = main.treasure_reveal_pos + Vector3(0.0, main.revealed_treasure_count * main.TREASURE_REVEALED_Y_STEP, 0.0)
+	card.set_meta("in_treasure_reveal_animation", true)
 	if card.has_method("flip_to_side"):
 		lift_treasure_card_to_stack_top(main, card)
 		card.set_meta("flip_rotate_on_lifted_axis", true)
 		card.call("flip_to_side", reveal_pos)
-		await main.get_tree().create_timer(0.35).timeout
+		await main.get_tree().create_timer(1.45).timeout
 	else:
 		card.global_position = reveal_pos
+	if card != null and is_instance_valid(card):
+		card.set_meta("in_treasure_reveal_animation", false)
 
 static func lift_treasure_card_to_stack_top(main: Node, card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
@@ -128,5 +138,14 @@ static func get_player_collect_target(main: Node) -> Vector3:
 	var world: Vector3 = main._ray_to_plane(hud_point)
 	if world == Vector3.INF:
 		return main.battlefield_pos + Vector3(-2.4, 0.02, 1.9)
+	world.y = main.battlefield_pos.y + 0.02
+	return world
+
+static func get_hand_collect_target(main: Node) -> Vector3:
+	var view_size := main.get_viewport().get_visible_rect().size
+	var hud_point := Vector2(view_size.x * 0.5, view_size.y - 92.0)
+	var world: Vector3 = main._ray_to_plane(hud_point)
+	if world == Vector3.INF:
+		return main.battlefield_pos + Vector3(0.0, 0.02, 2.1)
 	world.y = main.battlefield_pos.y + 0.02
 	return world

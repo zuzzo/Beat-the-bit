@@ -183,17 +183,22 @@ static func track_dice_sum(main: Node) -> void:
 	await wait_for_dice_settle(main, main.pending_dice)
 	var values: Array[int] = []
 	var names: Array[String] = []
-	var total: int = 0
 	for dice in main.pending_dice:
 		if not is_instance_valid(dice):
 			continue
 		var value: int = get_top_face_value(main, dice)
 		values.append(value)
 		names.append(get_top_face_name(main, dice))
-		total += _get_signed_die_value(value, dice)
 	main.pending_dice.clear()
 	main.roll_in_progress = false
 	main._consume_next_roll_effects(values)
+	var total: int = 0
+	for i in values.size():
+		var v: int = int(values[i])
+		var die: RigidBody3D = null
+		if i >= 0 and i < main.active_dice.size():
+			die = main.active_dice[i] as RigidBody3D
+		total += _get_signed_die_value(v, die)
 	main._deck_apply_roll_overrides(values)
 	main.last_roll_values = values.duplicate()
 	main.selected_roll_dice.clear()
@@ -390,11 +395,6 @@ static func on_roll_die_button_pressed(main: Node, index: int) -> void:
 			var dice_type := ""
 			if main.active_dice[index].has_method("get_dice_type"):
 				dice_type = str(main.active_dice[index].call("get_dice_type"))
-			if main._is_drop_half_prompt_mode() and dice_type != "blue":
-				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-					main.hand_ui.call("set_info", main._ui_text("Puoi eliminare solo dadi blu."))
-				refresh_roll_dice_buttons(main)
-				return
 			if main._is_sacrifice_remove_prompt_mode() and dice_type != "blue":
 				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
 					main.hand_ui.call("set_info", main._ui_text("Puoi eliminare solo dadi blu."))
