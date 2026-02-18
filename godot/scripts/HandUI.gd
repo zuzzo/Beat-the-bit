@@ -46,6 +46,7 @@ signal request_use_magic(card: Dictionary)
 signal request_discard_card(card: Dictionary)
 signal request_sell_card(card: Dictionary)
 signal request_play_boss(card: Dictionary)
+signal request_card_info(card: Dictionary)
 
 func _ui_text(text: String) -> String:
 	return text.replace(" ", "  ")
@@ -284,8 +285,7 @@ func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2
 				request_use_magic.emit(card)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
-				if _phase_index == 0:
-					request_sell_card.emit(card)
+				request_card_info.emit(card)
 			else:
 				if _right_preview_active:
 					_right_preview_active = false
@@ -460,8 +460,10 @@ func _create_hand_bar() -> void:
 	_info_label = Label.new()
 	_info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_info_label.text = ""
-	_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_info_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_info_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_info_label.clip_text = true
 	_info_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_info_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_apply_ui_font(_info_label)

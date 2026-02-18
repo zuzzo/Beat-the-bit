@@ -69,9 +69,7 @@ static func confirm(main: Node) -> void:
 			if main.has_method("_add_hand_card_to_treasure_market"):
 				main._add_hand_card_to_treasure_market(main.pending_action_card_data)
 			main._refresh_hand_ui()
-	# Ensure dice UI stays coherent after instant effects.
-	if main.has_method("_refresh_roll_dice_buttons"):
-		main._refresh_roll_dice_buttons()
-	if main.has_method("_update_adventure_value_box"):
-		main._update_adventure_value_box()
+	# Centralized refresh after card actions/magic.
+	if main.has_method("_sync_roll_totals_and_ui"):
+		main._sync_roll_totals_and_ui()
 	hide(main)

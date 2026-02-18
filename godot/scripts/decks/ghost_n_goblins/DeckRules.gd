@@ -192,7 +192,10 @@ static func reveal_event_card(main: Node, card: Node3D, _card_data: Dictionary) 
 	card.set_meta("in_adventure_stack", false)
 	card.set_meta("in_event_row", true)
 	card.set_meta("adventure_type", "evento")
-	var target_pos := get_next_event_pos(main)
+	var target_pos: Vector3 = get_next_event_pos(main)
+	var card_id: String = str(_card_data.get("id", "")).strip_edges()
+	if card_id == "event_portale_infernale":
+		target_pos = main.adventure_deck_pos + Vector3(-1.0, 0.02, 0.9)
 	card.call("flip_to_side", target_pos)
 
 static func reveal_mission_card(main: Node, card: Node3D, _card_data: Dictionary) -> void:

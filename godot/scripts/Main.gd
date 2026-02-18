@@ -37,6 +37,42 @@ const SPAWN_CORE := preload("res://scripts/core/SpawnCore.gd")
 const GNG_SPAWN := preload("res://scripts/decks/ghost_n_goblins/Spawn.gd")
 const GNG_RULES := preload("res://scripts/decks/ghost_n_goblins/DeckRules.gd")
 const EFFECTS_REGISTRY := preload("res://scripts/effects/EffectsRegistry.gd")
+const CARD_EFFECT_DESCRIPTIONS := {
+	"armor_extra_slot_1": "Aggiunge 1 slot equipaggiamento.",
+	"armor_extra_slot_2": "Aggiunge 2 slot equipaggiamento.",
+	"sacrifice_prevent_heart_loss": "Previene una perdita di cuore (se sacrificata).",
+	"discard_revealed_adventure": "Scarta l'avventura rivelata.",
+	"reroll_same_dice": "Rilancia i dadi selezionati.",
+	"after_roll_minus_1_all_dice": "Dopo il lancio: -1 a tutti i dadi.",
+	"after_roll_set_one_die_to_1": "Dopo il lancio: imposta 1 dado a 1.",
+	"reroll_5_or_6": "Rilancia i dadi con valore 5 o 6.",
+	"halve_even_dice": "Dopo il lancio: dimezza i dadi pari.",
+	"add_red_die": "Aggiunge un dado rosso.",
+	"add_green_die": "Aggiunge un dado verde.",
+	"reflect_damage_poison": "Quando perdi un cuore: riflette danno/veleno.",
+	"next_roll_minus_2_all_dice": "Prossimo lancio: -2 a tutti i dadi.",
+	"lowest_die_applies_to_all": "Il dado piu basso vale per tutti.",
+	"deal_1_damage": "Infligge 1 danno immediato.",
+	"next_roll_double_then_remove_half": "Raddoppia i dadi e rimuove la meta piu bassa.",
+	"on_heart_loss_destroy_fatigue": "Quando perdi un cuore: rimuovi fatica.",
+	"regno_del_male_portal": "Interazione con Regno del male.",
+	"sacrifice_open_portal": "Sacrifica per aprire il Portale.",
+	"bonus_damage_multiheart": "Bonus danno su nemici con piu cuori.",
+	"reset_hearts_and_dice": "Ripristina cuori e dadi base.",
+	"return_to_hand": "Ritorna in mano dopo l'uso.",
+	"discard_hand_card_1": "Scarta 1 carta dalla mano."
+}
+const CARD_TIMING_DESCRIPTIONS := {
+	"before_roll": "Prima del lancio",
+	"after_roll": "Dopo il lancio",
+	"before_adventure": "Prima dell'avventura",
+	"on_heart_loss": "Quando perdi cuori",
+	"equip": "Quando equipaggiata",
+	"on_play": "Quando usata",
+	"any_time": "In qualunque momento",
+	"after_damage": "Dopo il danno",
+	"next_roll": "Al prossimo lancio"
+}
 
 @onready var camera: Camera3D = $Camera
 @onready var reward_spawner: Node3D = $RewardSpawner
@@ -262,9 +298,13 @@ var regno_blink_time: float = 0.0
 var regno_reward_label: Label
 var coin_total_label: Label3D
 var coin_pile_count: int = 0
+var coin_manual_offset: Vector3 = Vector3.ZERO
 const COIN_PILE_SPACING_X := 0.8
 const COIN_PILE_SPACING_Z := 0.55
 const COIN_PILE_COLUMNS := 4
+const COIN_MOVE_STEP := 0.2
+const COIN_DROP_BASE_POS := Vector3(4.667, 0.012, 1.895)
+const TOKEN_DROP_OFFSET := Vector3(0.65, 0.0, -0.35)
 
 func _ui_text(text: String) -> String:
 	return text.replace(" ", "  ")
@@ -366,10 +406,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			spawn_reward_tokens(1, HEART_TEXTURE)
 		elif event.keycode == KEY_2:
 			spawn_reward_coins(1)
+		elif event.keycode == KEY_LEFT:
+			_nudge_coin_pile(Vector3(-COIN_MOVE_STEP, 0.0, 0.0))
+		elif event.keycode == KEY_RIGHT:
+			_nudge_coin_pile(Vector3(COIN_MOVE_STEP, 0.0, 0.0))
 		elif event.keycode == KEY_UP:
-			_adjust_camera_pitch(-2.0)
+			if event.shift_pressed:
+				_adjust_camera_pitch(-2.0)
+			else:
+				_nudge_coin_pile(Vector3(0.0, 0.0, -COIN_MOVE_STEP))
 		elif event.keycode == KEY_DOWN:
-			_adjust_camera_pitch(2.0)
+			if event.shift_pressed:
+				_adjust_camera_pitch(2.0)
+			else:
+				_nudge_coin_pile(Vector3(0.0, 0.0, COIN_MOVE_STEP))
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if Time.get_ticks_msec() < action_prompt_block_until_ms:
@@ -539,18 +589,15 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
 			last_mouse_pos = event.position
-			var card := _get_card_under_mouse(event.position)
+			var card: Node3D = _get_card_under_mouse(event.position)
 			if card == null and phase_index == 1:
 				card = _get_adventure_stack_card_at(event.position)
+			if card == null and phase_index == 0:
+				card = _get_boss_stack_card_at(event.position)
+			if card == null and phase_index == 1:
+				card = _get_battlefield_boss_at(event.position)
 			if card != null:
 				_show_card_debug_info(card)
-				if phase_index == 0:
-					var top_market := _get_top_market_card()
-					if top_market != null and card == top_market:
-						_try_show_purchase_prompt(card, false)
-				elif phase_index == 1:
-					if card.has_meta("in_adventure_stack") and card.get_meta("in_adventure_stack", false):
-						_try_show_adventure_prompt(card)
 		pan_active = false
 	elif event.button_index == MOUSE_BUTTON_MIDDLE:
 		if event.pressed:
@@ -976,9 +1023,15 @@ func _on_phase_changed(new_phase_index: int, _turn_index: int) -> void:
 func _ensure_portale_infernale_on_top_for_gold_key() -> void:
 	if not _has_equipped_card_id("treasure_chiave_oro"):
 		return
-	if _is_portale_infernale_in_play():
+	if _is_portale_infernale_on_table():
 		return
 	_move_portale_infernale_to_top_of_adventure_stack()
+
+func _is_portale_infernale_on_table() -> bool:
+	var portal: Node3D = _find_portale_infernale_in_play()
+	if portal == null or not is_instance_valid(portal):
+		return false
+	return bool(portal.get_meta("in_battlefield", false)) or bool(portal.get_meta("in_event_row", false)) or bool(portal.get_meta("in_mission_side", false))
 
 func _has_equipped_card_id(card_id: String) -> bool:
 	for slot in equipment_slots:
@@ -1111,9 +1164,9 @@ func _update_phase_info() -> void:
 		return
 	var text := ""
 	if phase_index == 0:
-		text = "Organizzazione:\n- compra tesori (dx sul mercato)\n- equip/unequip dalla mano\n- gira carta tesoro\n- riscatta missione (clic)"
+		text = "Organizzazione:\n- compra tesori (clic sul mercato)\n- equip/unequip dalla mano\n- gira carta tesoro\n- riscatta missione (clic)\n- tasto destro: info carta"
 	elif phase_index == 1:
-		text = "Avventura:\n- gira carta avventura (clic sul mazzo)\n- lancia dadi (tieni sx, rilascia)\n- usa equip (sx) o magie (dx)\n- applica risultato (pulsante fight)"
+		text = "Avventura:\n- gira carta avventura (clic sul mazzo)\n- lancia dadi (tieni sx, rilascia)\n- usa equip e magie (sx)\n- applica risultato (pulsante fight)\n- tasto destro: info carta"
 	else:
 		text = "Recupero:\n- ripristino dadi\n- fine turno"
 	hand_ui.call("set_info", _ui_text(text))
@@ -1335,7 +1388,7 @@ func _resolve_portale_infernale_success(card: Node3D, total: int, difficulty: in
 	var card_data: Dictionary = card.get_meta("card_data", {})
 	_report_battlefield_reward(card_data, total, difficulty)
 	_move_adventure_to_discard(card)
-	_spawn_defeat_explosion(defeated_pos)
+	_spawn_defeat_explosion(defeated_pos, card)
 	_reveal_final_boss_from_regno()
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", _ui_text("Portale Infernale sconfitto: Boss finale evocato!"))
@@ -1511,7 +1564,7 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 			"selected_roll_values": selected_values
 		})
 	if reroll_indices.is_empty():
-		DICE_FLOW.recalculate_last_roll_total(self)
+		_sync_roll_totals_and_ui()
 	else:
 		_start_visual_reroll(reroll_indices)
 	# Keep the comparison step active after using equipment/magic.
@@ -1562,6 +1615,13 @@ func _discard_revealed_adventure_card() -> void:
 func _recalculate_last_roll_total() -> void:
 	DICE_FLOW.recalculate_last_roll_total(self)
 
+func _sync_roll_totals_and_ui() -> void:
+	if roll_in_progress:
+		return
+	DICE_FLOW.recalculate_last_roll_total(self)
+	DICE_FLOW.refresh_roll_dice_buttons(self)
+	_update_adventure_value_box()
+
 func _start_visual_reroll(indices: Array[int]) -> void:
 	if indices.is_empty():
 		return
@@ -1597,6 +1657,7 @@ func _finish_visual_reroll_after_settle() -> void:
 	DICE_FLOW.rebuild_roll_values_from_active_dice(self)
 	roll_in_progress = false
 	roll_pending_apply = true
+	_sync_roll_totals_and_ui()
 
 func _rebuild_roll_values_from_active_dice() -> void:
 	DICE_FLOW.rebuild_roll_values_from_active_dice(self)
@@ -1986,9 +2047,41 @@ func _spawn_position_marker() -> void:
 	return
 
 func _get_reward_drop_center() -> Vector3:
-	if position_marker != null and is_instance_valid(position_marker):
-		return position_marker.global_position
-	return battlefield_pos
+	return COIN_DROP_BASE_POS + coin_manual_offset
+
+func _get_reward_token_drop_center() -> Vector3:
+	return COIN_DROP_BASE_POS + TOKEN_DROP_OFFSET + coin_manual_offset
+
+func _nudge_coin_pile(delta: Vector3) -> void:
+	coin_manual_offset += delta
+	var coins: Array = get_tree().get_nodes_in_group("coins")
+	for node in coins:
+		if not (node is Node3D):
+			continue
+		var coin: Node3D = node as Node3D
+		coin.global_position += delta
+	_position_coin_total_label()
+	_update_coin_total_label()
+	var center: Vector3 = _get_current_coin_center()
+	var msg: String = "Monete: X=%.3f Y=%.3f Z=%.3f" % [center.x, center.y, center.z]
+	print(msg)
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text(msg))
+
+func _get_current_coin_center() -> Vector3:
+	var coins: Array = get_tree().get_nodes_in_group("coins")
+	if coins.is_empty():
+		return _get_reward_drop_center()
+	var sum: Vector3 = Vector3.ZERO
+	var count: int = 0
+	for node in coins:
+		if not (node is Node3D):
+			continue
+		sum += (node as Node3D).global_position
+		count += 1
+	if count <= 0:
+		return _get_reward_drop_center()
+	return sum / float(count)
 
 func _get_hand_collect_target() -> Vector3:
 	return REWARD_RESOLUTION_CORE.get_hand_collect_target(self)
@@ -1997,7 +2090,93 @@ func _update_coord_label() -> void:
 	return
 
 func _show_card_debug_info(card: Node3D) -> void:
-	return
+	if card == null or not is_instance_valid(card):
+		return
+	var card_data: Dictionary = {}
+	if card.has_meta("card_data") and card.get_meta("card_data") is Dictionary:
+		card_data = card.get_meta("card_data", {})
+	_show_card_info_from_data(card_data)
+
+func _show_card_info_from_data(card_data: Dictionary) -> void:
+	if hand_ui == null or not hand_ui.has_method("set_info"):
+		return
+	var message: String = _build_card_info_text(card_data)
+	if message.strip_edges() == "":
+		message = "Carta: nessun testo disponibile."
+	hand_ui.call("set_info", _ui_text(message))
+
+func _build_card_info_text(card_data: Dictionary) -> String:
+	if card_data.is_empty():
+		return "Carta: nessun testo disponibile."
+	var name: String = str(card_data.get("name", "Carta")).strip_edges()
+	if name == "":
+		name = "Carta"
+	var lines: Array[String] = []
+	lines.append(name)
+	var main_text: String = _get_card_primary_text(card_data)
+	if main_text != "":
+		lines.append(main_text)
+	var effects: Array = card_data.get("effects", [])
+	if not effects.is_empty():
+		var effect_labels: Array[String] = []
+		for entry in effects:
+			var effect_code: String = str(entry).strip_edges()
+			if effect_code == "":
+				continue
+			effect_labels.append(_describe_effect_code(effect_code))
+		if not effect_labels.is_empty():
+			lines.append("Effetti: %s" % ", ".join(effect_labels))
+	var timed_effects: Array = card_data.get("timed_effects", [])
+	if not timed_effects.is_empty():
+		var timed_lines: Array[String] = []
+		for item in timed_effects:
+			if not (item is Dictionary):
+				continue
+			var data: Dictionary = item as Dictionary
+			var effect_name: String = str(data.get("effect", "")).strip_edges()
+			if effect_name == "":
+				continue
+			var when_name: String = str(data.get("when", "")).strip_edges().to_lower()
+			var when_text: String = str(CARD_TIMING_DESCRIPTIONS.get(when_name, when_name))
+			timed_lines.append("%s: %s" % [when_text, _describe_effect_code(effect_name)])
+		if not timed_lines.is_empty():
+			lines.append("Tempistiche: %s" % "; ".join(timed_lines))
+	var sacrifice_effect: String = str(card_data.get("sacrifice_effect", "")).strip_edges()
+	if sacrifice_effect != "":
+		var sacrifice_cost: String = str(card_data.get("sacrifice_cost", "")).strip_edges()
+		if sacrifice_cost != "":
+			lines.append("Sacrificio: %s -> %s" % [sacrifice_cost, _describe_effect_code(sacrifice_effect)])
+		else:
+			lines.append("Sacrificio: %s" % _describe_effect_code(sacrifice_effect))
+	var penalty: Array = card_data.get("penalty_violet", [])
+	if not penalty.is_empty():
+		var penalty_codes: Array[String] = []
+		for entry in penalty:
+			penalty_codes.append(str(entry))
+		lines.append("Penalita: %s" % ", ".join(penalty_codes))
+	var rewards: Array = card_data.get("reward_brown", [])
+	if not rewards.is_empty():
+		var reward_codes: Array[String] = []
+		for entry in rewards:
+			reward_codes.append(str(entry))
+		lines.append("Premio: %s" % ", ".join(reward_codes))
+	return "\n".join(lines)
+
+func _get_card_primary_text(card_data: Dictionary) -> String:
+	var keys: Array[String] = ["text", "description", "desc", "effect_text", "rules_text", "flavor_text", "flavor"]
+	for key in keys:
+		var value: String = str(card_data.get(key, "")).strip_edges()
+		if value != "":
+			return value
+	return ""
+
+func _describe_effect_code(effect_code: String) -> String:
+	var code: String = effect_code.strip_edges()
+	if code == "":
+		return ""
+	if CARD_EFFECT_DESCRIPTIONS.has(code):
+		return str(CARD_EFFECT_DESCRIPTIONS.get(code))
+	return code.replace("_", " ")
 
 func _create_music_toggle(ui_layer: CanvasLayer) -> void:
 	CORE_UI.create_music_toggle(self, ui_layer)
@@ -2564,8 +2743,7 @@ func _confirm_drop_half_selection() -> void:
 	else:
 		_set_pending_drop_half_count(0)
 	selected_roll_dice.clear()
-	DICE_FLOW.recalculate_last_roll_total(self)
-	DICE_FLOW.refresh_roll_dice_buttons(self)
+	_sync_roll_totals_and_ui()
 	_hide_drop_half_prompt()
 	dice_drop_mode = "drop_half"
 	if _get_pending_drop_half_count() <= 0:
@@ -2842,6 +3020,8 @@ func _spawn_hand_ui() -> void:
 		hand_root.connect("request_sell_card", Callable(self, "_on_hand_request_sell_card"))
 	if hand_root.has_signal("request_play_boss"):
 		hand_root.connect("request_play_boss", Callable(self, "_on_hand_request_play_boss"))
+	if hand_root.has_signal("request_card_info"):
+		hand_root.connect("request_card_info", Callable(self, "_on_hand_request_card_info"))
 
 	var view_size := get_viewport().get_visible_rect().size
 	var card_height := view_size.y * 0.2
@@ -3340,6 +3520,10 @@ func _on_hand_request_sell_card(card: Dictionary) -> void:
 	var resolved := _resolve_card_data(card)
 	_show_sell_prompt(resolved)
 
+func _on_hand_request_card_info(card: Dictionary) -> void:
+	var resolved: Dictionary = _resolve_card_data(card)
+	_show_card_info_from_data(resolved)
+
 func _on_hand_request_play_boss(card: Dictionary) -> void:
 	if _is_mandatory_action_locked():
 		return
@@ -3455,12 +3639,29 @@ func _restore_flipped_equipment() -> void:
 	if changed:
 		_apply_equipment_slot_limit_after_curse()
 
-func _spawn_defeat_explosion(world_pos: Vector3) -> void:
+func _spawn_defeat_explosion(world_pos: Vector3, defeated_card: Node3D = null) -> void:
+	var explosion_points: Array[Vector3] = []
+	if defeated_card != null and is_instance_valid(defeated_card):
+		var center: Vector3 = defeated_card.global_position + Vector3(0.0, 0.12, 0.0)
+		var right: Vector3 = defeated_card.global_transform.basis.x.normalized()
+		var forward: Vector3 = defeated_card.global_transform.basis.z.normalized()
+		if right.length_squared() < 0.001:
+			right = Vector3.RIGHT
+		if forward.length_squared() < 0.001:
+			forward = Vector3.FORWARD
+		var spread_offsets: Array[Vector2] = [
+			Vector2(-0.35, -0.55),
+			Vector2(0.32, -0.15),
+			Vector2(-0.22, 0.30),
+			Vector2(0.28, 0.60)
+		]
+		for off in spread_offsets:
+			explosion_points.append(center + right * off.x + forward * off.y)
+	else:
+		explosion_points.append(world_pos + Vector3(0.0, 0.12, 0.0))
+
 	var tex := ResourceLoader.load(EXPLOSION_SHEET) as Texture2D
 	if tex != null:
-		var sprite := AnimatedSprite3D.new()
-		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		sprite.pixel_size = 0.01
 		var frames := SpriteFrames.new()
 		var frame_count := 5
 		var frame_w := int(floor(tex.get_width() / float(frame_count)))
@@ -3472,34 +3673,44 @@ func _spawn_defeat_explosion(world_pos: Vector3) -> void:
 			frames.add_frame("default", atlas)
 		frames.set_animation_speed("default", 12.0)
 		frames.set_animation_loop("default", false)
-		sprite.sprite_frames = frames
-		add_child(sprite)
-		sprite.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
-		sprite.play("default")
-		sprite.animation_finished.connect(func() -> void:
-			if is_instance_valid(sprite):
-				sprite.queue_free()
-		)
+		for i in explosion_points.size():
+			var point: Vector3 = explosion_points[i]
+			var sprite := AnimatedSprite3D.new()
+			sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			sprite.pixel_size = 0.01
+			sprite.sprite_frames = frames
+			add_child(sprite)
+			sprite.global_position = point
+			sprite.play("default")
+			sprite.animation_finished.connect(Callable(self, "_queue_free_if_valid").bind(sprite))
+			if i < explosion_points.size() - 1:
+				await get_tree().create_timer(0.2).timeout
 		return
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.9, 0.9)
-	var flash := MeshInstance3D.new()
-	flash.mesh = quad
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.6, 0.2, 0.9)
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.4, 0.1)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	flash.material_override = mat
-	add_child(flash)
-	flash.global_position = world_pos + Vector3(0.0, 0.12, 0.0)
-	var tween := create_tween()
-	tween.tween_property(flash, "scale", Vector3(1.6, 1.6, 1.6), 0.25)
-	tween.parallel().tween_property(flash, "modulate", Color(1, 1, 1, 0), 0.25)
-	await tween.finished
-	if is_instance_valid(flash):
-		flash.queue_free()
+	for i in explosion_points.size():
+		var point: Vector3 = explosion_points[i]
+		var quad := QuadMesh.new()
+		quad.size = Vector2(0.9, 0.9)
+		var flash := MeshInstance3D.new()
+		flash.mesh = quad
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.6, 0.2, 0.9)
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.4, 0.1)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		flash.material_override = mat
+		add_child(flash)
+		flash.global_position = point
+		var tween := create_tween()
+		tween.tween_property(flash, "scale", Vector3(1.6, 1.6, 1.6), 0.25)
+		tween.parallel().tween_property(flash, "modulate", Color(1, 1, 1, 0), 0.25)
+		tween.finished.connect(Callable(self, "_queue_free_if_valid").bind(flash))
+		if i < explosion_points.size() - 1:
+			await get_tree().create_timer(0.2).timeout
+
+func _queue_free_if_valid(node: Node) -> void:
+	if node != null and is_instance_valid(node):
+		node.queue_free()
 
 func _apply_curse(card_data: Dictionary) -> void:
 	curse_stats_override = card_data.get("stats", {}) as Dictionary
@@ -3632,7 +3843,7 @@ func spawn_reward_coins_stack(count: int, center: Vector3 = Vector3.INF) -> void
 
 func spawn_reward_tokens(count: int, texture_path: String, center: Vector3 = Vector3.INF) -> Array:
 	if center == Vector3.INF:
-		center = _get_reward_drop_center()
+		center = _get_reward_token_drop_center()
 	return SPAWN_CORE.spawn_reward_tokens(self, count, texture_path, center)
 
 func _spawn_reward_tokens_with_code(count: int, texture_path: String, reward_code: String, center: Vector3 = Vector3.INF) -> void:
