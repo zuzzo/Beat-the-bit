@@ -192,6 +192,7 @@ static func track_dice_sum(main: Node) -> void:
 	main.pending_dice.clear()
 	main.roll_in_progress = false
 	main._consume_next_roll_effects(values)
+	main._deck_apply_roll_overrides(values)
 	var total: int = 0
 	for i in values.size():
 		var v: int = int(values[i])
@@ -199,7 +200,6 @@ static func track_dice_sum(main: Node) -> void:
 		if i >= 0 and i < main.active_dice.size():
 			die = main.active_dice[i] as RigidBody3D
 		total += _get_signed_die_value(v, die)
-	main._deck_apply_roll_overrides(values)
 	main.last_roll_values = values.duplicate()
 	main.selected_roll_dice.clear()
 	if main._get_pending_drop_half_count() <= 0:

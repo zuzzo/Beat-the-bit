@@ -236,6 +236,7 @@ var player_current_hearts: int = 0
 var curse_stats_override: Dictionary = {}
 var active_curse_id: String = ""
 var curse_texture_override: String = ""
+var active_curse_data: Dictionary = {}
 var pending_curse_unequip_count: int = 0
 var pending_forced_unequip_reason: String = "Slot equip ridotti"
 var active_character_id: String = "character_sir_arthur_a"
@@ -252,7 +253,7 @@ const TREASURE_CARD_THICKNESS_Y := 0.04
 var adventure_deck_pos := Vector3(4, 0.02, 0)
 var adventure_reveal_pos := Vector3(2, 0.2, 0)
 var battlefield_pos := Vector3(0, 0.02, 0)
-var adventure_discard_pos := Vector3(6.4, 0.026, 0.0)
+var adventure_discard_pos := Vector3(7.25, 0.026, 0.15)
 var event_row_pos := Vector3(-4.601, 0.04, 2.330)
 var revealed_adventure_count: int = 0
 var mission_side_count: int = 0
@@ -268,7 +269,7 @@ const CHAIN_ROW_OFFSET := Vector3(-1.6, 0.0, 0.0)
 const CHAIN_Z_STEP := 2.0
 const TREASURE_REVEAL_OFFSET := Vector3(-0.5, 0.006, 0.0)
 const ADVENTURE_REVEAL_OFFSET := Vector3(5, 0, 0.0)
-const ADVENTURE_DISCARD_OFFSET := Vector3(2.4, 0.006, 0.0)
+const ADVENTURE_DISCARD_OFFSET := Vector3(3.25, 0.006, 0.15)
 var adventure_image_index: Dictionary = {}
 var adventure_variant_cursor: Dictionary = {}
 const BOSS_X_EXTRA := 0.8
@@ -298,13 +299,18 @@ var regno_blink_time: float = 0.0
 var regno_reward_label: Label
 var coin_total_label: Label3D
 var coin_pile_count: int = 0
+var reward_token_pile_count: int = 0
 var coin_manual_offset: Vector3 = Vector3.ZERO
 const COIN_PILE_SPACING_X := 0.8
 const COIN_PILE_SPACING_Z := 0.55
 const COIN_PILE_COLUMNS := 4
 const COIN_MOVE_STEP := 0.2
 const COIN_DROP_BASE_POS := Vector3(4.667, 0.012, 1.895)
-const TOKEN_DROP_OFFSET := Vector3(0.65, 0.0, -0.35)
+const TOKEN_DROP_OFFSET := Vector3(0.95, 0.0, -1.25)
+const REWARD_TOKEN_SPACING_X := 0.65
+const REWARD_TOKEN_SPACING_Z := 0.55
+const REWARD_TOKEN_COLUMNS := 2
+const CHAIN_CHOICE_X_SPREAD := 1.08
 
 func _ui_text(text: String) -> String:
 	return text.replace(" ", "  ")
@@ -2052,6 +2058,13 @@ func _get_reward_drop_center() -> Vector3:
 func _get_reward_token_drop_center() -> Vector3:
 	return COIN_DROP_BASE_POS + TOKEN_DROP_OFFSET + coin_manual_offset
 
+func _get_next_reward_token_center() -> Vector3:
+	var idx: int = reward_token_pile_count
+	reward_token_pile_count += 1
+	var col: int = idx % REWARD_TOKEN_COLUMNS
+	var row: int = int(idx / REWARD_TOKEN_COLUMNS)
+	return _get_reward_token_drop_center() + Vector3(float(col) * REWARD_TOKEN_SPACING_X, 0.0, float(row) * REWARD_TOKEN_SPACING_Z)
+
 func _nudge_coin_pile(delta: Vector3) -> void:
 	coin_manual_offset += delta
 	var coins: Array = get_tree().get_nodes_in_group("coins")
@@ -2060,6 +2073,12 @@ func _nudge_coin_pile(delta: Vector3) -> void:
 			continue
 		var coin: Node3D = node as Node3D
 		coin.global_position += delta
+	var tokens: Array = get_tree().get_nodes_in_group("reward_tokens")
+	for node in tokens:
+		if not (node is Node3D):
+			continue
+		var token: Node3D = node as Node3D
+		token.global_position += delta
 	_position_coin_total_label()
 	_update_coin_total_label()
 	var center: Vector3 = _get_current_coin_center()
@@ -3130,7 +3149,7 @@ func _reveal_two_adventures_for_choice() -> void:
 		_cleanup_chain_cards_after_victory()
 		return
 	var base := _get_battlefield_target_pos()
-	var offset := CHAIN_ROW_SPACING * 0.55
+	var offset: float = CHAIN_CHOICE_X_SPREAD
 	for i in cards.size():
 		var card: Node3D = cards[i]
 		if card == null or not is_instance_valid(card):
@@ -3292,6 +3311,7 @@ func _get_selected_roll_values() -> Array[int]:
 	return DICE_FLOW.get_selected_roll_values(self)
 
 func _on_compare_pressed() -> void:
+	_try_resolve_active_curse_after_roll()
 	ADVENTURE_BATTLE_CORE.on_compare_pressed(self)
 
 func _apply_battlefield_result(card: Node3D, total: int) -> void:
@@ -3716,12 +3736,73 @@ func _apply_curse(card_data: Dictionary) -> void:
 	curse_stats_override = card_data.get("stats", {}) as Dictionary
 	active_curse_id = str(card_data.get("id", ""))
 	curse_texture_override = _get_curse_texture_path(card_data)
+	active_curse_data = card_data.duplicate(true)
 	_apply_character_texture_override()
 	_init_character_stats(true)
 	player_current_hearts = clamp(player_current_hearts, 0, player_max_hearts)
 	_apply_equipment_slot_limit_after_curse("Maledizione")
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
+
+func _clear_active_curse(send_to_discard: bool = true) -> void:
+	if active_curse_id.strip_edges() == "":
+		return
+	if send_to_discard and not active_curse_data.is_empty():
+		_spawn_active_curse_into_adventure_discard(active_curse_data)
+	curse_stats_override = {}
+	active_curse_id = ""
+	curse_texture_override = ""
+	active_curse_data = {}
+	_apply_character_texture_override()
+	_init_character_stats(true)
+	player_current_hearts = clamp(player_current_hearts, 0, player_max_hearts)
+	_apply_equipment_slot_limit_after_curse()
+	_update_hand_ui_stats()
+	_refresh_character_hearts_tokens()
+
+func _spawn_active_curse_into_adventure_discard(card_data: Dictionary) -> void:
+	if card_data.is_empty():
+		return
+	var card: Node3D = CARD_SCENE.instantiate()
+	add_child(card)
+	card.set_meta("card_data", card_data.duplicate(true))
+	var image_path: String = str(card_data.get("image", ""))
+	if image_path == "":
+		image_path = _get_adventure_image_path(card_data)
+	if image_path != "" and card.has_method("set_card_texture"):
+		card.call_deferred("set_card_texture", image_path)
+	if card.has_method("set_back_texture"):
+		card.call_deferred("set_back_texture", ADVENTURE_BACK)
+	if card.has_method("set_face_up"):
+		card.call_deferred("set_face_up", true)
+	_move_adventure_to_discard(card)
+
+func _try_resolve_active_curse_after_roll() -> void:
+	if active_curse_id.strip_edges() == "" or active_curse_data.is_empty():
+		return
+	var remove_condition: String = str(active_curse_data.get("remove_condition", "")).strip_edges().to_lower()
+	if remove_condition == "":
+		return
+	match remove_condition:
+		"when_two_dice_match":
+			if _roll_has_matching_pair(last_roll_values):
+				var curse_name: String = str(active_curse_data.get("name", "Maledizione"))
+				_clear_active_curse(true)
+				if hand_ui != null and hand_ui.has_method("set_info"):
+					hand_ui.call("set_info", _ui_text("Maledizione rimossa: %s negli scarti avventura." % curse_name))
+		_:
+			pass
+
+func _roll_has_matching_pair(values: Array) -> bool:
+	if values.is_empty():
+		return false
+	var seen: Dictionary = {}
+	for raw in values:
+		var v: int = int(raw)
+		if seen.has(v):
+			return true
+		seen[v] = true
+	return false
 
 func _get_curse_texture_path(card_data: Dictionary) -> String:
 	var image_path: String = str(card_data.get("image", ""))
@@ -3761,6 +3842,7 @@ func _report_battlefield_reward(card_data: Dictionary, total: int, difficulty: i
 func _spawn_battlefield_rewards(rewards: Array, coin_pile_center: Vector3) -> void:
 	if rewards.is_empty():
 		return
+	reward_token_pile_count = 0
 	for reward in rewards:
 		var code := str(reward)
 		if code.begins_with("reward_coin_"):
@@ -3768,15 +3850,16 @@ func _spawn_battlefield_rewards(rewards: Array, coin_pile_center: Vector3) -> vo
 			if count > 0:
 				spawn_reward_coins_stack(count, coin_pile_center)
 			continue
+		var token_center: Vector3 = _get_next_reward_token_center()
 		match code:
 			"reward_group_vaso_di_coccio":
-				_spawn_reward_tokens_with_code(1, TOKEN_VASO, code)
+				_spawn_reward_tokens_with_code(1, TOKEN_VASO, code, token_center)
 			"reward_group_chest":
-				_spawn_reward_tokens_with_code(1, TOKEN_CHEST, code)
+				_spawn_reward_tokens_with_code(1, TOKEN_CHEST, code, token_center)
 			"reward_group_teca":
-				_spawn_reward_tokens_with_code(1, TOKEN_TECA, code)
+				_spawn_reward_tokens_with_code(1, TOKEN_TECA, code, token_center)
 			"reward_token_tombstone":
-				_spawn_reward_tokens_with_code(1, TOKEN_TOMBSTONE, code)
+				_spawn_reward_tokens_with_code(1, TOKEN_TOMBSTONE, code, token_center)
 
 func _get_next_coin_pile_center() -> Vector3:
 	var idx := coin_pile_count

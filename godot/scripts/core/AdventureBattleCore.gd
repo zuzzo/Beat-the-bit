@@ -118,7 +118,10 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 			main._show_outcome("SUCCESSO", Color(0.2, 0.9, 0.3))
 		else:
 			main._apply_curse(card_data)
-			main._move_adventure_to_discard(card)
+			# Curse is now represented on player state/form, so do not keep the same
+			# physical card also in adventure discard.
+			if card != null and is_instance_valid(card):
+				card.queue_free()
 			main.last_roll_penalty = true
 			main._show_outcome("INSUCCESSO", Color(0.95, 0.2, 0.2))
 		main.roll_pending_apply = false
