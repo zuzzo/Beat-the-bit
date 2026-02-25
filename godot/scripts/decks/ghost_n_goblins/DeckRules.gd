@@ -156,8 +156,8 @@ static func _claim_treasure_from_group(main: Node, group_key: String) -> void:
 	await main._draw_treasure_until_group(wanted)
 
 static func get_next_chain_pos(main: Node, base_pos: Vector3) -> Vector3:
-	# Place chained cards progressively upward on screen (negative Z in this camera setup).
-	var pos := base_pos + Vector3(0.0, 0.0, -(main.chain_row_count + 1) * main.CHAIN_Z_STEP)
+	# Place chained cards horizontally, left-to-right.
+	var pos := base_pos + Vector3(main.CHAIN_ROW_OFFSET.x + float(main.chain_row_count) * main.CHAIN_ROW_SPACING, 0.0, main.CHAIN_ROW_OFFSET.z)
 	main.chain_row_count += 1
 	return pos
 
@@ -195,7 +195,8 @@ static func reveal_event_card(main: Node, card: Node3D, _card_data: Dictionary) 
 	var target_pos: Vector3 = get_next_event_pos(main)
 	var card_id: String = str(_card_data.get("id", "")).strip_edges()
 	if card_id == "event_portale_infernale":
-		target_pos = main.adventure_deck_pos + Vector3(-1.0, 0.02, 0.9)
+		# Keep the portal near Regno del Male, specifically on its left side.
+		target_pos = Vector3(main.regno_pos.x - 1.35, main.regno_pos.y + 0.004, main.regno_pos.z)
 	card.call("flip_to_side", target_pos)
 
 static func reveal_mission_card(main: Node, card: Node3D, _card_data: Dictionary) -> void:

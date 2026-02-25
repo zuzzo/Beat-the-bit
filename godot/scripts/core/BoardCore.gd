@@ -4,6 +4,8 @@ class_name BoardCore
 static func get_top_treasure_card(main: Node) -> Node3D:
 	var top_card: Node3D = null
 	var top_index := -1
+	var fallback_card: Node3D = null
+	var fallback_y := -INF
 	for child in main.get_children():
 		if not (child is Node3D):
 			continue
@@ -12,10 +14,17 @@ static func get_top_treasure_card(main: Node) -> Node3D:
 		if not child.get_meta("in_treasure_stack", false):
 			continue
 		var idx: int = int(child.get_meta("stack_index", -1))
-		if idx > top_index:
+		if idx >= 0 and idx > top_index:
 			top_index = idx
 			top_card = child
-	return top_card
+		elif idx < 0:
+			var y := (child as Node3D).global_position.y
+			if y > fallback_y:
+				fallback_y = y
+				fallback_card = child
+	if top_card != null:
+		return top_card
+	return fallback_card
 
 static func get_top_adventure_card(main: Node) -> Node3D:
 	var top_card: Node3D = null

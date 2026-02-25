@@ -1835,26 +1835,22 @@ func _ensure_treasure_stack_from_market_if_empty() -> bool:
 	if _get_top_treasure_card() != null:
 		return false
 	var recycled: Array[Node3D] = []
-	var market_total: int = 0
-	var any_treasure_present: bool = false
+	var waiting_reveal_animation: bool = false
 	for child in get_children():
 		if not (child is Node3D):
 			continue
 		var card := child as Node3D
-		if bool(card.get_meta("in_treasure_stack", false)) or bool(card.get_meta("in_treasure_market", false)):
-			any_treasure_present = true
-		if not card.has_meta("in_treasure_market"):
+		var is_in_stack: bool = bool(card.get_meta("in_treasure_stack", false))
+		var is_in_market: bool = bool(card.get_meta("in_treasure_market", false))
+		if not is_in_stack and not is_in_market:
 			continue
-		if not bool(card.get_meta("in_treasure_market", false)):
-			continue
-		market_total += 1
 		if bool(card.get_meta("in_treasure_reveal_animation", false)):
+			waiting_reveal_animation = true
 			continue
 		recycled.append(card)
 	if recycled.is_empty():
-		# Do not rebuild from database while real market/discard cards exist.
-		# Wait for reveal animations to finish, then reshuffle the real pile.
-		if market_total > 0 or any_treasure_present:
+		# Wait for reveal completion, then rebuild from real revealed cards.
+		if waiting_reveal_animation:
 			return false
 		return _rebuild_treasure_stack_from_database()
 	DECK_UTILS.shuffle_deck(recycled)

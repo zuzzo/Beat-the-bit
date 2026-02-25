@@ -69,4 +69,5 @@ static func confirm(main: Node) -> void:
 	main._refresh_hand_ui()
 	if main.hand_ui != null and main.hand_ui.has_method("set_gold"):
 		main.hand_ui.call("set_gold", main.player_gold)
+	main.call_deferred("_ensure_treasure_stack_from_market_if_empty")
 	hide(main)
