@@ -1,6 +1,9 @@
 extends RefCounted
 class_name BoardCore
 
+static func _stack_random_rot_deg() -> float:
+	return randf_range(-2.0, 2.0)
+
 static func get_top_treasure_card(main: Node) -> Node3D:
 	var top_card: Node3D = null
 	var top_index := -1
@@ -125,6 +128,7 @@ static func reposition_stack(main: Node, meta_key: String, base_pos: Vector3) ->
 		var idx: int = int(card.get_meta("stack_index", 0))
 		var pos := base_pos + Vector3(0.0, idx * main.REVEALED_Y_STEP, 0.0)
 		card.global_position = pos
+		card.rotation = Vector3(-PI / 2.0, deg_to_rad(_stack_random_rot_deg()), 0.0)
 
 static func reposition_market_stack(main: Node) -> void:
 	var cards: Array = []
@@ -162,7 +166,7 @@ static func reposition_market_stack(main: Node) -> void:
 			if absf(y) < 0.01:
 				pos.x -= 1.4
 		card.global_position = pos
-		card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
+		card.rotation = Vector3(-PI / 2.0, deg_to_rad(_stack_random_rot_deg()), 0.0)
 
 static func reposition_adventure_discard_stack(main: Node) -> void:
 	var cards: Array = []
@@ -188,11 +192,14 @@ static func reposition_adventure_discard_stack(main: Node) -> void:
 	for i in cards.size():
 		var card: Node3D = cards[i]
 		card.global_position = main.adventure_discard_pos + Vector3(0.0, i * main.REVEALED_Y_STEP, 0.0)
-		card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
+		card.rotation = Vector3(-PI / 2.0, deg_to_rad(_stack_random_rot_deg()), 0.0)
 
 static func move_adventure_to_discard(main: Node, card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
+	for child in card.get_children():
+		if child is Node3D and child.has_meta("battlefield_heart_token"):
+			child.queue_free()
 	card.set_meta("in_adventure_stack", false)
 	card.set_meta("in_battlefield", false)
 	card.set_meta("adventure_blocking", false)
@@ -203,7 +210,7 @@ static func move_adventure_to_discard(main: Node, card: Node3D) -> void:
 	card.set_meta("adventure_discard_index", main.discarded_adventure_count)
 	main.discarded_adventure_count += 1
 	card.global_position = main.adventure_discard_pos + Vector3(0.0, (main.discarded_adventure_count - 1) * main.REVEALED_Y_STEP, 0.0)
-	card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
+	card.rotation = Vector3(-PI / 2.0, deg_to_rad(_stack_random_rot_deg()), 0.0)
 
 static func update_treasure_stack_position(main: Node, new_pos: Vector3) -> void:
 	var base := Vector3(new_pos.x, main.treasure_deck_pos.y, new_pos.z)

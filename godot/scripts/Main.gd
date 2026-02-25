@@ -306,7 +306,7 @@ const COIN_PILE_SPACING_Z := 0.55
 const COIN_PILE_COLUMNS := 4
 const COIN_MOVE_STEP := 0.2
 const COIN_DROP_BASE_POS := Vector3(4.667, 0.012, 1.895)
-const TOKEN_DROP_OFFSET := Vector3(0.95, 0.0, -1.25)
+const TOKEN_DROP_OFFSET := Vector3(0.95, 0.0, 0.35)
 const REWARD_TOKEN_SPACING_X := 0.65
 const REWARD_TOKEN_SPACING_Z := 0.55
 const REWARD_TOKEN_COLUMNS := 2
@@ -836,8 +836,13 @@ func _normalize_treasure_card_for_stack(card: Node3D, stack_index: int = -1) -> 
 	if card == null or not is_instance_valid(card):
 		return
 	_reset_card_pivot_center(card)
+	var pivot := card.get_node_or_null("Pivot")
+	if pivot != null and (pivot is Node3D):
+		(pivot as Node3D).rotation = Vector3.ZERO
 	card.rotation = Vector3(-PI / 2.0, 0.0, 0.0)
 	card.set_meta("in_treasure_reveal_animation", false)
+	card.set_meta("flip_force_face_up", false)
+	card.set_meta("flip_rotate_on_lifted_axis", false)
 	card.set_meta("in_treasure_market", false)
 	card.set_meta("in_treasure_stack", true)
 	card.set_meta("market_index", -1)
@@ -845,6 +850,11 @@ func _normalize_treasure_card_for_stack(card: Node3D, stack_index: int = -1) -> 
 		card.set_meta("stack_index", stack_index)
 	if card.has_method("set_face_up"):
 		card.call("set_face_up", false)
+
+func _apply_stack_rotation_jitter(card: Node3D) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	card.rotation = Vector3(-PI / 2.0, deg_to_rad(randf_range(-2.0, 2.0)), 0.0)
 
 func _get_top_treasure_card() -> Node3D:
 	return BOARD_CORE.get_top_treasure_card(self)
@@ -1858,8 +1868,7 @@ func _ensure_treasure_stack_from_market_if_empty() -> bool:
 		var card := recycled[i]
 		_normalize_treasure_card_for_stack(card, i)
 		card.global_position = treasure_deck_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
-		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
-		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
+		_apply_stack_rotation_jitter(card)
 		if card.has_method("set_sorting_offset"):
 			card.call("set_sorting_offset", float(i))
 	revealed_treasure_count = 0
@@ -1933,9 +1942,7 @@ func _rebuild_treasure_stack_from_database() -> bool:
 		card.color = Color(0.2, 0.2, 0.4, 1.0)
 		add_child(card)
 		card.global_position = treasure_deck_pos + Vector3(0.0, i * REVEALED_Y_STEP, 0.0)
-		card.rotate_x(-PI / 2.0)
-		card.rotate_y(deg_to_rad(randf_range(-1.0, 1.0)))
-		card.rotate_z(deg_to_rad(randf_range(-0.6, 0.6)))
+		_apply_stack_rotation_jitter(card)
 		card.set_meta("in_treasure_stack", true)
 		card.set_meta("card_data", data)
 		card.set_meta("in_treasure_market", false)
@@ -2130,7 +2137,9 @@ func _build_card_info_text(card_data: Dictionary) -> String:
 	lines.append(name)
 	var main_text: String = _get_card_primary_text(card_data)
 	if main_text != "":
+		# Prefer card-native rules text when available.
 		lines.append(main_text)
+		return "\n".join(lines)
 	var effects: Array = card_data.get("effects", [])
 	if not effects.is_empty():
 		var effect_labels: Array[String] = []
@@ -2178,7 +2187,11 @@ func _build_card_info_text(card_data: Dictionary) -> String:
 	return "\n".join(lines)
 
 func _get_card_primary_text(card_data: Dictionary) -> String:
-	var keys: Array[String] = ["text", "description", "desc", "effect_text", "rules_text", "flavor_text", "flavor"]
+	var keys: Array[String] = [
+		"text", "card_text", "rules_text", "rule_text", "effect_text",
+		"description", "desc", "descrizione", "testo", "ability_text",
+		"flavor_text", "flavor"
+	]
 	for key in keys:
 		var value: String = str(card_data.get(key, "")).strip_edges()
 		if value != "":
@@ -2435,7 +2448,7 @@ func _create_sell_prompt() -> void:
 	prompt_layer.add_child(sell_prompt_panel)
 
 func _show_sell_prompt(card_data: Dictionary) -> void:
-	if phase_index != 0:
+	if phase_index != 1:
 		return
 	if sell_prompt_panel == null or sell_prompt_label == null:
 		return
@@ -2649,6 +2662,9 @@ func _show_drop_half_prompt(count: int, mode: String = "drop_half") -> void:
 	if dice_drop_panel == null or dice_drop_label == null:
 		return
 	dice_drop_mode = mode
+	# Start from an empty selection: player clicks the dice to discard.
+	selected_roll_dice.clear()
+	_refresh_roll_dice_buttons()
 	if mode == "sacrifice_remove":
 		dice_drop_label.text = _ui_text("Approccio alternativo: seleziona %d dado/i da rimuovere." % count)
 	else:
@@ -2752,6 +2768,9 @@ func _confirm_drop_half_selection() -> void:
 		if drop_idx >= 0 and drop_idx < last_roll_values.size():
 			last_roll_values.remove_at(drop_idx)
 	if mode == "sacrifice_remove":
+		# The temporary extra blue die from sacrifice must not leak into later battles.
+		blue_dice = max(base_dice_count, int(blue_dice) - pending_count)
+		dice_count = DICE_FLOW.get_total_dice(self)
 		pending_adventure_sacrifice_remove_choice_count = max(0, pending_adventure_sacrifice_remove_choice_count - pending_count)
 		if pending_adventure_sacrifice_remove_choice_count <= 0 and pending_adventure_sacrifice_remove_after_roll_count <= 0:
 			pending_adventure_sacrifice_sequence_active = false
@@ -3531,7 +3550,7 @@ func _on_hand_request_discard_card(card: Dictionary) -> void:
 func _on_hand_request_sell_card(card: Dictionary) -> void:
 	if _is_mandatory_action_locked():
 		return
-	if phase_index != 0:
+	if phase_index != 1:
 		return
 	var resolved := _resolve_card_data(card)
 	_show_sell_prompt(resolved)
@@ -3833,7 +3852,7 @@ func _report_battlefield_reward(card_data: Dictionary, total: int, difficulty: i
 		text = "Premio:\n- %s" % "\n- ".join(rewards)
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		hand_ui.call("set_info", text)
-	_spawn_battlefield_rewards(rewards, _get_next_coin_pile_center())
+	_spawn_battlefield_rewards(rewards, _get_reward_drop_center())
 
 func _spawn_battlefield_rewards(rewards: Array, coin_pile_center: Vector3) -> void:
 	if rewards.is_empty():
@@ -3858,11 +3877,7 @@ func _spawn_battlefield_rewards(rewards: Array, coin_pile_center: Vector3) -> vo
 				_spawn_reward_tokens_with_code(1, TOKEN_TOMBSTONE, code, token_center)
 
 func _get_next_coin_pile_center() -> Vector3:
-	var idx := coin_pile_count
-	coin_pile_count += 1
-	var row := int(idx / COIN_PILE_COLUMNS)
-	var col := int(idx % COIN_PILE_COLUMNS)
-	return _get_reward_drop_center() + Vector3(float(col) * COIN_PILE_SPACING_X, 0.0, float(row) * COIN_PILE_SPACING_Z)
+	return _get_reward_drop_center()
 
 func _update_all_card_sorting_offsets(released_card: Node3D) -> void:
 	# Raccogli tutte le carte (esclusa quella rilasciata)

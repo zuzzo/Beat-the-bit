@@ -5,12 +5,14 @@ static func cleanup_battlefield_rewards_for_recovery(main: Node) -> void:
 	await resolve_reward_tokens_for_recovery(main)
 	# Move coins toward the player HUD area, then remove them.
 	var target: Vector3 = get_player_collect_target(main)
+	var collected_coins: int = 0
 	for coin in main.get_tree().get_nodes_in_group("coins"):
 		if not (coin is RigidBody3D):
 			continue
 		var body := coin as RigidBody3D
 		if not is_instance_valid(body):
 			continue
+		collected_coins += 1
 		body.freeze = true
 		body.sleeping = true
 		var tween := main.create_tween()
@@ -20,6 +22,10 @@ static func cleanup_battlefield_rewards_for_recovery(main: Node) -> void:
 			if is_instance_valid(body):
 				body.queue_free()
 		)
+	if collected_coins > 0:
+		main.player_gold += collected_coins
+		if main.hand_ui != null and main.hand_ui.has_method("set_gold"):
+			main.hand_ui.call("set_gold", main.player_gold)
 	main.coin_pile_count = 0
 
 static func resolve_reward_tokens_for_recovery(main: Node) -> void:

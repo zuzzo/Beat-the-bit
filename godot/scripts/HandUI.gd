@@ -285,7 +285,10 @@ func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2
 				request_use_magic.emit(card)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
-				request_card_info.emit(card)
+				if _phase_index == 1:
+					request_sell_card.emit(card)
+				else:
+					request_card_info.emit(card)
 			else:
 				if _right_preview_active:
 					_right_preview_active = false
