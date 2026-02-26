@@ -2448,9 +2448,13 @@ func _create_sell_prompt() -> void:
 	prompt_layer.add_child(sell_prompt_panel)
 
 func _show_sell_prompt(card_data: Dictionary) -> void:
-	if phase_index != 1:
+	if phase_index != 0:
 		return
 	if sell_prompt_panel == null or sell_prompt_label == null:
+		return
+	if card_data.is_empty():
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Carta non vendibile."))
 		return
 	var name: String = str(card_data.get("name", "Carta"))
 	var cost: int = int(card_data.get("cost", 0))
@@ -3548,9 +3552,13 @@ func _on_hand_request_discard_card(card: Dictionary) -> void:
 	_try_resolve_pending_adventure_sacrifice_after_cost()
 
 func _on_hand_request_sell_card(card: Dictionary) -> void:
-	if _is_mandatory_action_locked():
+	if phase_index != 0:
 		return
-	if phase_index != 1:
+	if match_closed:
+		return
+	if pending_penalty_discards > 0 or pending_curse_unequip_count > 0:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Completa prima gli scarti obbligatori."))
 		return
 	var resolved := _resolve_card_data(card)
 	_show_sell_prompt(resolved)
