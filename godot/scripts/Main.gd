@@ -16,6 +16,8 @@ const TOKEN_VASO := "res://assets/Token/vaso.png"
 const TOKEN_CHEST := "res://assets/Token/chest.png"
 const TOKEN_TECA := "res://assets/Token/teca.png"
 const TOKEN_TOMBSTONE := "res://assets/Token/tombstone.png"
+const TOKEN_XP_1 := "res://assets/Token/1xp.png"
+const TOKEN_XP_5 := "res://assets/Token/5xp.png"
 const EXPLOSION_SHEET := "res://assets/Animation/explosion.png"
 const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
 const CARD_TIMING := preload("res://scripts/core/CardTiming.gd")
@@ -34,8 +36,6 @@ const ADVENTURE_FLOW_CORE := preload("res://scripts/core/AdventureFlowCore.gd")
 const ADVENTURE_BATTLE_CORE := preload("res://scripts/core/AdventureBattleCore.gd")
 const BOARD_CORE := preload("res://scripts/core/BoardCore.gd")
 const SPAWN_CORE := preload("res://scripts/core/SpawnCore.gd")
-const GNG_SPAWN := preload("res://scripts/decks/ghost_n_goblins/Spawn.gd")
-const GNG_RULES := preload("res://scripts/decks/ghost_n_goblins/DeckRules.gd")
 const EFFECTS_REGISTRY := preload("res://scripts/effects/EffectsRegistry.gd")
 const CARD_EFFECT_DESCRIPTIONS := {
 	"armor_extra_slot_1": "Aggiunge 1 slot equipaggiamento.",
@@ -150,6 +150,7 @@ const DICE_PREVIEW_OFFSET := Vector3(2.2, 0.0, 0.0)
 var hand_ui: Control
 var player_gold: int = 30
 var player_tombstones: int = 0
+var player_experience: int = 0
 var enemies_defeated_total: int = 0
 var pending_penalty_discards: int = 0
 var pending_discard_reason: String = ""
@@ -240,6 +241,8 @@ var active_curse_data: Dictionary = {}
 var pending_curse_unequip_count: int = 0
 var pending_forced_unequip_reason: String = "Slot equip ridotti"
 var active_character_id: String = "character_sir_arthur_a"
+var character_auto_form_by_hearts: bool = true
+var character_transform_enabled: bool = false
 const PURCHASE_FONT_SIZE := 44
 const FINAL_BOSS_DEFAULT_COST := 20
 var treasure_deck_pos := Vector3(-3, 0.0179999992251396, 0)
@@ -261,7 +264,7 @@ var event_row_count: int = 0
 var chain_row_count: int = 0
 var discarded_adventure_count: int = 0
 var is_adventure_stack_hovered: bool = false
-const ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
+var ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
 const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
 const EVENT_ROW_SPACING := 1.6
 const CHAIN_ROW_SPACING := 0.9
@@ -273,13 +276,18 @@ const ADVENTURE_DISCARD_OFFSET := Vector3(3.25, 0.006, 0.15)
 var adventure_image_index: Dictionary = {}
 var adventure_variant_cursor: Dictionary = {}
 const BOSS_X_EXTRA := 0.8
-const BOSS_BACK := "res://assets/cards/ghost_n_goblins/boss/back_Boss.png"
-const CHARACTER_FRONT := "res://assets/cards/ghost_n_goblins/singles/sir Arthur A.png"
-const CHARACTER_FRONT_B := "res://assets/cards/ghost_n_goblins/singles/Sir Arthur B.png"
-const CHARACTER_BACK := "res://assets/cards/ghost_n_goblins/singles/back_personaggio.png"
-const REGNO_FRONT := "res://assets/cards/ghost_n_goblins/singles/Regno del male.png"
-const REGNO_BACK := "res://assets/cards/ghost_n_goblins/singles/back_regno del male.png"
-const ASTAROTH_FRONT := "res://assets/cards/ghost_n_goblins/singles/astaroth.png"
+var BOSS_BACK := "res://assets/cards/ghost_n_goblins/boss/back_Boss.png"
+var CHARACTER_FRONT := "res://assets/cards/ghost_n_goblins/singles/sir Arthur A.png"
+var CHARACTER_FRONT_B := "res://assets/cards/ghost_n_goblins/singles/Sir Arthur B.png"
+var CHARACTER_BACK := "res://assets/cards/ghost_n_goblins/singles/back_personaggio.png"
+var REGNO_FRONT := "res://assets/cards/ghost_n_goblins/singles/Regno del male.png"
+var REGNO_BACK := "res://assets/cards/ghost_n_goblins/singles/back_regno del male.png"
+var ASTAROTH_FRONT := "res://assets/cards/ghost_n_goblins/singles/astaroth.png"
+var TREASURE_BACK := "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png"
+var deck_spawn: Object
+var deck_rules: Object
+var active_deck: Dictionary = {}
+var active_asset_dirs: Dictionary = {}
 var boss_deck_pos := Vector3(-3, 0.0389999970793724, -2.5)
 var character_pos := Vector3(0, 0.0240000002086163, 2.5)
 var regno_pos := Vector3(-3, 0.0359999984502792, 2.5)
@@ -316,6 +324,8 @@ func _ui_text(text: String) -> String:
 	return text.replace(" ", "  ")
 
 func _ready() -> void:
+	_configure_active_deck()
+	CardDatabase.load_cards(GameConfig.selected_deck_id)
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	camera.rotation_degrees = Vector3(-80.0, 0.0, 0.0)
 	camera.global_position = Vector3(0.65, 6.0, 3.8)
@@ -347,6 +357,35 @@ func _ready() -> void:
 	# Example usage with placeholders.
 	var example_deck := ["c1", "c2", "c3", "c4", "c5"]
 	DECK_UTILS.shuffle_deck(example_deck)
+
+func _configure_active_deck() -> void:
+	active_deck = DeckRegistry.get_deck(GameConfig.selected_deck_id)
+	active_asset_dirs = active_deck.get("asset_dirs", {}) as Dictionary
+	var assets: Dictionary = active_deck.get("assets", {}) as Dictionary
+	ADVENTURE_BACK = str(assets.get("adventure_back", ADVENTURE_BACK))
+	BOSS_BACK = str(assets.get("boss_back", BOSS_BACK))
+	CHARACTER_FRONT = str(assets.get("character_front", CHARACTER_FRONT))
+	CHARACTER_FRONT_B = str(assets.get("character_front_b", CHARACTER_FRONT_B))
+	CHARACTER_BACK = str(assets.get("character_back", CHARACTER_BACK))
+	REGNO_FRONT = str(assets.get("regno_front", REGNO_FRONT))
+	REGNO_BACK = str(assets.get("regno_back", REGNO_BACK))
+	ASTAROTH_FRONT = str(assets.get("final_boss_front", ASTAROTH_FRONT))
+	TREASURE_BACK = str(assets.get("treasure_back", TREASURE_BACK))
+	active_character_id = str(active_deck.get("character_start_id", "character_sir_arthur_a")).strip_edges()
+	if active_character_id.is_empty():
+		active_character_id = "character_sir_arthur_a"
+	character_auto_form_by_hearts = bool(active_deck.get("character_auto_form_by_hearts", true))
+	character_transform_enabled = bool(active_deck.get("character_transform_enabled", false))
+	var spawn_path: String = str(active_deck.get("spawn_script", ""))
+	var rules_path: String = str(active_deck.get("rules_script", ""))
+	var spawn_script: Script = load(spawn_path)
+	var rules_script: Script = load(rules_path)
+	if spawn_script == null:
+		spawn_script = load("res://scripts/decks/ghost_n_goblins/Spawn.gd")
+	if rules_script == null:
+		rules_script = load("res://scripts/decks/ghost_n_goblins/DeckRules.gd")
+	deck_spawn = spawn_script.new()
+	deck_rules = rules_script.new()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if adventure_sacrifice_prompt_panel != null and adventure_sacrifice_prompt_panel.visible:
@@ -515,6 +554,8 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					return
 				if phase_index == 0 and _try_show_final_boss_prompt(card):
 					return
+				if phase_index == 0 and _try_transform_character(card):
+					return
 				if phase_index == 0:
 					var top_market_left := _get_top_market_card()
 					if top_market_left != null and card == top_market_left:
@@ -594,6 +635,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			pending_flip_card = null
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
+			if hand_ui != null and hand_ui.has_method("consume_right_click_capture"):
+				if bool(hand_ui.call("consume_right_click_capture")):
+					return
 			last_mouse_pos = event.position
 			var card: Node3D = _get_card_under_mouse(event.position)
 			if card == null and phase_index == 1:
@@ -1197,10 +1241,10 @@ func _on_end_turn_with_battlefield() -> void:
 	ADVENTURE_FLOW_CORE.on_end_turn_with_battlefield(self)
 
 func _try_advance_regno_track() -> void:
-	GNG_RULES.try_advance_regno_track(self)
+	deck_rules.try_advance_regno_track(self)
 
 func _try_spend_tombstone_on_regno(card: Node3D) -> bool:
-	return GNG_RULES.try_spend_tombstone_on_regno(self, card)
+	return deck_rules.try_spend_tombstone_on_regno(self, card)
 
 func _is_portale_infernale_card(card: Node3D) -> bool:
 	if card == null or not is_instance_valid(card):
@@ -1563,10 +1607,10 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 		if EFFECTS_REGISTRY.apply_direct_card_effect(self, effect_name, card_data, action_window):
 			continue
 		if effect_name == "lowest_die_applies_to_all" and action_window == "before_roll" and not roll_pending_apply:
-			GNG_RULES.set_next_roll_lowest(self)
+			deck_rules.set_next_roll_lowest(self)
 			continue
 		if effect_name == "next_roll_double_then_remove_half" and action_window == "before_roll" and not roll_pending_apply:
-			GNG_RULES.set_next_roll_clone(self)
+			deck_rules.set_next_roll_clone(self)
 			continue
 		post_roll_effects.append(effect_name)
 		EFFECTS_REGISTRY.collect_reroll_indices(self, effect_name, reroll_indices)
@@ -1775,10 +1819,10 @@ func _schedule_adventure_discard(card: Node3D) -> void:
 		_move_adventure_to_discard(card)
 
 func _get_next_chain_pos(base_pos: Vector3) -> Vector3:
-	return GNG_RULES.get_next_chain_pos(self, base_pos)
+	return deck_rules.get_next_chain_pos(self, base_pos)
 
 func _schedule_next_chain_reveal() -> void:
-	await GNG_RULES.schedule_next_chain_reveal(self)
+	await deck_rules.schedule_next_chain_reveal(self)
 
 func _get_battlefield_target_pos() -> Vector3:
 	var pos := battlefield_pos
@@ -1920,11 +1964,12 @@ func _rebuild_treasure_stack_from_database() -> bool:
 			continue
 		owned_counts[eid] = int(owned_counts.get(eid, 0)) + 1
 	var rebuild_cards: Array[Dictionary] = []
+	var set_id: String = DeckRegistry.get_card_set(GameConfig.selected_deck_id)
 	for entry_any in CardDatabase.deck_treasures:
 		if not (entry_any is Dictionary):
 			continue
 		var entry: Dictionary = entry_any as Dictionary
-		if str(entry.get("set", "")) != "GnG":
+		if str(entry.get("set", "")) != set_id:
 			continue
 		var id: String = str(entry.get("id", "")).strip_edges()
 		if not id.is_empty():
@@ -1951,7 +1996,7 @@ func _rebuild_treasure_stack_from_database() -> bool:
 		if not image_path.is_empty() and card.has_method("set_card_texture"):
 			card.call_deferred("set_card_texture", image_path)
 		if card.has_method("set_back_texture"):
-			card.call_deferred("set_back_texture", "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png")
+			card.call_deferred("set_back_texture", TREASURE_BACK)
 		if card.has_method("set_face_up"):
 			card.call_deferred("set_face_up", false)
 		if card.has_method("set_sorting_offset"):
@@ -1969,31 +2014,31 @@ func _debug_card_positions(card: Node3D, label: String) -> void:
 	print("%s card=%s mesh=%s" % [label, str(card.global_position), str(mesh_pos)])
 
 func _get_next_mission_side_pos() -> Vector3:
-	return GNG_RULES.get_next_mission_side_pos(self)
+	return deck_rules.get_next_mission_side_pos(self)
 
 func _get_next_event_pos() -> Vector3:
-	return GNG_RULES.get_next_event_pos(self)
+	return deck_rules.get_next_event_pos(self)
 
 func _reveal_event_card(card: Node3D, card_data: Dictionary) -> void:
-	GNG_RULES.reveal_event_card(self, card, card_data)
+	deck_rules.reveal_event_card(self, card, card_data)
 
 func _reveal_mission_card(card: Node3D, card_data: Dictionary) -> void:
-	GNG_RULES.reveal_mission_card(self, card, card_data)
+	deck_rules.reveal_mission_card(self, card, card_data)
 
 func _try_claim_mission(card: Node3D) -> void:
-	GNG_RULES.try_claim_mission(self, card)
+	deck_rules.try_claim_mission(self, card)
 
 func _is_mission_completed(card_data: Dictionary) -> bool:
-	return GNG_RULES.is_mission_completed(self, card_data)
+	return deck_rules.is_mission_completed(self, card_data)
 
 func _apply_mission_cost(card_data: Dictionary) -> void:
-	GNG_RULES.apply_mission_cost(self, card_data)
+	deck_rules.apply_mission_cost(self, card_data)
 
 func _get_mission_requirements(card_data: Dictionary) -> Dictionary:
-	return GNG_RULES.get_mission_requirements(self, card_data)
+	return deck_rules.get_mission_requirements(self, card_data)
 
 func _report_mission_status(card_data: Dictionary, completed: bool) -> void:
-	GNG_RULES.report_mission_status(self, card_data, completed)
+	deck_rules.report_mission_status(self, card_data, completed)
 
 func _resize_adventure_prompt() -> void:
 	ADVENTURE_PROMPT.resize(self)
@@ -2043,7 +2088,7 @@ func _spawn_coord_label() -> void:
 	var ui := CanvasLayer.new()
 	ui.layer = 20
 	add_child(ui)
-	GNG_RULES.create_regno_reward_label(self, ui)
+	deck_rules.create_regno_reward_label(self, ui)
 	_create_outcome_banner(ui)
 	_create_adventure_value_box(ui)
 	_create_music_toggle(ui)
@@ -2519,7 +2564,7 @@ func _add_treasure_card_data_to_market(card_data: Dictionary, from_sell: bool = 
 		if not image_path.is_empty():
 			card.call_deferred("set_card_texture", image_path)
 	if card.has_method("set_back_texture"):
-		card.call_deferred("set_back_texture", "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png")
+		card.call_deferred("set_back_texture", TREASURE_BACK)
 	if card.has_method("set_face_up"):
 		card.call_deferred("set_face_up", true)
 	var discard_pos := treasure_reveal_pos + Vector3(0.0, float(revealed_treasure_count) * TREASURE_REVEALED_Y_STEP, 0.0)
@@ -2682,25 +2727,25 @@ func _show_drop_half_prompt(count: int, mode: String = "drop_half") -> void:
 			hand_ui.call("set_info", _ui_text("Scegli %d dado/i da eliminare e premi Ok." % count))
 
 func _get_pending_drop_half_count() -> int:
-	return GNG_RULES.get_pending_drop_half_count(self)
+	return deck_rules.get_pending_drop_half_count(self)
 
 func _set_pending_drop_half_count(value: int) -> void:
-	GNG_RULES.set_pending_drop_half_count(self, value)
+	deck_rules.set_pending_drop_half_count(self, value)
 
 func _deck_prepare_roll() -> void:
 	if pending_adventure_sacrifice_roll_lock:
 		pending_adventure_sacrifice_roll_lock = false
 		pending_adventure_sacrifice_roll_lock_card = null
-	GNG_RULES.prepare_roll_for_clone(self)
+	deck_rules.prepare_roll_for_clone(self)
 
 func _deck_apply_roll_overrides(values: Array[int]) -> void:
-	GNG_RULES.apply_next_roll_overrides(self, values)
+	deck_rules.apply_next_roll_overrides(self, values)
 
 func _deck_after_roll_setup() -> void:
-	GNG_RULES.start_drop_half_if_pending(self, last_roll_values.size())
+	deck_rules.start_drop_half_if_pending(self, last_roll_values.size())
 	if _get_pending_drop_half_count() <= 0:
 		_start_pending_adventure_sacrifice_die_removal_choice()
-	GNG_RULES.finalize_roll_for_clone(self)
+	deck_rules.finalize_roll_for_clone(self)
 
 func _start_pending_adventure_sacrifice_die_removal_choice() -> void:
 	if not pending_adventure_sacrifice_sequence_active:
@@ -3069,6 +3114,8 @@ func _spawn_hand_ui() -> void:
 		hand_root.call("set_gold", player_gold)
 	if hand_root.has_method("set_tokens"):
 		hand_root.call("set_tokens", player_tombstones)
+	if hand_root.has_method("set_experience"):
+		hand_root.call("set_experience", player_experience)
 	_update_hand_ui_stats()
 
 
@@ -3121,7 +3168,7 @@ func _track_dice_sum() -> void:
 
 func _consume_next_roll_effects(values: Array[int]) -> void:
 	EFFECTS_REGISTRY.consume_next_roll_effects(self, values)
-	GNG_RULES.consume_next_roll_effects(self, values)
+	deck_rules.consume_next_roll_effects(self, values)
 
 func _wait_for_dice_settle(dice_list: Array[RigidBody3D]) -> void:
 	await DICE_FLOW.wait_for_dice_settle(self, dice_list)
@@ -3883,6 +3930,12 @@ func _spawn_battlefield_rewards(rewards: Array, coin_pile_center: Vector3) -> vo
 				_spawn_reward_tokens_with_code(1, TOKEN_TECA, code, token_center)
 			"reward_token_tombstone":
 				_spawn_reward_tokens_with_code(1, TOKEN_TOMBSTONE, code, token_center)
+			"reward_xp_1", "reward_token_experience_1":
+				_spawn_reward_tokens_with_code(1, TOKEN_XP_1, "reward_xp_1", token_center)
+			"reward_xp_5", "reward_token_experience_5":
+				_spawn_reward_tokens_with_code(1, TOKEN_XP_5, "reward_xp_5", token_center)
+			"reward_token_experience":
+				_spawn_reward_tokens_with_code(1, TOKEN_XP_1, "reward_xp_1", token_center)
 
 func _get_next_coin_pile_center() -> Vector3:
 	return _get_reward_drop_center()
@@ -3910,7 +3963,7 @@ func _spawn_placeholders() -> void:
 	SPAWN_CORE.spawn_placeholders(self)
 
 func _spawn_treasure_cards() -> void:
-	GNG_SPAWN.spawn_treasure_cards(self)
+	deck_spawn.spawn_treasure_cards(self)
 
 func _spawn_tokens() -> void:
 	pass
@@ -4001,6 +4054,8 @@ func _get_character_entry(character_id: String) -> Dictionary:
 	return {}
 
 func _update_character_form_for_hearts() -> void:
+	if not character_auto_form_by_hearts:
+		return
 	if not curse_stats_override.is_empty():
 		return
 	var target_id: String = "character_sir_arthur_a"
@@ -4012,15 +4067,48 @@ func _update_character_form_for_hearts() -> void:
 	_apply_character_texture_override()
 	_init_character_stats(true)
 
+func _try_transform_character(card: Node3D) -> bool:
+	if card == null or not is_instance_valid(card):
+		return false
+	if not character_transform_enabled:
+		return false
+	if card != character_card:
+		return false
+	if phase_index != 0:
+		return false
+	var current_entry: Dictionary = _get_character_entry(active_character_id)
+	if current_entry.is_empty():
+		return false
+	var target_id: String = str(current_entry.get("transform_to", "")).strip_edges()
+	if target_id.is_empty():
+		return false
+	var cost: int = int(current_entry.get("transform_cost", 0))
+	if cost < 0:
+		cost = 0
+	if player_gold < cost:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Servono %d oro per trasformare il personaggio." % cost))
+		return true
+	player_gold -= cost
+	active_character_id = target_id
+	_apply_character_texture_override()
+	_init_character_stats(true)
+	_update_hand_ui_stats()
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		var target_name: String = str(_get_character_entry(active_character_id).get("name", active_character_id))
+		hand_ui.call("set_info", _ui_text("Trasformazione riuscita: %s (-%d oro)." % [target_name, cost]))
+	return true
+
 func _spawn_adventure_cards() -> void:
-	GNG_SPAWN.spawn_adventure_cards(self)
+	deck_spawn.spawn_adventure_cards(self)
 
 func _spawn_boss_cards() -> void:
-	GNG_SPAWN.spawn_boss_cards(self)
+	deck_spawn.spawn_boss_cards(self)
 
 func _find_boss_image(card: Dictionary) -> String:
 	var card_name := _normalize_name(str(card.get("name", "")))
-	var dir := DirAccess.open("res://assets/cards/ghost_n_goblins/boss")
+	var boss_dir: String = str(active_asset_dirs.get("boss", "res://assets/cards/ghost_n_goblins/boss"))
+	var dir := DirAccess.open(boss_dir)
 	if dir == null:
 		return ""
 	dir.list_dir_begin()
@@ -4030,13 +4118,13 @@ func _find_boss_image(card: Dictionary) -> String:
 			var base := _normalize_name(file_name.get_basename())
 			if base == card_name:
 				dir.list_dir_end()
-				return "%s/%s" % ["res://assets/cards/ghost_n_goblins/boss", file_name]
+				return "%s/%s" % [boss_dir, file_name]
 		file_name = dir.get_next()
 	dir.list_dir_end()
 	return ""
 
 func _spawn_character_card() -> void:
-	GNG_SPAWN.spawn_character_card(self)
+	deck_spawn.spawn_character_card(self)
 
 func _init_character_stats(preserve_current: bool = false) -> void:
 	var stats: Dictionary = _get_character_stats()
@@ -4389,6 +4477,12 @@ func _update_hand_ui_stats() -> void:
 		hand_ui.call("set_hearts", player_current_hearts, player_max_hearts)
 	if hand_ui.has_method("set_cards"):
 		hand_ui.call("set_cards", player_hand.size(), player_max_hand)
+	if hand_ui.has_method("set_gold"):
+		hand_ui.call("set_gold", player_gold)
+	if hand_ui.has_method("set_tokens"):
+		hand_ui.call("set_tokens", player_tombstones)
+	if hand_ui.has_method("set_experience"):
+		hand_ui.call("set_experience", player_experience)
 
 func _return_equipped_to_hand(card: Node3D) -> void:
 	if phase_index != 0:
@@ -4461,19 +4555,19 @@ func _remove_hand_card(original: Dictionary, resolved: Dictionary) -> void:
 	HAND_FLOW_CORE.remove_hand_card(self, original, resolved)
 
 func _spawn_regno_del_male() -> void:
-	GNG_RULES.spawn_regno_del_male(self)
+	deck_rules.spawn_regno_del_male(self)
 
 func _setup_regno_overlay() -> void:
-	GNG_RULES.setup_regno_overlay(self)
+	deck_rules.setup_regno_overlay(self)
 
 func _build_regno_boxes() -> void:
-	GNG_RULES.build_regno_boxes(self)
+	deck_rules.build_regno_boxes(self)
 
 func _update_regno_overlay() -> void:
-	GNG_RULES.update_regno_overlay(self)
+	deck_rules.update_regno_overlay(self)
 
 func _update_regno_reward_label() -> void:
-	GNG_RULES.update_regno_reward_label(self)
+	deck_rules.update_regno_reward_label(self)
 
 func _get_card_screen_rect(card: Node3D) -> Rect2:
 	var mesh := card.get_node_or_null("Pivot/Mesh") as MeshInstance3D
@@ -4506,13 +4600,13 @@ func _get_card_screen_rect(card: Node3D) -> Rect2:
 	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
 
 func _get_regno_track_nodes() -> Array:
-	return GNG_RULES.get_regno_track_nodes(self)
+	return deck_rules.get_regno_track_nodes(self)
 
 func _get_regno_track_rewards() -> Array:
-	return GNG_RULES.get_regno_track_rewards(self)
+	return deck_rules.get_regno_track_rewards(self)
 
 func _format_regno_reward(code: String) -> String:
-	return GNG_RULES.format_regno_reward(code)
+	return deck_rules.format_regno_reward(code)
 
 func _load_texture(path: String) -> Texture2D:
 	var tex := load(path)
@@ -4536,11 +4630,12 @@ func _get_boss_stack_card_at(mouse_pos: Vector2) -> Node3D:
 	return null
 
 func _spawn_astaroth() -> void:
-	GNG_RULES.spawn_astaroth(self)
+	deck_rules.spawn_astaroth(self)
 
 func _build_adventure_image_index() -> void:
 	adventure_image_index.clear()
-	var dir := DirAccess.open("res://assets/cards/ghost_n_goblins/adventure")
+	var adventure_dir: String = str(active_asset_dirs.get("adventure", "res://assets/cards/ghost_n_goblins/adventure"))
+	var dir := DirAccess.open(adventure_dir)
 	if dir == null:
 		return
 	dir.list_dir_begin()
@@ -4554,7 +4649,7 @@ func _build_adventure_image_index() -> void:
 			var key := _strip_variant_suffix(base)
 			if not adventure_image_index.has(key):
 				adventure_image_index[key] = []
-			adventure_image_index[key].append("%s/%s" % ["res://assets/cards/ghost_n_goblins/adventure", file_name])
+			adventure_image_index[key].append("%s/%s" % [adventure_dir, file_name])
 		file_name = dir.get_next()
 	dir.list_dir_end()
 

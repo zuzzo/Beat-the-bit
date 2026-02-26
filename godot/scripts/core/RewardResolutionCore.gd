@@ -48,7 +48,16 @@ static func resolve_reward_tokens_for_recovery(main: Node) -> void:
 			"reward_token_tombstone":
 				collect_tombstone_token(main, token, hud_target)
 			_:
-				token.queue_free()
+				if code.begins_with("reward_xp_"):
+					var xp: int = int(code.get_slice("_", 2))
+					collect_experience_token(main, token, hud_target, xp)
+				elif code.begins_with("reward_token_experience_"):
+					var exp_value: int = int(code.get_slice("_", 3))
+					collect_experience_token(main, token, hud_target, exp_value)
+				elif code == "reward_token_experience":
+					collect_experience_token(main, token, hud_target, 1)
+				else:
+					token.queue_free()
 
 static func consume_token_and_draw_treasure(main: Node, token: RigidBody3D, group_key: String) -> void:
 	if token != null and is_instance_valid(token):
@@ -136,6 +145,23 @@ static func collect_tombstone_token(main: Node, token: RigidBody3D, target: Vect
 		main.player_tombstones += 1
 		if main.hand_ui != null and main.hand_ui.has_method("set_tokens"):
 			main.hand_ui.call("set_tokens", main.player_tombstones)
+	)
+
+static func collect_experience_token(main: Node, token: RigidBody3D, target: Vector3, amount: int) -> void:
+	if token == null or not is_instance_valid(token):
+		return
+	var xp: int = max(0, amount)
+	token.freeze = true
+	token.sleeping = true
+	var tween := main.create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(token, "global_position", target + Vector3(randf_range(-0.06, 0.06), 0.0, randf_range(-0.06, 0.06)), 0.35)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(token):
+			token.queue_free()
+		main.player_experience += xp
+		if main.hand_ui != null and main.hand_ui.has_method("set_experience"):
+			main.hand_ui.call("set_experience", main.player_experience)
 	)
 
 static func get_player_collect_target(main: Node) -> Vector3:

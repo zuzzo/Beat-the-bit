@@ -17,6 +17,7 @@ config/features=PackedStringArray("4.5")
 [autoload]
 
 GameConfig="*res://scripts/GameConfig.gd"
+DeckRegistry="*res://scripts/DeckRegistry.gd"
 DeckUtils="*res://scripts/DeckUtils.gd"
 AbilityRegistry="*res://scripts/AbilityRegistry.gd"
 CardDatabase="*res://scripts/CardDatabase.gd"

@@ -1,7 +1,5 @@
 extends Node
 
-const CARDS_PATH := "res://data/cards.json"
-
 var cards: Array = []
 var deck_adventure: Array = []
 var deck_treasures: Array = []
@@ -11,9 +9,9 @@ var cards_characters: Array = []
 var cards_shared: Array = []
 
 func _ready() -> void:
-	load_cards()
+	load_cards(GameConfig.selected_deck_id)
 
-func load_cards() -> void:
+func load_cards(deck_id: String = "") -> void:
 	cards.clear()
 	deck_adventure.clear()
 	deck_treasures.clear()
@@ -21,24 +19,32 @@ func load_cards() -> void:
 	deck_boss_finale.clear()
 	cards_characters.clear()
 	cards_shared.clear()
+	var selected_id: String = deck_id.strip_edges()
+	if selected_id.is_empty():
+		selected_id = GameConfig.selected_deck_id
+	var set_id: String = DeckRegistry.get_card_set(selected_id)
+	var cards_path: String = DeckRegistry.get_cards_path(selected_id)
 
-	var file := FileAccess.open(CARDS_PATH, FileAccess.READ)
+	var file := FileAccess.open(cards_path, FileAccess.READ)
 	if file == null:
-		push_warning("cards.json non trovato")
+		push_warning("cards.json non trovato: %s" % cards_path)
 		return
 	var raw := file.get_as_text()
 	var parsed: Variant = JSON.parse_string(raw)
 	if parsed == null:
-		push_warning("cards.json non valido")
+		push_warning("cards.json non valido: %s" % cards_path)
 		return
 
 	for entry in parsed:
 		if not (entry is Dictionary):
 			continue
+		var card_set: String = str((entry as Dictionary).get("set", ""))
+		if card_set != set_id:
+			continue
 		cards.append(entry)
 		var ctype := str(entry.get("type", ""))
 		match ctype:
-			"scontro", "concatenamento", "maledizione":
+			"scontro", "concatenamento", "maledizione", "missione":
 				deck_adventure.append(entry)
 			"evento":
 				# Shared board events (e.g. Regno del male) are not adventure-deck cards.
@@ -46,7 +52,7 @@ func load_cards() -> void:
 					cards_shared.append(entry)
 				else:
 					deck_adventure.append(entry)
-			"equipaggiamento", "istantaneo", "missione":
+			"equipaggiamento", "istantaneo":
 				deck_treasures.append(entry)
 			"boss":
 				deck_boss.append(entry)

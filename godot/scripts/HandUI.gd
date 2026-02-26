@@ -14,6 +14,7 @@ var _hearts_label: Label
 var _cards_label: Label
 var _gold_label: Label
 var _tokens_label: Label
+var _experience_label: Label
 var _token_icons_row: HBoxContainer
 var _next_phase_button: Button
 var _phase_index := 0
@@ -24,6 +25,7 @@ var _current_cards := 0
 var _max_cards := 0
 var _gold := 0
 var _tokens := 0
+var _experience := 0
 const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
 const TOMBSTONE_ICON := preload("res://assets/Token/tombstone.png")
 const PLAYER_PANEL_FONT_SIZE := 32
@@ -39,6 +41,7 @@ var _right_preview_panel: Control
 var _right_preview_texture: Texture2D
 var _right_preview_size: Vector2
 var _discard_mode: bool = false
+var _consume_right_click: bool = false
 
 signal request_place_equipment(card: Dictionary, screen_pos: Vector2)
 signal phase_changed(phase_index: int, turn_index: int)
@@ -212,6 +215,10 @@ func set_gold(value: int) -> void:
 	_gold = max(value, 0)
 	_refresh_player_info()
 
+func set_experience(value: int) -> void:
+	_experience = max(value, 0)
+	_refresh_player_info()
+
 func set_discard_mode(active: bool) -> void:
 	_discard_mode = active
 	if _hand_bar == null:
@@ -248,6 +255,8 @@ func _refresh_player_info() -> void:
 		_cards_label.text = _ui_text("  Carte: %d/%d" % [_current_cards, _max_cards])
 	if _gold_label != null:
 		_gold_label.text = _ui_text("  Oro: %d" % _gold)
+	if _experience_label != null:
+		_experience_label.text = _ui_text("  Esperienza: %d" % _experience)
 
 func set_info(text: String) -> void:
 	if _info_label != null:
@@ -285,6 +294,7 @@ func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2
 				request_use_magic.emit(card)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
+				_consume_right_click = true
 				if _phase_index == 0:
 					request_sell_card.emit(card)
 				else:
@@ -296,6 +306,12 @@ func _handle_panel_input(event: InputEvent, card: Dictionary, full_size: Vector2
 					_right_preview_texture = null
 					_right_preview_size = Vector2.ZERO
 					_hide_hover_preview()
+
+func consume_right_click_capture() -> bool:
+	if not _consume_right_click:
+		return false
+	_consume_right_click = false
+	return true
 
 func _start_drag(card: Dictionary, full_size: Vector2, tex_rect: TextureRect) -> void:
 	_dragging_card = card
@@ -370,23 +386,27 @@ func _create_hand_bar() -> void:
 	_cards_label = Label.new()
 	_gold_label = Label.new()
 	_tokens_label = Label.new()
+	_experience_label = Label.new()
 	_phase_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hearts_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cards_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_gold_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tokens_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_experience_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_hearts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_cards_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_tokens_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_experience_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	left_content.add_child(_phase_label)
 	left_content.add_child(_turn_label)
 	left_content.add_child(_hearts_label)
 	left_content.add_child(_cards_label)
 	left_content.add_child(_gold_label)
+	left_content.add_child(_experience_label)
 	left_content.add_child(_tokens_label)
 	_token_icons_row = HBoxContainer.new()
 	_token_icons_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -398,6 +418,7 @@ func _create_hand_bar() -> void:
 	_apply_player_panel_font(_hearts_label)
 	_apply_player_panel_font(_cards_label)
 	_apply_player_panel_font(_gold_label)
+	_apply_player_panel_font(_experience_label)
 	_apply_player_panel_font(_tokens_label)
 
 	left_content.add_spacer(true)
@@ -474,6 +495,7 @@ func _create_hand_bar() -> void:
 	_right_panel.add_child(_info_label)
 	add_child(_right_panel)
 	set_tokens(_tokens)
+	set_experience(_experience)
 
 func _create_hover_overlay() -> void:
 	_hover_overlay = Control.new()

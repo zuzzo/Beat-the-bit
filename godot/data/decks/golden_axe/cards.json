@@ -1,0 +1,849 @@
+﻿[
+    {
+        "difficulty":  8,
+        "id":  "ga_enemy_amazzone",
+        "name":  "Amazzone",
+        "image":  "res://assets/cards/Golden Axe/Adventure/amazzone.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  10,
+        "id":  "ga_enemy_amazzone_a_cavallo",
+        "name":  "Amazzone a cavallo",
+        "image":  "res://assets/cards/Golden Axe/Adventure/amazzone a cavallo.png",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_4"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  11,
+        "id":  "ga_enemy_assassino",
+        "name":  "Assassino",
+        "image":  "res://assets/cards/Golden Axe/Adventure/assassino.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_4"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "flip_equipment",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  7,
+        "id":  "ga_enemy_bandito",
+        "name":  "Bandito",
+        "image":  "res://assets/cards/Golden Axe/Adventure/bandito.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  9,
+        "id":  "ga_enemy_bandito_a_cavallo",
+        "name":  "Bandito a cavallo",
+        "image":  "res://assets/cards/Golden Axe/Adventure/bandito a cavallo.png",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_4"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  6,
+        "id":  "ga_enemy_ladruncolo",
+        "name":  "Ladruncolo",
+        "image":  "res://assets/cards/Golden Axe/Adventure/ladruncolo.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_2"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  6,
+        "id":  "ga_enemy_ladruncolo_2",
+        "name":  "Ladruncolo",
+        "image":  "res://assets/cards/Golden Axe/Adventure/ladruncolo_2.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_2"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  12,
+        "id":  "ga_enemy_necromante",
+        "name":  "Necromante",
+        "image":  "res://assets/cards/Golden Axe/Adventure/Necromante.png",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_group_teca"
+                          ],
+        "sacrifice_cost":  "flip_equipment",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  8,
+        "id":  "ga_enemy_scheletro",
+        "name":  "Scheletro",
+        "image":  "res://assets/cards/Golden Axe/Adventure/scheletro.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  8,
+        "id":  "ga_enemy_sgerro",
+        "name":  "Sgerro",
+        "image":  "res://assets/cards/Golden Axe/Adventure/sgerro.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  9,
+        "id":  "ga_enemy_soldato_ferito",
+        "name":  "Soldato ferito",
+        "image":  "res://assets/cards/Golden Axe/Adventure/soldato ferito.png",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_4"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "lose_heart_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  11,
+        "id":  "ga_enemy_uomo_lucertola",
+        "name":  "Uomo lucertola",
+        "image":  "res://assets/cards/Golden Axe/Adventure/uomo lucertola.png",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_group_teca"
+                          ],
+        "sacrifice_cost":  "flip_equipment",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GoldenAxe",
+        "type":  "scontro"
+    },
+    {
+        "id":  "ga_mission_aiutare_i_bisognosi",
+        "name":  "Aiutare i bisognosi",
+        "image":  "res://assets/cards/Golden Axe/Adventure/aiutare i bisognosi.png",
+        "mission":  {
+                        "type":  "defeat_enemies",
+                        "count":  2
+                    },
+        "reward_brown":  [
+                             "reward_xp_1"
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "missione"
+    },
+    {
+        "id":  "ga_mission_furto_al_magazzino",
+        "name":  "Furto al magazzino",
+        "image":  "res://assets/cards/Golden Axe/Adventure/furto al magazzino.png",
+        "mission":  {
+                        "type":  "pay_coins",
+                        "cost":  5
+                    },
+        "reward_brown":  [
+                             "reward_group_chest"
+                         ],
+        "reward_silver":  [
+                              "reward_xp_1"
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "missione"
+    },
+    {
+        "id":  "ga_mission_rapimento_reale",
+        "name":  "Rapimento reale",
+        "image":  "res://assets/cards/Golden Axe/Adventure/rapimento reale.png",
+        "mission":  {
+                        "type":  "defeat_enemies_and_pay_coins",
+                        "count":  3,
+                        "cost":  4
+                    },
+        "reward_brown":  [
+                             "reward_xp_5"
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "missione"
+    },
+    {
+        "id":  "ga_mission_villaggio_attaccato",
+        "name":  "Villaggio attaccato",
+        "image":  "res://assets/cards/Golden Axe/Adventure/villaggio attaccato.png",
+        "mission":  {
+                        "type":  "defeat_enemies",
+                        "count":  4
+                    },
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_xp_1"
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "missione"
+    },
+    {
+        "difficulty":  9,
+        "hearts":  2,
+        "id":  "ga_boss_cavaliere_corrotto",
+        "image":  "res://assets/cards/Golden Axe/Boss/cavaliere corrotto.png",
+        "name":  "Cavaliere corrotto",
+        "penalty_violet":  [
+                               "fail_even_discard_or_odd_lose_heart"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+                              "reward_xp_1"
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  10,
+        "hearts":  2,
+        "id":  "ga_boss_cavaliere_senza_testa",
+        "image":  "res://assets/cards/Golden Axe/Boss/cavaliere senza testa.png",
+        "name":  "Cavaliere senza testa",
+        "penalty_violet":  [
+                               "fail_even_poison_or_odd_lose_heart"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+                              "reward_xp_1"
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  11,
+        "hearts":  3,
+        "id":  "ga_boss_minotauro",
+        "image":  "res://assets/cards/Golden Axe/Boss/minotauro.png",
+        "name":  "Minotauro",
+        "penalty_violet":  [
+                               "fail_even_lose_heart_or_odd_discard"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+                              "reward_xp_5"
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  12,
+        "hearts":  3,
+        "id":  "ga_boss_re_martello",
+        "image":  "res://assets/cards/Golden Axe/Boss/re martello.png",
+        "name":  "Re martello",
+        "penalty_violet":  [
+                               "fail_lose_heart_and_flip_equipment"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+                              "reward_xp_5"
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  5,
+        "hearts":  3,
+        "id":  "boss_finale_death_adder",
+        "image":  "res://assets/cards/Golden Axe/Singles/death adder.png",
+        "name":  "Death Adder",
+        "penalty_violet":  [
+                               "fail_3_hearts_lose_heart",
+                               "fail_2_hearts_lose_heart_and_flip_equipment",
+                               "fail_1_heart_lose_heart_end_turn"
+                           ],
+        "reward_brown":  [
+
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "boss_finale"
+    },
+    {
+        "id":  "character_sir_arthur_a",
+        "name":  "Tyris Flare",
+        "image":  "res://assets/cards/Golden Axe/Singles/Tyris Flare.png",
+        "effects":  [
+                        "flip_on_one_heart"
+                    ],
+        "start_items":  [
+                            "reward_group_vaso_di_coccio"
+                        ],
+        "start_shared":  [
+                             "regno_del_male_in_play"
+                         ],
+        "stats":  {
+                      "max_hand":  3,
+                      "max_hearts":  3,
+                      "max_slots":  2,
+                      "start_dice":  2,
+                      "start_hearts":  3
+                  },
+        "set":  "GoldenAxe",
+        "type":  "personaggio"
+    },
+    {
+        "id":  "character_sir_arthur_b",
+        "name":  "Gilius Thunderhead",
+        "image":  "res://assets/cards/Golden Axe/Singles/Gilius Thunderhead.png",
+        "effects":  [
+                        "remove_dice_showing_6",
+                        "flip_if_more_than_one_heart"
+                    ],
+        "stats":  {
+                      "max_hand":  2,
+                      "max_hearts":  3,
+                      "max_slots":  2,
+                      "start_dice":  2,
+                      "start_hearts":  1
+                  },
+        "set":  "GoldenAxe",
+        "type":  "personaggio",
+        "transform_to":  "character_sir_arthur_a",
+        "transform_cost":  5
+    },
+    {
+        "id":  "shared_regno_del_male",
+        "name":  "Mappa",
+        "effects":  [
+                        "regno_del_male_track"
+                    ],
+        "track_nodes":  [
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.128,
+                                "y":  0.2619
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.407,
+                                "y":  0.2619
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.6794,
+                                "y":  0.2667
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.6794,
+                                "y":  0.431
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.6794,
+                                "y":  0.5881
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.4037,
+                                "y":  0.7548
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.128,
+                                "y":  0.7571
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.1213,
+                                "y":  0.5881
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.128,
+                                "y":  0.4238
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.407,
+                                "y":  0.4286
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.407,
+                                "y":  0.5905
+                            }
+                        ],
+        "track_rewards":  [
+                              "start",
+                              "reward_group_vaso_di_coccio",
+                              "boss",
+                              "gain_heart",
+                              "boss",
+                              "reward_group_chest",
+                              "boss",
+                              "gain_heart",
+                              "boss",
+                              "reward_group_teca",
+                              "boss_finale"
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "evento",
+        "image":  "res://assets/cards/Golden Axe/Singles/mappa.png"
+    },
+    {
+        "cost":  4,
+        "effects":  [
+                        "deal_1_damage"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "ga_treasure_ax_battler",
+        "image":  "res://assets/cards/Golden Axe/Treasure/ax battler.png",
+        "name":  "Ax battler",
+        "timed_effects":  [
+                              {
+                                  "effect":  "bonus_damage_multiheart",
+                                  "when":  "after_damage"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  5,
+        "effects":  [
+                        "reflect_damage_poison"
+                    ],
+        "group":  "chest",
+        "id":  "ga_treasure_cocatrice",
+        "image":  "res://assets/cards/Golden Axe/Treasure/cocatrice.png",
+        "name":  "Cocatrice",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reflect_damage_poison",
+                                  "when":  "on_heart_loss"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  5,
+        "effects":  [
+                        "discard_revealed_adventure"
+                    ],
+        "group":  "chest",
+        "id":  "ga_treasure_draghetto",
+        "image":  "res://assets/cards/Golden Axe/Treasure/draghetto.png",
+        "name":  "Draghetto",
+        "timed_effects":  [
+                              {
+                                  "effect":  "discard_revealed_adventure",
+                                  "when":  "before_adventure"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  4,
+        "effects":  [
+                        "armor_extra_slot_1"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "ga_treasure_sacco",
+        "image":  "res://assets/cards/Golden Axe/Treasure/sacco.png",
+        "name":  "Sacco",
+        "timed_effects":  [
+                              {
+                                  "effect":  "armor_extra_slot_1",
+                                  "when":  "equip"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  3,
+        "effects":  [
+                        "deal_1_damage"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "ga_treasure_calcio",
+        "image":  "res://assets/cards/Golden Axe/Treasure/calcio.png",
+        "name":  "Calcio",
+        "timed_effects":  [
+                              {
+                                  "effect":  "deal_1_damage",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  4,
+        "effects":  [
+                        "reroll_same_dice"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "ga_treasure_capriola",
+        "image":  "res://assets/cards/Golden Axe/Treasure/capriola.png",
+        "name":  "Capriola",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reroll_same_dice",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  6,
+        "effects":  [
+                        "after_roll_minus_1_all_dice"
+                    ],
+        "group":  "chest",
+        "id":  "ga_treasure_esplosione",
+        "image":  "res://assets/cards/Golden Axe/Treasure/esplosione.png",
+        "name":  "Esplosione",
+        "timed_effects":  [
+                              {
+                                  "effect":  "after_roll_minus_1_all_dice",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  4,
+        "effects":  [
+                        "deal_1_damage"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "ga_treasure_fendente",
+        "image":  "res://assets/cards/Golden Axe/Treasure/fendente.png",
+        "name":  "Fendente",
+        "timed_effects":  [
+                              {
+                                  "effect":  "deal_1_damage",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  6,
+        "effects":  [
+                        "after_roll_set_one_die_to_1"
+                    ],
+        "group":  "chest",
+        "id":  "ga_treasure_lanciare_il_nemico",
+        "image":  "res://assets/cards/Golden Axe/Treasure/lanciare il nemico.png",
+        "name":  "Lanciare il nemico",
+        "timed_effects":  [
+                              {
+                                  "effect":  "after_roll_set_one_die_to_1",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  7,
+        "effects":  [
+                        "return_to_hand"
+                    ],
+        "group":  "chest",
+        "id":  "ga_treasure_level_up_carte",
+        "image":  "res://assets/cards/Golden Axe/Treasure/level up carte.png",
+        "name":  "Level up carte",
+        "timed_effects":  [
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  7,
+        "effects":  [
+                        "add_red_die"
+                    ],
+        "group":  "teca",
+        "id":  "ga_treasure_level_up_dadi",
+        "image":  "res://assets/cards/Golden Axe/Treasure/Level up dadi.png",
+        "name":  "Level up dadi",
+        "timed_effects":  [
+                              {
+                                  "effect":  "add_red_die",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  8,
+        "effects":  [
+                        "reset_hearts_and_dice"
+                    ],
+        "group":  "teca",
+        "id":  "ga_treasure_level_up_vita",
+        "image":  "res://assets/cards/Golden Axe/Treasure/level up vita.png",
+        "name":  "Level up vita",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reset_hearts_and_dice",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  5,
+        "effects":  [
+                        "next_roll_minus_2_all_dice"
+                    ],
+        "group":  "chest",
+        "id":  "ga_treasure_nuvola_di_fumo",
+        "image":  "res://assets/cards/Golden Axe/Treasure/nuvola di fumo.png",
+        "name":  "Nuvola di fumo",
+        "timed_effects":  [
+                              {
+                                  "effect":  "next_roll_minus_2_all_dice",
+                                  "when":  "next_roll"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  8,
+        "effects":  [
+                        "add_red_die"
+                    ],
+        "group":  "teca",
+        "id":  "ga_treasure_pioggia_di_fulmini",
+        "image":  "res://assets/cards/Golden Axe/Treasure/pioggia di fulmini.png",
+        "name":  "Pioggia di fulmini",
+        "timed_effects":  [
+                              {
+                                  "effect":  "add_red_die",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  8,
+        "effects":  [
+                        "next_roll_double_then_remove_half"
+                    ],
+        "group":  "teca",
+        "id":  "ga_treasure_scelta_mortale",
+        "image":  "res://assets/cards/Golden Axe/Treasure/scelta mortale.png",
+        "name":  "Scelta mortale",
+        "timed_effects":  [
+                              {
+                                  "effect":  "next_roll_double_then_remove_half",
+                                  "when":  "next_roll"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  5,
+        "effects":  [
+                        "reroll_5_or_6"
+                    ],
+        "group":  "chest",
+        "id":  "ga_treasure_sferzata",
+        "image":  "res://assets/cards/Golden Axe/Treasure/sferzata.png",
+        "name":  "Sferzata",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reroll_5_or_6",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  8,
+        "effects":  [
+                        "add_green_die"
+                    ],
+        "group":  "teca",
+        "id":  "ga_treasure_soffio_del_drago",
+        "image":  "res://assets/cards/Golden Axe/Treasure/soffio del drago.png",
+        "name":  "Soffio del drago",
+        "timed_effects":  [
+                              {
+                                  "effect":  "add_green_die",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  4,
+        "effects":  [
+                        "deal_1_damage"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "ga_treasure_spallata",
+        "image":  "res://assets/cards/Golden Axe/Treasure/spallata.png",
+        "name":  "Spallata",
+        "timed_effects":  [
+                              {
+                                  "effect":  "deal_1_damage",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "istantaneo"
+    }
+]

@@ -1,10 +1,9 @@
 extends Control
 
-const CARDS_PATH := "res://data/cards.json"
-const ADVENTURE_DIR := "res://assets/cards/ghost_n_goblins/adventure"
-const BOSS_DIR := "res://assets/cards/ghost_n_goblins/boss"
-const TREASURE_DIR := "res://assets/cards/ghost_n_goblins/treasure"
-const SINGLE_DIR := "res://assets/cards/ghost_n_goblins/singles"
+var ADVENTURE_DIR := "res://assets/cards/ghost_n_goblins/adventure"
+var BOSS_DIR := "res://assets/cards/ghost_n_goblins/boss"
+var TREASURE_DIR := "res://assets/cards/ghost_n_goblins/treasure"
+var SINGLE_DIR := "res://assets/cards/ghost_n_goblins/singles"
 
 @onready var deck_option: OptionButton = $RootVBox/TopBar/DeckOption
 @onready var filter_option: OptionButton = $RootVBox/EditorSplit/LeftPanel/FilterOption
@@ -71,19 +70,20 @@ const TIMING_DESCRIPTIONS := {
 }
 
 func _ready() -> void:
-	deck_option.add_item("Ghosts 'n Goblins", 0)
-	deck_option.selected = 0
+	_populate_deck_option()
 	filter_option.add_item("Tesori", 0)
 	filter_option.add_item("Avventure", 1)
 	filter_option.add_item("Boss", 2)
 	filter_option.add_item("Carte singole", 3)
 	filter_option.selected = 0
 	GameConfig.load_overrides()
+	_apply_selected_deck_dirs()
 	_load_cards()
 	_build_adventure_index()
 	_refresh_list()
 	card_list.item_selected.connect(_on_card_selected)
 	filter_option.item_selected.connect(_on_filter_changed)
+	deck_option.item_selected.connect(_on_deck_changed)
 	regno_edit_toggle.pressed.connect(_on_regno_edit_toggled)
 	regno_save_button.pressed.connect(_on_regno_save_pressed)
 	regno_overlay.visible = false
@@ -92,23 +92,63 @@ func _ready() -> void:
 	preview_container.resized.connect(_on_preview_resized)
 
 func _on_start_pressed() -> void:
-	var deck_id := "GnG"
-	if deck_option.selected != 0:
-		deck_id = "GnG"
+	var deck_id: String = _selected_deck_id()
 	GameConfig.selected_deck_id = deck_id
+	CardDatabase.load_cards(deck_id)
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+
+func _populate_deck_option() -> void:
+	deck_option.clear()
+	var ids: Array[String] = DeckRegistry.list_deck_ids()
+	var selected_index: int = 0
+	for i in ids.size():
+		var id: String = ids[i]
+		deck_option.add_item(DeckRegistry.get_deck_label(id), i)
+		deck_option.set_item_metadata(i, id)
+		if id == GameConfig.selected_deck_id:
+			selected_index = i
+	deck_option.selected = selected_index
+
+func _selected_deck_id() -> String:
+	if deck_option.selected < 0:
+		return DeckRegistry.DEFAULT_DECK_ID
+	var meta: Variant = deck_option.get_item_metadata(deck_option.selected)
+	var deck_id: String = str(meta)
+	if deck_id.strip_edges().is_empty():
+		return DeckRegistry.DEFAULT_DECK_ID
+	return deck_id
+
+func _apply_selected_deck_dirs() -> void:
+	var deck: Dictionary = DeckRegistry.get_deck(_selected_deck_id())
+	var dirs: Dictionary = deck.get("asset_dirs", {}) as Dictionary
+	ADVENTURE_DIR = str(dirs.get("adventure", ADVENTURE_DIR))
+	BOSS_DIR = str(dirs.get("boss", BOSS_DIR))
+	TREASURE_DIR = str(dirs.get("treasure", TREASURE_DIR))
+	SINGLE_DIR = str(dirs.get("single", SINGLE_DIR))
+
+func _on_deck_changed(_index: int) -> void:
+	_apply_selected_deck_dirs()
+	_load_cards()
+	_build_adventure_index()
+	_refresh_list()
 
 func _load_cards() -> void:
 	_cards.clear()
-	var file := FileAccess.open(CARDS_PATH, FileAccess.READ)
+	var cards_path: String = DeckRegistry.get_cards_path(_selected_deck_id())
+	var set_id: String = DeckRegistry.get_card_set(_selected_deck_id())
+	var file := FileAccess.open(cards_path, FileAccess.READ)
 	if file == null:
 		return
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if parsed == null:
 		return
 	for entry in parsed:
-		if entry is Dictionary:
-			_cards.append(entry)
+		if not (entry is Dictionary):
+			continue
+		var entry_set: String = str((entry as Dictionary).get("set", ""))
+		if not entry_set.is_empty() and entry_set != set_id:
+			continue
+		_cards.append(entry)
 
 func _build_adventure_index() -> void:
 	_adventure_index.clear()
@@ -447,7 +487,8 @@ func _collect_regno_nodes_normalized() -> Array:
 	return out
 
 func _save_cards() -> void:
-	var file := FileAccess.open(CARDS_PATH, FileAccess.WRITE)
+	var cards_path: String = DeckRegistry.get_cards_path(_selected_deck_id())
+	var file := FileAccess.open(cards_path, FileAccess.WRITE)
 	if file == null:
 		return
 	var json := JSON.stringify(_cards, "\t")
@@ -462,9 +503,9 @@ func _category_for(card: Dictionary) -> String:
 	var ctype := str(card.get("type", ""))
 	if str(card.get("id", "")) == REGNO_ID:
 		return "single"
-	if ctype in ["scontro", "concatenamento", "maledizione", "evento"]:
+	if ctype in ["scontro", "concatenamento", "maledizione", "evento", "missione"]:
 		return "adventure"
-	if ctype in ["equipaggiamento", "istantaneo", "missione"]:
+	if ctype in ["equipaggiamento", "istantaneo"]:
 		return "treasure"
 	if ctype in ["boss", "boss_finale"]:
 		return "boss"

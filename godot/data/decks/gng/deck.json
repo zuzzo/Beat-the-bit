@@ -1,0 +1,21 @@
+{
+  "spawn_script": "res://scripts/decks/ghost_n_goblins/Spawn.gd",
+  "rules_script": "res://scripts/decks/ghost_n_goblins/DeckRules.gd",
+  "asset_dirs": {
+    "adventure": "res://assets/cards/ghost_n_goblins/adventure",
+    "boss": "res://assets/cards/ghost_n_goblins/boss",
+    "treasure": "res://assets/cards/ghost_n_goblins/treasure",
+    "single": "res://assets/cards/ghost_n_goblins/singles"
+  },
+  "assets": {
+    "adventure_back": "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png",
+    "boss_back": "res://assets/cards/ghost_n_goblins/boss/back_Boss.png",
+    "character_front": "res://assets/cards/ghost_n_goblins/singles/sir Arthur A.png",
+    "character_front_b": "res://assets/cards/ghost_n_goblins/singles/Sir Arthur B.png",
+    "character_back": "res://assets/cards/ghost_n_goblins/singles/back_personaggio.png",
+    "regno_front": "res://assets/cards/ghost_n_goblins/singles/Regno del male.png",
+    "regno_back": "res://assets/cards/ghost_n_goblins/singles/back_regno del male.png",
+    "final_boss_front": "res://assets/cards/ghost_n_goblins/singles/astaroth.png",
+    "treasure_back": "res://assets/cards/ghost_n_goblins/treasure/back_treasure.png"
+  }
+}

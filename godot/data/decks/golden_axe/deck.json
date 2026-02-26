@@ -1,0 +1,24 @@
+{
+  "spawn_script": "res://scripts/decks/golden_axe/Spawn.gd",
+  "rules_script": "res://scripts/decks/golden_axe/DeckRules.gd",
+  "character_start_id": "character_sir_arthur_b",
+  "character_auto_form_by_hearts": false,
+  "character_transform_enabled": true,
+  "asset_dirs": {
+    "adventure": "res://assets/cards/Golden Axe/Adventure",
+    "boss": "res://assets/cards/Golden Axe/Boss",
+    "treasure": "res://assets/cards/Golden Axe/Treasure",
+    "single": "res://assets/cards/Golden Axe/Singles"
+  },
+  "assets": {
+    "adventure_back": "res://assets/cards/Golden Axe/Singles/retro.png",
+    "boss_back": "res://assets/cards/Golden Axe/Singles/retro.png",
+    "character_front": "res://assets/cards/Golden Axe/Singles/Tyris Flare.png",
+    "character_front_b": "res://assets/cards/Golden Axe/Singles/Gilius Thunderhead.png",
+    "character_back": "res://assets/cards/Golden Axe/Singles/retro.png",
+    "regno_front": "res://assets/cards/Golden Axe/Singles/mappa.png",
+    "regno_back": "res://assets/cards/Golden Axe/Singles/retro.png",
+    "final_boss_front": "res://assets/cards/Golden Axe/Singles/death adder.png",
+    "treasure_back": "res://assets/cards/Golden Axe/Singles/retro.png"
+  }
+}

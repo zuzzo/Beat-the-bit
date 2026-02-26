@@ -1,5 +1,5 @@
 extends RefCounted
-class_name GnGDeckSpawn
+class_name GoldenAxeDeckSpawn
 
 static func spawn_treasure_cards(main: Node) -> void:
 	var treasures: Array = []
@@ -105,8 +105,11 @@ static func spawn_character_card(main: Node) -> void:
 	main.add_child(card)
 	card.global_position = main.character_pos
 	card.rotate_x(-PI / 2.0)
+	var front_texture: String = main.CHARACTER_FRONT
+	if main.active_character_id == "character_sir_arthur_b":
+		front_texture = main.CHARACTER_FRONT_B
 	if card.has_method("set_card_texture"):
-		card.call_deferred("set_card_texture", main.CHARACTER_FRONT)
+		card.call_deferred("set_card_texture", front_texture)
 	if card.has_method("set_back_texture"):
 		card.call_deferred("set_back_texture", main.CHARACTER_BACK)
 	if card.has_method("set_face_up"):
