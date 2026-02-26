@@ -6,7 +6,7 @@ const DECKS := {
 	"GnG": {
 		"label": "Ghosts 'n Goblins",
 		"card_set": "GnG",
-		"cards_path": "res://data/cards.json",
+		"cards_path": "res://data/decks/gng/cards.json",
 		"config_path": "res://data/decks/gng/deck.json"
 	},
 	"GoldenAxe": {
@@ -51,7 +51,7 @@ func get_deck_label(deck_id: String) -> String:
 
 func get_cards_path(deck_id: String) -> String:
 	var deck := get_deck(deck_id)
-	return str(deck.get("cards_path", "res://data/cards.json"))
+	return str(deck.get("cards_path", "res://data/decks/gng/cards.json"))
 
 func _load_json_dictionary(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)

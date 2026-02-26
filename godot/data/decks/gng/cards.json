@@ -1,0 +1,1000 @@
+﻿[
+    {
+        "difficulty":  8.0,
+        "id":  "enemy_demone",
+        "name":  "Demone",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_5"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  14.0,
+        "id":  "enemy_pianta_carnivora",
+        "name":  "Pianta carnivora",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_coin_4"
+                          ],
+        "sacrifice_cost":  "flip_equipment",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  12.0,
+        "id":  "enemy_pipistrello",
+        "name":  "Pipistrello",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  8.0,
+        "id":  "enemy_demone_2",
+        "name":  "Demone",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_5"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  12.0,
+        "id":  "enemy_pipistrello_2",
+        "name":  "Pipistrello",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  10.0,
+        "id":  "enemy_cavaliere_fantasma",
+        "name":  "Cavaliere fantasma",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "lose_heart_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  11.0,
+        "id":  "enemy_zombie_11",
+        "name":  "Zombie",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_4"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "add_green_die",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  12.0,
+        "id":  "enemy_zombie_12",
+        "name":  "Zombie",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_4"
+                         ],
+        "reward_silver":  [
+                              "reward_token_tombstone"
+                          ],
+        "sacrifice_cost":  "add_green_die",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  9.0,
+        "id":  "enemy_stregone",
+        "name":  "Stregone",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_4"
+                         ],
+        "reward_silver":  [
+                              "reward_group_chest"
+                          ],
+        "sacrifice_cost":  "lose_heart_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  13.0,
+        "id":  "enemy_demonietto",
+        "name":  "Demonietto",
+        "penalty_violet":  [
+                               "add_green_die"
+                           ],
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_coin_4"
+                          ],
+        "sacrifice_cost":  "flip_equipment",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  14.0,
+        "id":  "enemy_corvo",
+        "name":  "Corvo",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_2"
+                         ],
+        "reward_silver":  [
+                              "reward_token_tombstone"
+                          ],
+        "sacrifice_cost":  "pay_coins_3",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  11.0,
+        "id":  "enemy_imp",
+        "name":  "Imp",
+        "penalty_violet":  [
+                               "lose_coins_3"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  11.0,
+        "id":  "enemy_imp_2",
+        "name":  "Imp",
+        "penalty_violet":  [
+                               "lose_coins_3"
+                           ],
+        "reward_brown":  [
+                             "reward_coin_3"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "discard_hand_card_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  11.0,
+        "id":  "enemy_spettro",
+        "name":  "Spettro",
+        "penalty_violet":  [
+                               "discard_hand_card_1"
+                           ],
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "lose_heart_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  11.0,
+        "id":  "enemy_spettro_2",
+        "name":  "Spettro",
+        "penalty_violet":  [
+                               "discard_hand_card_1"
+                           ],
+        "reward_brown":  [
+                             "reward_token_tombstone"
+                         ],
+        "reward_silver":  [
+                              "reward_group_vaso_di_coccio"
+                          ],
+        "sacrifice_cost":  "lose_heart_1",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  8.0,
+        "id":  "curse_forma_di_rana",
+        "name":  "Forma di Rana",
+        "remove_condition":  "when_two_dice_match",
+        "set":  "GnG",
+        "stats":  {
+                      "max_hand":  1.0,
+                      "max_slots":  1.0,
+                      "min_dice":  2.0,
+                      "start_hearts":  1.0
+                  },
+        "type":  "maledizione"
+    },
+    {
+        "difficulty":  8.0,
+        "effects":  [
+                        "plus_one_each_die"
+                    ],
+        "id":  "curse_invecchiamento",
+        "name":  "Invecchiamento",
+        "remove_condition":  "discard_two_cards",
+        "set":  "GnG",
+        "stats":  {
+                      "max_hand":  2.0,
+                      "max_slots":  2.0,
+                      "min_dice":  2.0,
+                      "start_hearts":  2.0
+                  },
+        "type":  "maledizione"
+    },
+    {
+        "effects":  [
+                        "next_roll_plus_3"
+                    ],
+        "id":  "chain_piattaforma_1",
+        "name":  "Piattaforma",
+        "set":  "GnG",
+        "type":  "concatenamento"
+    },
+    {
+        "effects":  [
+                        "next_roll_plus_3"
+                    ],
+        "id":  "chain_piattaforma_2",
+        "name":  "Piattaforma",
+        "set":  "GnG",
+        "type":  "concatenamento"
+    },
+    {
+        "effects":  [
+                        "reveal_2_keep_1"
+                    ],
+        "id":  "chain_scala_1",
+        "name":  "Scala",
+        "set":  "GnG",
+        "type":  "concatenamento"
+    },
+    {
+        "effects":  [
+                        "reveal_2_keep_1"
+                    ],
+        "id":  "chain_scala_2",
+        "name":  "Scala",
+        "set":  "GnG",
+        "type":  "concatenamento"
+    },
+    {
+        "difficulty":  5.0,
+        "effects":  [
+                        "boss_finale_cost_minus_5"
+                    ],
+        "id":  "event_portale_infernale",
+        "name":  "Portale infernale",
+        "set":  "GnG",
+        "type":  "evento"
+    },
+    {
+        "difficulty":  8.0,
+        "hearts":  2.0,
+        "id":  "boss_gigante",
+        "image":  "res://assets/cards/ghost_n_goblins/boss/gigante.png",
+        "name":  "Gigante",
+        "penalty_violet":  [
+                               "fail_even_discard_or_odd_lose_heart"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GnG",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  8.0,
+        "hearts":  2.0,
+        "id":  "boss_dragone",
+        "image":  "res://assets/cards/ghost_n_goblins/boss/dragone.png",
+        "name":  "Dragone",
+        "penalty_violet":  [
+                               "fail_even_poison_or_odd_lose_heart"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GnG",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  7.0,
+        "hearts":  2.0,
+        "id":  "boss_vampiro",
+        "image":  "res://assets/cards/ghost_n_goblins/boss/vampiro.png",
+        "name":  "Vampiro",
+        "penalty_violet":  [
+                               "fail_even_lose_3_coins_or_odd_lose_heart"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GnG",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  9.0,
+        "hearts":  2.0,
+        "id":  "boss_cerbero",
+        "image":  "res://assets/cards/ghost_n_goblins/boss/cerbero.png",
+        "name":  "Cerbero",
+        "penalty_violet":  [
+                               "fail_even_flip_or_odd_lose_heart"
+                           ],
+        "reward_brown":  [
+                             "reward_group_teca"
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GnG",
+        "type":  "boss"
+    },
+    {
+        "difficulty":  5.0,
+        "hearts":  3.0,
+        "id":  "boss_finale_astaroth",
+        "image":  "res://assets/cards/ghost_n_goblins/singles/astaroth.png",
+        "name":  "Astaroth",
+        "penalty_violet":  [
+                               "fail_3_hearts_lose_heart",
+                               "fail_2_hearts_lose_heart_and_flip_equipment",
+                               "fail_1_heart_lose_heart_end_turn"
+                           ],
+        "reward_brown":  [
+
+                         ],
+        "reward_silver":  [
+
+                          ],
+        "set":  "GnG",
+        "type":  "boss_finale"
+    },
+    {
+        "cost":  3.0,
+        "effects":  [
+                        "armor_extra_slot_1",
+                        "sacrifice_prevent_heart_loss"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "treasure_armatura_ferro",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/armatura di ferro.png",
+        "name":  "Armatura di ferro",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "sacrifice_prevent_heart_loss",
+                                  "when":  "on_heart_loss"
+                              },
+                              {
+                                  "effect":  "armor_extra_slot_1",
+                                  "when":  "equip"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  3.0,
+        "effects":  [
+                        "return_to_hand",
+                        "discard_revealed_adventure"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "treasure_saltare",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/saltare.png",
+        "name":  "Saltare",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "discard_revealed_adventure",
+                                  "when":  "before_adventure"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "before_adventure"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  4.0,
+        "effects":  [
+                        "return_to_hand",
+                        "reroll_same_dice"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "treasure_torcia",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/torcia.png",
+        "name":  "Torcia",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reroll_same_dice",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  4.0,
+        "effects":  [
+                        "return_to_hand",
+                        "after_roll_minus_1_all_dice"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "treasure_ascia",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/ascia.png",
+        "name":  "Ascia",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "after_roll_minus_1_all_dice",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  4.0,
+        "effects":  [
+                        "return_to_hand",
+                        "after_roll_set_one_die_to_1"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "treasure_pugnale",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/pugnale.png",
+        "name":  "Pugnale",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "after_roll_set_one_die_to_1",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  4.0,
+        "effects":  [
+                        "return_to_hand",
+                        "reroll_5_or_6"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "treasure_lancia",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/lancia.png",
+        "name":  "Lancia",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reroll_5_or_6",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  4.0,
+        "effects":  [
+                        "return_to_hand",
+                        "halve_even_dice"
+                    ],
+        "group":  "vaso_di_coccio",
+        "id":  "treasure_spada",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/spada.png",
+        "name":  "Spada",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "halve_even_dice",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "after_roll"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  9.0,
+        "effects":  [
+                        "add_red_die"
+                    ],
+        "group":  "teca",
+        "id":  "treasure_eroismo",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/eroismo.png",
+        "name":  "Eroismo",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "add_red_die",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  7.0,
+        "effects":  [
+                        "reflect_damage_poison"
+                    ],
+        "group":  "chest",
+        "id":  "treasure_cannone_psichico",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/cannone psichico.png",
+        "name":  "Cannone psichico",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reflect_damage_poison",
+                                  "when":  "on_heart_loss"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  7.0,
+        "effects":  [
+                        "next_roll_minus_2_all_dice"
+                    ],
+        "group":  "chest",
+        "id":  "treasure_velocita",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/velocitÃ .png",
+        "name":  "Velocita",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "next_roll_minus_2_all_dice",
+                                  "when":  "next_roll"
+                              }
+                          ],
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  7.0,
+        "effects":  [
+                        "return_to_hand",
+                        "discard_hand_card_1",
+                        "lowest_die_applies_to_all"
+                    ],
+        "group":  "chest",
+        "id":  "treasure_specchio_riflettente",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/specchio riflettente.png",
+        "name":  "Specchio riflettente",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "discard_hand_card_1",
+                                  "when":  "before_roll"
+                              },
+                              {
+                                  "effect":  "lowest_die_applies_to_all",
+                                  "when":  "before_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "before_roll"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  7.0,
+        "effects":  [
+                        "return_to_hand",
+                        "discard_hand_card_1",
+                        "deal_1_damage"
+                    ],
+        "group":  "chest",
+        "id":  "treasure_fulmine",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/fulmine.png",
+        "name":  "Fulmine",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "discard_hand_card_1",
+                                  "when":  "before_roll"
+                              },
+                              {
+                                  "effect":  "deal_1_damage",
+                                  "when":  "before_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "before_roll"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  10.0,
+        "effects":  [
+                        "armor_extra_slot_2",
+                        "ignore_fatigue_if_all_different"
+                    ],
+        "group":  "chest",
+        "id":  "treasure_armatura_oro",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/armature d\u0027oro.png",
+        "name":  "Armatura d\u0027oro",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "ignore_fatigue_if_all_different",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "armor_extra_slot_2",
+                                  "when":  "equip"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  7.0,
+        "effects":  [
+                        "next_roll_double_then_remove_half"
+                    ],
+        "group":  "chest",
+        "id":  "treasure_clone",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/clone.png",
+        "name":  "Clone",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "next_roll_double_then_remove_half",
+                                  "when":  "next_roll"
+                              }
+                          ],
+        "type":  "istantaneo"
+    },
+    {
+        "cost":  8.0,
+        "effects":  [
+                        "on_heart_loss_destroy_fatigue"
+                    ],
+        "group":  "chest",
+        "id":  "treasure_scudo",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/scudo.png",
+        "name":  "Scudo",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "on_heart_loss_destroy_fatigue",
+                                  "when":  "on_heart_loss"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  9.0,
+        "effects":  [
+                        "regno_del_male_portal",
+                        "sacrifice_open_portal"
+                    ],
+        "group":  "teca",
+        "id":  "treasure_chiave_oro",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/chiave d\u0027oro.png",
+        "name":  "Chiave d\u0027oro",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "regno_del_male_portal",
+                                  "when":  "on_play"
+                              },
+                              {
+                                  "effect":  "sacrifice_open_portal",
+                                  "when":  "on_play"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  9.0,
+        "effects":  [
+                        "return_to_hand",
+                        "bonus_damage_multiheart"
+                    ],
+        "group":  "teca",
+        "id":  "treasure_croce",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/croce.png",
+        "name":  "Croce",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "bonus_damage_multiheart",
+                                  "when":  "after_damage"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "after_damage"
+                              }
+                          ],
+        "type":  "equipaggiamento"
+    },
+    {
+        "cost":  9.0,
+        "effects":  [
+                        "reset_hearts_and_dice"
+                    ],
+        "group":  "teca",
+        "id":  "treasure_1up",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/1 UP!.png",
+        "name":  "1UP!",
+        "set":  "GnG",
+        "timed_effects":  [
+                              {
+                                  "effect":  "reset_hearts_and_dice",
+                                  "when":  "any_time"
+                              }
+                          ],
+        "type":  "istantaneo"
+    },
+    {
+        "effects":  [
+                        "flip_on_one_heart"
+                    ],
+        "id":  "character_sir_arthur_a",
+        "name":  "Sir Arthur (A)",
+        "set":  "GnG",
+        "start_items":  [
+                            "reward_group_vaso_di_coccio"
+                        ],
+        "start_shared":  [
+                             "regno_del_male_in_play"
+                         ],
+        "stats":  {
+                      "max_hand":  3.0,
+                      "max_hearts":  3.0,
+                      "max_slots":  2.0,
+                      "start_dice":  2.0,
+                      "start_hearts":  3.0
+                  },
+        "type":  "personaggio"
+    },
+    {
+        "effects":  [
+                        "remove_dice_showing_6",
+                        "flip_if_more_than_one_heart"
+                    ],
+        "id":  "character_sir_arthur_b",
+        "name":  "Sir Arthur (B)",
+        "set":  "GnG",
+        "stats":  {
+                      "max_hand":  2.0,
+                      "max_hearts":  3.0,
+                      "max_slots":  2.0,
+                      "start_dice":  2.0,
+                      "start_hearts":  1.0
+                  },
+        "type":  "personaggio"
+    },
+    {
+        "effects":  [
+                        "regno_del_male_track"
+                    ],
+        "id":  "shared_regno_del_male",
+        "name":  "Regno del male",
+        "set":  "GnG",
+        "track_nodes":  [
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.128,
+                                "y":  0.2619
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.407,
+                                "y":  0.2619
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.6794,
+                                "y":  0.2667
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.6794,
+                                "y":  0.431
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.6794,
+                                "y":  0.5881
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.4037,
+                                "y":  0.7548
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.128,
+                                "y":  0.7571
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.1213,
+                                "y":  0.5881
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.128,
+                                "y":  0.4238
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.407,
+                                "y":  0.4286
+                            },
+                            {
+                                "h":  0.1524,
+                                "w":  0.2029,
+                                "x":  0.407,
+                                "y":  0.5905
+                            }
+                        ],
+        "track_rewards":  [
+                              "start",
+                              "reward_group_vaso_di_coccio",
+                              "boss",
+                              "gain_heart",
+                              "boss",
+                              "reward_group_chest",
+                              "boss",
+                              "gain_heart",
+                              "boss",
+                              "reward_group_teca",
+                              "boss_finale"
+                          ],
+        "type":  "evento"
+    },
+    {
+        "difficulty":  8.0,
+        "id":  "enemy_orco_1",
+        "name":  "Orco",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_group_chest"
+                         ],
+        "reward_silver":  [
+                              "reward_coin_5"
+                          ],
+        "sacrifice_cost":  "add_green_die",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    },
+    {
+        "difficulty":  8.0,
+        "id":  "enemy_orco_2",
+        "name":  "Orco",
+        "penalty_violet":  [
+                               "lose_heart_1"
+                           ],
+        "reward_brown":  [
+                             "reward_group_chest"
+                         ],
+        "reward_silver":  [
+                              "reward_coin_5"
+                          ],
+        "sacrifice_cost":  "add_green_die",
+        "sacrifice_effect":  "extra_die_then_remove_blue",
+        "set":  "GnG",
+        "type":  "scontro"
+    }
+]
