@@ -576,7 +576,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 					if hand_ui != null and hand_ui.has_method("set_info"):
 						hand_ui.call("set_info", _ui_text("I boss non si girano manualmente: si rivelano solo tramite evento."))
 					return
-				if phase_index == 0 and _try_show_map_actions_prompt(card):
+				if (phase_index == 0 or phase_index == 1) and _try_show_map_actions_prompt(card):
 					return
 				if phase_index == 0 and _try_spend_tombstone_on_regno(card):
 					return

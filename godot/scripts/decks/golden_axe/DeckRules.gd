@@ -134,7 +134,7 @@ static func try_open_map_actions(main: Node, card: Node3D) -> bool:
 		return false
 	if card != main.regno_card:
 		return false
-	if main.phase_index != 0:
+	if main.phase_index != 0 and main.phase_index != 1:
 		return true
 	if main.has_method("_show_map_actions_prompt"):
 		main._show_map_actions_prompt()
