@@ -1,8 +1,36 @@
 extends RefCounted
 class_name EffectsRegistry
 
+const EFFECT_ALIASES := {
+	# Keep legacy/variant codes mapped to a single canonical effect id.
+	"reward_token_experience_1": "reward_xp_1",
+	"reward_token_experience_5": "reward_xp_5",
+	"reward_token_experience": "reward_xp_1"
+}
+
+static func canonical_effect_code(effect_name: String) -> String:
+	var code: String = effect_name.strip_edges()
+	if code == "":
+		return ""
+	if EFFECT_ALIASES.has(code):
+		return str(EFFECT_ALIASES.get(code, code))
+	return code
+
+static func canonicalize_effect_list(effects: Array) -> Array:
+	var out: Array = []
+	var seen: Dictionary = {}
+	for raw in effects:
+		var code: String = canonical_effect_code(str(raw))
+		if code == "":
+			continue
+		if seen.has(code):
+			continue
+		seen[code] = true
+		out.append(code)
+	return out
+
 static func apply_direct_card_effect(main: Node, effect_name: String, _card_data: Dictionary, _action_window: String) -> bool:
-	match effect_name:
+	match canonical_effect_code(effect_name):
 		"add_red_die":
 			main.red_dice += 1
 			main.dice_count = main.DICE_FLOW.get_total_dice(main)
@@ -24,6 +52,20 @@ static func apply_direct_card_effect(main: Node, effect_name: String, _card_data
 			return _apply_range_damage_and_return(main, 10, 12)
 		"sferzata_damage_7_9_return_hand":
 			return _apply_range_damage_and_return(main, 7, 9)
+		"calcio_damage_13_15_return_hand":
+			return _apply_range_damage_and_return(main, 13, 15)
+		"smoke_cloud_end_turn":
+			main.roll_pending_apply = false
+			main.last_roll_values.clear()
+			main.selected_roll_dice.clear()
+			main.post_roll_effects.clear()
+			main._consume_pending_adventure_sacrifice_die_removal()
+			if main.hand_ui != null and main.hand_ui.has_method("set_phase"):
+				var turn_idx: int = 1
+				if main.hand_ui.has_method("get_turn_index"):
+					turn_idx = max(1, int(main.hand_ui.call("get_turn_index")))
+				main.hand_ui.call("set_phase", 2, turn_idx)
+			return true
 		"discard_revealed_adventure":
 			main._discard_revealed_adventure_card()
 			return true
@@ -73,7 +115,7 @@ static func apply_direct_damage_to_battlefield(main: Node, amount: int) -> void:
 static func apply_post_roll_effect(main: Node, effect_name: String, selected_values: Array[int]) -> void:
 	if main.last_roll_values.is_empty():
 		return
-	match effect_name:
+	match canonical_effect_code(effect_name):
 		"after_roll_minus_1_all_dice":
 			for i in main.last_roll_values.size():
 				main.last_roll_values[i] = max(1, int(main.last_roll_values[i]) - 1)
@@ -107,7 +149,7 @@ static func get_first_selected_die_index(main: Node) -> int:
 	return -1
 
 static func collect_reroll_indices(main: Node, effect_name: String, target: Array[int]) -> void:
-	match effect_name:
+	match canonical_effect_code(effect_name):
 		"reroll_5_or_6":
 			for i in main.last_roll_values.size():
 				var v := int(main.last_roll_values[i])
@@ -128,7 +170,7 @@ static func consume_next_roll_effects(main: Node, values: Array[int]) -> void:
 		return
 	var consumed: Array[String] = []
 	for effect in main.post_roll_effects:
-		var name := str(effect).strip_edges()
+		var name := canonical_effect_code(str(effect))
 		match name:
 			"next_roll_minus_2_all_dice":
 				for i in values.size():

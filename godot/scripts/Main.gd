@@ -49,6 +49,7 @@ const CARD_EFFECT_DESCRIPTIONS := {
 	"halve_even_dice": "Dopo il lancio: dimezza i dadi pari.",
 	"add_red_die": "Aggiunge un dado rosso.",
 	"add_green_die": "Aggiunge un dado verde.",
+	"next_roll_plus_3": "Prima del lancio: +3 alla difficolta avventura.",
 	"reflect_damage_poison": "Quando perdi un cuore: riflette danno/veleno.",
 	"next_roll_minus_2_all_dice": "Prossimo lancio: -2 a tutti i dadi.",
 	"lowest_die_applies_to_all": "Il dado piu basso vale per tutti.",
@@ -56,7 +57,11 @@ const CARD_EFFECT_DESCRIPTIONS := {
 	"remove_one_blue_die": "Rimuove 1 dado blu prima del lancio.",
 	"fendente_damage_10_12_return_hand": "Riprendila in mano: infligge 1 danno a nemico con difficolta 10-12.",
 	"sferzata_damage_7_9_return_hand": "Riprendila in mano: infligge 1 danno a nemico con difficolta 7-9.",
+	"calcio_damage_13_15_return_hand": "Riprendila in mano: infligge 1 danno a nemico con difficolta 13-15.",
+	"smoke_cloud_end_turn": "Fine turno: non infliggi e non subisci danno.",
 	"equipped_all_dice_minus_1": "Equipaggiata: tutti i dadi hanno -1.",
+	"equip_max_hearts_plus_2": "Equipaggiata: +2 limite cuori.",
+	"equip_max_hand_plus_2": "Equipaggiata: +2 limite carte.",
 	"character_discard_set_blue_zero": "Scarta una carta: imposta 1 dado blu a 0.",
 	"next_roll_double_then_remove_half": "Raddoppia i dadi e rimuove la meta piu bassa.",
 	"on_heart_loss_destroy_fatigue": "Quando perdi un cuore: rimuovi fatica.",
@@ -1677,7 +1682,7 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 	if effects.is_empty():
 		return
 	_hide_outcome()
-	var local_effects := effects.duplicate()
+	var local_effects := EFFECTS_REGISTRY.canonicalize_effect_list(effects)
 	if local_effects.has("return_to_hand") and not pending_action_is_magic and pending_action_source_card != null and is_instance_valid(pending_action_source_card):
 		_force_return_equipped_to_hand(pending_action_source_card)
 		local_effects.erase("return_to_hand")
@@ -1686,7 +1691,7 @@ func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window
 		selected_values = last_roll_values.duplicate()
 	var reroll_indices: Array[int] = []
 	for effect in local_effects:
-		var effect_name := str(effect).strip_edges()
+		var effect_name := EFFECTS_REGISTRY.canonical_effect_code(str(effect))
 		if effect_name.is_empty():
 			continue
 		if effect_name == "discard_hand_card_1":
@@ -2537,7 +2542,7 @@ func _describe_card_type(raw_type: String) -> String:
 			return raw_type.strip_edges()
 
 func _describe_effect_code(effect_code: String) -> String:
-	var code: String = effect_code.strip_edges()
+	var code: String = EFFECTS_REGISTRY.canonical_effect_code(effect_code)
 	if code == "":
 		return ""
 	if CARD_EFFECT_DESCRIPTIONS.has(code):
@@ -4724,10 +4729,32 @@ func _get_equipment_bonus_slots_from_card_data(card_data: Dictionary) -> int:
 	var effects: Array = card_data.get("effects", [])
 	var extra: int = 0
 	for effect in effects:
-		var name := str(effect)
+		var name := EFFECTS_REGISTRY.canonical_effect_code(str(effect))
 		if name == "armor_extra_slot_1":
 			extra += 1
 		elif name == "armor_extra_slot_2":
+			extra += 2
+	return max(0, extra)
+
+func _get_equipment_bonus_hearts_from_card_data(card_data: Dictionary) -> int:
+	if card_data.is_empty():
+		return 0
+	var effects: Array = card_data.get("effects", [])
+	var extra: int = 0
+	for effect in effects:
+		var name := EFFECTS_REGISTRY.canonical_effect_code(str(effect))
+		if name == "equip_max_hearts_plus_2":
+			extra += 2
+	return max(0, extra)
+
+func _get_equipment_bonus_hand_from_card_data(card_data: Dictionary) -> int:
+	if card_data.is_empty():
+		return 0
+	var effects: Array = card_data.get("effects", [])
+	var extra: int = 0
+	for effect in effects:
+		var name := EFFECTS_REGISTRY.canonical_effect_code(str(effect))
+		if name == "equip_max_hand_plus_2":
 			extra += 2
 	return max(0, extra)
 
@@ -4740,6 +4767,28 @@ func _get_active_equipment_bonus_slots() -> int:
 			continue
 		var card_data: Dictionary = card.get_meta("card_data", {})
 		extra += _get_equipment_bonus_slots_from_card_data(card_data)
+	return max(0, extra)
+
+func _get_active_equipment_bonus_hearts() -> int:
+	var extra: int = 0
+	for card in _get_equipped_cards_sorted():
+		if card == null or not is_instance_valid(card):
+			continue
+		if bool(card.get_meta("equipped_flipped", false)):
+			continue
+		var card_data: Dictionary = card.get_meta("card_data", {})
+		extra += _get_equipment_bonus_hearts_from_card_data(card_data)
+	return max(0, extra)
+
+func _get_active_equipment_bonus_hand() -> int:
+	var extra: int = 0
+	for card in _get_equipped_cards_sorted():
+		if card == null or not is_instance_valid(card):
+			continue
+		if bool(card.get_meta("equipped_flipped", false)):
+			continue
+		var card_data: Dictionary = card.get_meta("card_data", {})
+		extra += _get_equipment_bonus_hand_from_card_data(card_data)
 	return max(0, extra)
 
 func _compact_equipment_slots() -> void:
@@ -4776,10 +4825,17 @@ func _apply_equipment_slot_limit_after_curse(reason: String = "Slot equip ridott
 		return
 	if not reason.strip_edges().is_empty():
 		pending_forced_unequip_reason = reason.strip_edges()
+	var base_stats: Dictionary = _get_character_stats()
+	if not curse_stats_override.is_empty():
+		base_stats = curse_stats_override
+	player_max_hearts = max(0, int(base_stats.get("max_hearts", player_max_hearts)) + _get_active_equipment_bonus_hearts())
+	player_max_hand = max(0, int(base_stats.get("max_hand", player_max_hand)) + _get_active_equipment_bonus_hand())
+	player_current_hearts = clamp(player_current_hearts, 0, player_max_hearts)
 	var target_slots: int = max(0, _get_character_max_slots() + _get_active_equipment_bonus_slots())
 	if equipment_slots.size() < target_slots:
 		_add_equipment_slots(target_slots - equipment_slots.size())
 		_request_forced_unequip(0, pending_forced_unequip_reason)
+		_update_hand_ui_stats()
 		return
 	_compact_equipment_slots()
 	var equipped_cards: Array[Node3D] = _get_equipped_cards_sorted()
@@ -4792,6 +4848,7 @@ func _apply_equipment_slot_limit_after_curse(reason: String = "Slot equip ridott
 	if extra_slots > 0:
 		_remove_equipment_slots(extra_slots)
 	_request_forced_unequip(0, pending_forced_unequip_reason)
+	_update_hand_ui_stats()
 
 func _update_curse_unequip_prompt() -> void:
 	if hand_ui != null and hand_ui.has_method("set_phase_button_enabled"):

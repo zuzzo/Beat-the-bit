@@ -1,4 +1,4 @@
-[
+﻿[
     {
         "difficulty":  13,
         "id":  "ga_enemy_amazzone",
@@ -595,7 +595,7 @@
     {
         "cost":  4,
         "effects":  [
-                        "armor_extra_slot_1"
+                        "armor_extra_slot_2"
                     ],
         "group":  "tier_1",
         "id":  "ga_treasure_sacco",
@@ -603,17 +603,19 @@
         "name":  "Sacco",
         "timed_effects":  [
                               {
-                                  "effect":  "armor_extra_slot_1",
+                                  "effect":  "armor_extra_slot_2",
                                   "when":  "equip"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "equipaggiamento"
+        "type":  "equipaggiamento",
+        "text":  "Costo 4. Equipaggiamento (Tier 1). +2 slot equipaggiamento."
     },
     {
-        "cost":  3,
+        "cost":  5,
         "effects":  [
-                        "deal_1_damage"
+                        "return_to_hand",
+                        "calcio_damage_13_15_return_hand"
                     ],
         "group":  "tier_1",
         "id":  "ga_treasure_calcio",
@@ -621,17 +623,23 @@
         "name":  "Calcio",
         "timed_effects":  [
                               {
-                                  "effect":  "deal_1_damage",
-                                  "when":  "any_time"
+                                  "effect":  "calcio_damage_13_15_return_hand",
+                                  "when":  "before_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "before_roll"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "equipaggiamento",
+        "text":  "Costo 5. Equipaggiamento (Tier 1). Riprendila in mano prima del lancio: togli un cuore a un nemico con difficolta tra 13 e 15."
     },
     {
         "cost":  4,
         "effects":  [
-                        "reroll_same_dice"
+                        "return_to_hand",
+                        "after_roll_set_one_die_to_1"
                     ],
         "group":  "tier_1",
         "id":  "ga_treasure_capriola",
@@ -639,30 +647,36 @@
         "name":  "Capriola",
         "timed_effects":  [
                               {
-                                  "effect":  "reroll_same_dice",
+                                  "effect":  "after_roll_set_one_die_to_1",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
                                   "when":  "after_roll"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "equipaggiamento",
+        "text":  "Costo 4. Equipaggiamento (Tier 1). Riprendila in mano: dopo il lancio modifica il valore di un dado."
     },
     {
-        "cost":  6,
+        "cost":  4,
         "effects":  [
-                        "after_roll_minus_1_all_dice"
+                        "deal_1_damage"
                     ],
-        "group":  "tier_2",
+        "group":  "tier_1",
         "id":  "ga_treasure_esplosione",
         "image":  "res://assets/cards/Golden Axe/Treasure/esplosione.png",
         "name":  "Esplosione",
         "timed_effects":  [
                               {
-                                  "effect":  "after_roll_minus_1_all_dice",
-                                  "when":  "after_roll"
+                                  "effect":  "deal_1_damage",
+                                  "when":  "any_time"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "istantaneo",
+        "text":  "Costo 4. Istantaneo (Tier 1). Scartala dalla tua mano: togli un cuore a un nemico."
     },
     {
         "cost":  8,
@@ -684,95 +698,114 @@
         "type":  "equipaggiamento"
     },
     {
-        "cost":  6,
+        "cost":  4,
         "effects":  [
-                        "after_roll_set_one_die_to_1"
+                        "return_to_hand",
+                        "next_roll_plus_3"
                     ],
-        "group":  "tier_2",
+        "group":  "tier_1",
         "id":  "ga_treasure_lanciare_il_nemico",
         "image":  "res://assets/cards/Golden Axe/Treasure/lanciare il nemico.png",
         "name":  "Lanciare il nemico",
         "timed_effects":  [
                               {
-                                  "effect":  "after_roll_set_one_die_to_1",
-                                  "when":  "after_roll"
-                              }
-                          ],
-        "set":  "GoldenAxe",
-        "type":  "istantaneo"
-    },
-    {
-        "cost":  7,
-        "effects":  [
-                        "return_to_hand"
-                    ],
-        "group":  "tier_2",
-        "id":  "ga_treasure_level_up_carte",
-        "image":  "res://assets/cards/Golden Axe/Treasure/level up carte.png",
-        "name":  "Level up carte",
-        "timed_effects":  [
+                                  "effect":  "next_roll_plus_3",
+                                  "when":  "before_roll"
+                              },
                               {
                                   "effect":  "return_to_hand",
-                                  "when":  "any_time"
+                                  "when":  "before_roll"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "equipaggiamento",
+        "text":  "Costo 4. Equipaggiamento (Tier 1). Riprendila in mano prima del lancio: +3 alla difficolta dell\u0027avventura."
     },
     {
-        "cost":  9,
-        "text":  "Quando equipaggiata, tutti i tuoi dadi hanno -1.",
+        "cost":  10,
         "effects":  [
-                        "equipped_all_dice_minus_1"
+                        "equip_max_hand_plus_2",
+                        "armor_extra_slot_1"
                     ],
-        "group":  "tier_2",
-        "id":  "ga_treasure_level_up_dadi",
-        "image":  "res://assets/cards/Golden Axe/Treasure/Level up dadi.png",
-        "name":  "Level up dadi",
+        "group":  "tier_3",
+        "id":  "ga_treasure_level_up_carte",
+        "image":  "res://assets/cards/Golden Axe/Treasure/level up carte.png",
+        "name":  "Level up Carte",
         "timed_effects":  [
                               {
-                                  "effect":  "equipped_all_dice_minus_1",
-                                  "when":  "after_roll"
+                                  "effect":  "equip_max_hand_plus_2",
+                                  "when":  "equip"
+                              },
+                              {
+                                  "effect":  "armor_extra_slot_1",
+                                  "when":  "equip"
+                              }
+                          ],
+        "set":  "GoldenAxe",
+        "type":  "equipaggiamento",
+        "text":  "Costo 10. Equipaggiamento (Tier 3). Aumenta il tuo limite carte di +2, +1 slot equipaggiamento."
+    },
+    {
+        "cost":  10,
+        "text":  "Costo 10. Equipaggiamento (Tier 3). Aumenta il tuo limite cuore di +2, +1 slot equipaggiamento.",
+        "effects":  [
+                        "equip_max_hearts_plus_2",
+                        "armor_extra_slot_1"
+                    ],
+        "group":  "tier_3",
+        "id":  "ga_treasure_level_up_dadi",
+        "image":  "res://assets/cards/Golden Axe/Treasure/Level up dadi.png",
+        "name":  "Level up Cuore",
+        "timed_effects":  [
+                              {
+                                  "effect":  "equip_max_hearts_plus_2",
+                                  "when":  "equip"
+                              },
+                              {
+                                  "effect":  "armor_extra_slot_1",
+                                  "when":  "equip"
                               }
                           ],
         "set":  "GoldenAxe",
         "type":  "equipaggiamento"
     },
     {
-        "cost":  8,
+        "cost":  10,
         "effects":  [
-                        "reset_hearts_and_dice"
+                        "equip_max_hearts_plus_2"
                     ],
         "group":  "tier_3",
         "id":  "ga_treasure_level_up_vita",
         "image":  "res://assets/cards/Golden Axe/Treasure/level up vita.png",
-        "name":  "Level up vita",
+        "name":  "Level up cuore",
         "timed_effects":  [
                               {
-                                  "effect":  "reset_hearts_and_dice",
-                                  "when":  "any_time"
+                                  "effect":  "equip_max_hearts_plus_2",
+                                  "when":  "equip"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "equipaggiamento",
+        "text":  "Costo 10. Equipaggiamento (Tier 3). Aumenta il tuo limite cuori di +2."
     },
     {
-        "cost":  5,
+        "cost":  4,
         "effects":  [
-                        "next_roll_minus_2_all_dice"
+                        "smoke_cloud_end_turn"
                     ],
-        "group":  "tier_2",
+        "group":  "tier_1",
         "id":  "ga_treasure_nuvola_di_fumo",
         "image":  "res://assets/cards/Golden Axe/Treasure/nuvola di fumo.png",
         "name":  "Nuvola di fumo",
         "timed_effects":  [
                               {
-                                  "effect":  "next_roll_minus_2_all_dice",
-                                  "when":  "next_roll"
+                                  "effect":  "smoke_cloud_end_turn",
+                                  "when":  "any_time"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "istantaneo",
+        "text":  "Costo 4. Istantaneo (Tier 1). Scartala dalla mano: non ricevi e non fai danno. Fine del turno."
     },
     {
         "cost":  8,
@@ -856,7 +889,8 @@
     {
         "cost":  4,
         "effects":  [
-                        "deal_1_damage"
+                        "return_to_hand",
+                        "reroll_same_dice"
                     ],
         "group":  "tier_1",
         "id":  "ga_treasure_spallata",
@@ -864,15 +898,16 @@
         "name":  "Spallata",
         "timed_effects":  [
                               {
-                                  "effect":  "deal_1_damage",
-                                  "when":  "any_time"
+                                  "effect":  "reroll_same_dice",
+                                  "when":  "after_roll"
+                              },
+                              {
+                                  "effect":  "return_to_hand",
+                                  "when":  "after_roll"
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "equipaggiamento",
+        "text":  "Costo 4. Equipaggiamento (Tier 1). Riprendila in mano: puoi ritirare quanti dadi vuoi."
     }
 ]
-
-
-
-
