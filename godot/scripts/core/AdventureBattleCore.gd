@@ -147,7 +147,11 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 			if card_type == "scontro":
 				main.enemies_defeated_total += 1
 			main._report_battlefield_reward(card_data, total, difficulty)
-			main._move_adventure_to_discard(card)
+			var routed_to_mission: bool = false
+			if main.deck_rules != null and main.deck_rules.has_method("on_enemy_defeated"):
+				routed_to_mission = bool(main.deck_rules.on_enemy_defeated(main, card))
+			if not routed_to_mission:
+				main._move_adventure_to_discard(card)
 			main._spawn_defeat_explosion(defeated_pos)
 			cleanup_chain_cards_after_victory(main)
 			if card_type == "boss_finale":

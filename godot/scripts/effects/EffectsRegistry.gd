@@ -31,6 +31,9 @@ static func canonicalize_effect_list(effects: Array) -> Array:
 
 static func apply_direct_card_effect(main: Node, effect_name: String, _card_data: Dictionary, _action_window: String) -> bool:
 	match canonical_effect_code(effect_name):
+		"heal_1":
+			main._apply_heal(1, "effect_heal_1")
+			return true
 		"add_red_die":
 			main.red_dice += 1
 			main.dice_count = main.DICE_FLOW.get_total_dice(main)

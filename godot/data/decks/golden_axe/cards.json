@@ -190,23 +190,22 @@
         "type":  "scontro"
     },
     {
-        "difficulty":  9,
-        "id":  "ga_enemy_soldato_ferito",
+        "id":  "ga_mission_soldato_ferito",
         "name":  "Soldato ferito",
         "image":  "res://assets/cards/Golden Axe/Adventure/soldato ferito.png",
-        "penalty_violet":  [
-                               "lose_heart_1"
-                           ],
+        "mission":  {
+                        "type":  "heal_soldier",
+                        "count":  1
+                    },
         "reward_brown":  [
-                             "reward_coin_4"
+                             "reward_xp_3"
                          ],
         "reward_silver":  [
-                              "reward_tier_2"
+                              "reward_tier_1"
                           ],
-        "sacrifice_cost":  "lose_heart_1",
-        "sacrifice_effect":  "extra_die_then_remove_blue",
         "set":  "GoldenAxe",
-        "type":  "scontro"
+        "text":  "Missione: quando una cura sta per essere applicata a te, puoi dirottarla al soldato ferito. In quel caso la missione e compiuta. In Organizzazione puoi riscattare: +3 XP e 1 carta Tier 1.",
+        "type":  "missione"
     },
     {
         "difficulty":  9,
@@ -249,16 +248,17 @@
         "name":  "Furto al magazzino",
         "image":  "res://assets/cards/Golden Axe/Adventure/furto al magazzino.png",
         "mission":  {
-                        "type":  "pay_coins",
-                        "cost":  5
+                        "type":  "discard_treasure_from_hand",
+                        "count":  1
                     },
         "reward_brown":  [
-                             "reward_tier_2"
+                             "reward_coin_4"
                          ],
         "reward_silver":  [
-                              "reward_xp_1"
+                              "reward_xp_3"
                           ],
         "set":  "GoldenAxe",
+        "text":  "Missione: riporta il maltolto. Scarta 1 carta tesoro dalla mano e la missione e compiuta. In Organizzazione puoi riscattare: +3 XP e +4 monete.",
         "type":  "missione"
     },
     {
@@ -284,17 +284,19 @@
         "name":  "Villaggio attaccato",
         "image":  "res://assets/cards/Golden Axe/Adventure/villaggio attaccato.png",
         "mission":  {
-                        "type":  "defeat_enemies",
-                        "count":  4
+                        "count":  3,
+                        "type":  "defeat_enemies"
                     },
         "reward_brown":  [
-                             "reward_token_tombstone"
+                             "reward_coin_5"
                          ],
         "reward_silver":  [
-                              "reward_xp_1"
+                              "reward_xp_4"
                           ],
         "set":  "GoldenAxe",
-        "type":  "missione"
+        "type":  "missione",
+        "mission_track_by_stack":  true,
+        "text":  "Missione: sconfiggi 3 nemici (maledizione e concatenamento non contano). Metti le carte sconfitte sotto questa missione. In Organizzazione puoi riscattare: +4 XP e +5 monete."
     },
     {
         "difficulty":  9,

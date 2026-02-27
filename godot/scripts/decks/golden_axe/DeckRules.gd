@@ -157,14 +157,19 @@ static func execute_map_action(main: Node, code: String) -> void:
 			if main.player_gold < 3:
 				_report_map_action_info(main, "Monete insufficienti (serve 3).")
 				return
-			if main.player_current_hearts >= main.player_max_hearts:
+			if main.player_current_hearts >= main.player_max_hearts and not _has_available_heal_redirect_mission(main):
 				_report_map_action_info(main, "Sei gia a cuori massimi.")
 				return
 			main.player_gold -= 3
-			main.player_current_hearts = min(main.player_max_hearts, main.player_current_hearts + 1)
+			var healed: bool = bool(main._apply_heal(1, "map_heal_1"))
 			main._update_hand_ui_stats()
-			main._refresh_character_hearts_tokens()
-			_report_map_action_info(main, "Mappa: +1 cuore (costo 3 monete).")
+			if main.pending_character_backpack_prompt_mode == "mission_heal_redirect":
+				_report_map_action_info(main, "Mappa: scegli se curare te o il soldato ferito (costo 3 monete).")
+				return
+			if healed:
+				_report_map_action_info(main, "Mappa: +1 cuore (costo 3 monete).")
+			else:
+				_report_map_action_info(main, "Nessun bersaglio valido per la cura (costo 3 monete pagato).")
 		"draw_tier_1":
 			if main.player_gold < 4:
 				_report_map_action_info(main, "Monete insufficienti (serve 4).")
@@ -236,10 +241,7 @@ static func _apply_regno_reward(main: Node, code: String) -> void:
 		"reward_tier_3":
 			_claim_treasure_from_group(main, "tier_3")
 		"gain_heart":
-			if main.player_current_hearts < main.player_max_hearts:
-				main.player_current_hearts = min(main.player_max_hearts, main.player_current_hearts + 1)
-				main._update_hand_ui_stats()
-				main._refresh_character_hearts_tokens()
+			main._apply_heal(1, "regno_gain_heart")
 		"boss":
 			main._claim_boss_to_hand_from_regno()
 		"boss_finale":
@@ -314,24 +316,140 @@ static func try_claim_mission(main: Node, card: Node3D) -> void:
 	var card_data: Dictionary = card.get_meta("card_data", {})
 	if card_data.is_empty():
 		return
-	if not is_mission_completed(main, card_data):
+	if not _is_mission_completed_for_card(main, card, card_data):
 		report_mission_status(main, card_data, false)
 		return
 	apply_mission_cost(main, card_data)
 	report_mission_status(main, card_data, true)
-	card.queue_free()
+	_flush_mission_progress_cards_to_discard(main, card)
+	main._move_adventure_to_discard(card)
 
 static func is_mission_completed(main: Node, card_data: Dictionary) -> bool:
 	var req := get_mission_requirements(main, card_data)
 	var enemies_required := int(req.get("defeat_enemies", 0))
 	var coins_required := int(req.get("pay_coins", 0))
-	if enemies_required <= 0 and coins_required <= 0:
+	var heal_soldier_required := int(req.get("heal_soldier", 0))
+	var discard_treasure_required := int(req.get("discard_treasure_from_hand", 0))
+	if enemies_required <= 0 and coins_required <= 0 and heal_soldier_required <= 0 and discard_treasure_required <= 0:
 		return false
 	if enemies_required > 0 and main.enemies_defeated_total < enemies_required:
 		return false
 	if coins_required > 0 and main.player_gold < coins_required:
 		return false
+	if heal_soldier_required > 0:
+		return false
+	if discard_treasure_required > 0:
+		return false
 	return true
+
+static func _is_mission_completed_for_card(main: Node, card: Node3D, card_data: Dictionary) -> bool:
+	if bool(card_data.get("mission_track_by_stack", false)):
+		var req := get_mission_requirements(main, card_data)
+		var required: int = int(req.get("defeat_enemies", 0))
+		if required <= 0:
+			return false
+		return _get_mission_progress_count(card) >= required
+	var req := get_mission_requirements(main, card_data)
+	var heal_soldier_required: int = int(req.get("heal_soldier", 0))
+	if heal_soldier_required > 0:
+		return _get_mission_heal_progress(card) >= heal_soldier_required
+	var discard_required: int = int(req.get("discard_treasure_from_hand", 0))
+	if discard_required > 0:
+		return _get_mission_discard_progress(card) >= discard_required
+	return is_mission_completed(main, card_data)
+
+static func on_enemy_defeated(main: Node, defeated_card: Node3D) -> bool:
+	if defeated_card == null or not is_instance_valid(defeated_card):
+		return false
+	var defeated_data: Dictionary = defeated_card.get_meta("card_data", {})
+	if str(defeated_data.get("type", "")).strip_edges().to_lower() != "scontro":
+		return false
+	var mission_card: Node3D = _get_first_stack_mission_card(main)
+	if mission_card == null or not is_instance_valid(mission_card):
+		return false
+	var req := get_mission_requirements(main, mission_card.get_meta("card_data", {}))
+	var max_cards: int = max(0, int(req.get("defeat_enemies", 0)))
+	if max_cards <= 0:
+		return false
+	var progress_cards: Array = _get_mission_progress_cards(mission_card)
+	if progress_cards.size() >= max_cards:
+		return false
+	defeated_card.set_meta("in_battlefield", false)
+	defeated_card.set_meta("adventure_blocking", false)
+	defeated_card.set_meta("battlefield_hearts", 0)
+	defeated_card.set_meta("in_mission_progress", true)
+	defeated_card.set_meta("mission_owner_id", str(mission_card.get_instance_id()))
+	var target_pos: Vector3 = mission_card.global_position + Vector3(0.0, -float(progress_cards.size() + 1) * main.REVEALED_Y_STEP, 0.0)
+	if defeated_card.has_method("flip_to_side"):
+		defeated_card.call("flip_to_side", target_pos)
+	else:
+		defeated_card.global_position = target_pos
+	progress_cards.append(defeated_card)
+	mission_card.set_meta("mission_progress_cards", progress_cards)
+	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+		main.hand_ui.call("set_info", main._ui_text("Missione: progresso %d/%d." % [progress_cards.size(), max_cards]))
+	return true
+
+static func _get_first_stack_mission_card(main: Node) -> Node3D:
+	for child in main.get_children():
+		if not (child is Node3D):
+			continue
+		var card: Node3D = child as Node3D
+		if not bool(card.get_meta("in_mission_side", false)):
+			continue
+		var data: Dictionary = card.get_meta("card_data", {})
+		if data.is_empty():
+			continue
+		if str(data.get("type", "")).strip_edges().to_lower() != "missione":
+			continue
+		if not bool(data.get("mission_track_by_stack", false)):
+			continue
+		var req := get_mission_requirements(main, data)
+		var required: int = int(req.get("defeat_enemies", 0))
+		if required <= 0:
+			continue
+		if _get_mission_progress_count(card) < required:
+			return card
+	return null
+
+static func _get_mission_progress_cards(card: Node3D) -> Array:
+	if card == null or not is_instance_valid(card):
+		return []
+	var raw: Variant = card.get_meta("mission_progress_cards", [])
+	if raw is Array:
+		return (raw as Array).duplicate()
+	return []
+
+static func _get_mission_progress_count(card: Node3D) -> int:
+	var cards: Array = _get_mission_progress_cards(card)
+	var count: int = 0
+	for item in cards:
+		if item is Node3D and is_instance_valid(item):
+			count += 1
+	return count
+
+static func _get_mission_heal_progress(card: Node3D) -> int:
+	if card == null or not is_instance_valid(card):
+		return 0
+	return max(0, int(card.get_meta("mission_heal_progress", 0)))
+
+static func _get_mission_discard_progress(card: Node3D) -> int:
+	if card == null or not is_instance_valid(card):
+		return 0
+	return max(0, int(card.get_meta("mission_discard_progress", 0)))
+
+static func _flush_mission_progress_cards_to_discard(main: Node, mission_card: Node3D) -> void:
+	if mission_card == null or not is_instance_valid(mission_card):
+		return
+	var cards: Array = _get_mission_progress_cards(mission_card)
+	for item in cards:
+		if not (item is Node3D):
+			continue
+		var node: Node3D = item as Node3D
+		if node == null or not is_instance_valid(node):
+			continue
+		main._move_adventure_to_discard(node)
+	mission_card.set_meta("mission_progress_cards", [])
 
 static func apply_mission_cost(main: Node, card_data: Dictionary) -> void:
 	var req := get_mission_requirements(main, card_data)
@@ -345,7 +463,9 @@ static func apply_mission_cost(main: Node, card_data: Dictionary) -> void:
 static func get_mission_requirements(_main: Node, card_data: Dictionary) -> Dictionary:
 	var req := {
 		"defeat_enemies": 0,
-		"pay_coins": 0
+		"pay_coins": 0,
+		"heal_soldier": 0,
+		"discard_treasure_from_hand": 0
 	}
 	if card_data.has("mission") and card_data.get("mission", {}) is Dictionary:
 		var mission: Dictionary = card_data.get("mission", {})
@@ -357,10 +477,18 @@ static func get_mission_requirements(_main: Node, card_data: Dictionary) -> Dict
 		elif mtype == "defeat_enemies_and_pay_coins":
 			req["defeat_enemies"] = int(mission.get("count", 0))
 			req["pay_coins"] = int(mission.get("cost", 0))
+		elif mtype == "heal_soldier":
+			req["heal_soldier"] = int(mission.get("count", 1))
+		elif mtype == "discard_treasure_from_hand":
+			req["discard_treasure_from_hand"] = int(mission.get("count", 1))
 	if card_data.has("mission_defeat_enemies"):
 		req["defeat_enemies"] = max(req["defeat_enemies"], int(card_data.get("mission_defeat_enemies", 0)))
 	if card_data.has("mission_pay_coins"):
 		req["pay_coins"] = max(req["pay_coins"], int(card_data.get("mission_pay_coins", 0)))
+	if card_data.has("mission_heal_soldier"):
+		req["heal_soldier"] = max(req["heal_soldier"], int(card_data.get("mission_heal_soldier", 0)))
+	if card_data.has("mission_discard_treasure_from_hand"):
+		req["discard_treasure_from_hand"] = max(req["discard_treasure_from_hand"], int(card_data.get("mission_discard_treasure_from_hand", 0)))
 	return req
 
 static func report_mission_status(main: Node, card_data: Dictionary, completed: bool) -> void:
@@ -368,7 +496,38 @@ static func report_mission_status(main: Node, card_data: Dictionary, completed: 
 		return
 	var name := str(card_data.get("name", "Missione"))
 	if not completed:
-		main.hand_ui.call("set_info", "%s non completata." % name)
+		if bool(card_data.get("mission_track_by_stack", false)):
+			var progress: int = 0
+			var required: int = int(get_mission_requirements(main, card_data).get("defeat_enemies", 0))
+			for child in main.get_children():
+				if child is Node3D and bool((child as Node3D).get_meta("in_mission_side", false)):
+					var data: Dictionary = (child as Node3D).get_meta("card_data", {})
+					if str(data.get("id", "")) == str(card_data.get("id", "")):
+						progress = _get_mission_progress_count(child as Node3D)
+						break
+			main.hand_ui.call("set_info", "%s non completata (%d/%d)." % [name, progress, required])
+		elif int(get_mission_requirements(main, card_data).get("heal_soldier", 0)) > 0:
+			var progress_h: int = 0
+			var required_h: int = int(get_mission_requirements(main, card_data).get("heal_soldier", 0))
+			for child in main.get_children():
+				if child is Node3D and bool((child as Node3D).get_meta("in_mission_side", false)):
+					var data_h: Dictionary = (child as Node3D).get_meta("card_data", {})
+					if str(data_h.get("id", "")) == str(card_data.get("id", "")):
+						progress_h = _get_mission_heal_progress(child as Node3D)
+						break
+			main.hand_ui.call("set_info", "%s non completata (%d/%d)." % [name, progress_h, required_h])
+		elif int(get_mission_requirements(main, card_data).get("discard_treasure_from_hand", 0)) > 0:
+			var progress_d: int = 0
+			var required_d: int = int(get_mission_requirements(main, card_data).get("discard_treasure_from_hand", 0))
+			for child in main.get_children():
+				if child is Node3D and bool((child as Node3D).get_meta("in_mission_side", false)):
+					var data_d: Dictionary = (child as Node3D).get_meta("card_data", {})
+					if str(data_d.get("id", "")) == str(card_data.get("id", "")):
+						progress_d = _get_mission_discard_progress(child as Node3D)
+						break
+			main.hand_ui.call("set_info", "%s non completata (%d/%d)." % [name, progress_d, required_d])
+		else:
+			main.hand_ui.call("set_info", "%s non completata." % name)
 		return
 	var rewards: Array = card_data.get("reward_brown", [])
 	var silver: Array = card_data.get("reward_silver", [])
@@ -379,6 +538,94 @@ static func report_mission_status(main: Node, card_data: Dictionary, completed: 
 	if not rewards.is_empty():
 		text = "%s completata!\nPremio:\n- %s" % [name, "\n- ".join(rewards)]
 	main.hand_ui.call("set_info", text)
+
+static func request_heal_redirection(main: Node, amount: int, _source_code: String = "") -> bool:
+	if amount <= 0:
+		return false
+	var mission_card: Node3D = _get_first_heal_soldier_mission_card(main)
+	if mission_card == null or not is_instance_valid(mission_card):
+		return false
+	var req := get_mission_requirements(main, mission_card.get_meta("card_data", {}))
+	var required: int = max(1, int(req.get("heal_soldier", 1)))
+	if _get_mission_heal_progress(mission_card) >= required:
+		return false
+	if main.action_prompt_panel == null or main.action_prompt_label == null:
+		return false
+	main.pending_character_backpack_prompt_mode = "mission_heal_redirect"
+	main.pending_heal_redirect_amount = amount
+	main.action_prompt_label.text = main._ui_text("Soldato ferito: vuoi dirottare la cura al soldato?")
+	main.action_prompt_panel.visible = true
+	main._center_action_prompt()
+	return true
+
+static func resolve_heal_redirection_choice(main: Node, redirect_to_soldier: bool) -> void:
+	var amount: int = max(0, int(main.pending_heal_redirect_amount))
+	main.pending_heal_redirect_amount = 0
+	if amount <= 0:
+		return
+	if redirect_to_soldier:
+		var mission_card: Node3D = _get_first_heal_soldier_mission_card(main)
+		if mission_card != null and is_instance_valid(mission_card):
+			var req := get_mission_requirements(main, mission_card.get_meta("card_data", {}))
+			var required: int = max(1, int(req.get("heal_soldier", 1)))
+			var progress: int = _get_mission_heal_progress(mission_card)
+			var next_progress: int = min(required, progress + amount)
+			mission_card.set_meta("mission_heal_progress", next_progress)
+			if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+				main.hand_ui.call("set_info", main._ui_text("Soldato ferito: progresso missione %d/%d." % [next_progress, required]))
+			return
+	main._apply_heal_direct(amount)
+
+static func _get_first_heal_soldier_mission_card(main: Node) -> Node3D:
+	for child in main.get_children():
+		if not (child is Node3D):
+			continue
+		var card: Node3D = child as Node3D
+		if not bool(card.get_meta("in_mission_side", false)):
+			continue
+		var data: Dictionary = card.get_meta("card_data", {})
+		if str(data.get("type", "")).strip_edges().to_lower() != "missione":
+			continue
+		var req := get_mission_requirements(main, data)
+		if int(req.get("heal_soldier", 0)) <= 0:
+			continue
+		var required: int = max(1, int(req.get("heal_soldier", 1)))
+		if _get_mission_heal_progress(card) < required:
+			return card
+	return null
+
+static func _has_available_heal_redirect_mission(main: Node) -> bool:
+	return _get_first_heal_soldier_mission_card(main) != null
+
+static func on_treasure_discarded_from_hand(main: Node, _card_data: Dictionary) -> void:
+	var mission_card: Node3D = _get_first_discard_treasure_mission_card(main)
+	if mission_card == null or not is_instance_valid(mission_card):
+		return
+	var req := get_mission_requirements(main, mission_card.get_meta("card_data", {}))
+	var required: int = max(1, int(req.get("discard_treasure_from_hand", 1)))
+	var progress: int = _get_mission_discard_progress(mission_card)
+	var next_progress: int = min(required, progress + 1)
+	mission_card.set_meta("mission_discard_progress", next_progress)
+	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+		main.hand_ui.call("set_info", main._ui_text("Furto al magazzino: progresso missione %d/%d." % [next_progress, required]))
+
+static func _get_first_discard_treasure_mission_card(main: Node) -> Node3D:
+	for child in main.get_children():
+		if not (child is Node3D):
+			continue
+		var card: Node3D = child as Node3D
+		if not bool(card.get_meta("in_mission_side", false)):
+			continue
+		var data: Dictionary = card.get_meta("card_data", {})
+		if str(data.get("type", "")).strip_edges().to_lower() != "missione":
+			continue
+		var req := get_mission_requirements(main, data)
+		if int(req.get("discard_treasure_from_hand", 0)) <= 0:
+			continue
+		var required: int = max(1, int(req.get("discard_treasure_from_hand", 1)))
+		if _get_mission_discard_progress(card) < required:
+			return card
+	return null
 
 static func spawn_regno_del_male(main: Node) -> void:
 	var card: Node3D = main.CARD_SCENE.instantiate()

@@ -49,6 +49,7 @@ const CARD_EFFECT_DESCRIPTIONS := {
 	"halve_even_dice": "Dopo il lancio: dimezza i dadi pari.",
 	"add_red_die": "Aggiunge un dado rosso.",
 	"add_green_die": "Aggiunge un dado verde.",
+	"heal_1": "Cura 1 cuore (puo essere dirottata da missioni attive).",
 	"next_roll_plus_3": "Prima del lancio: +3 alla difficolta avventura.",
 	"reflect_damage_poison": "Quando perdi un cuore: riflette danno/veleno.",
 	"next_roll_minus_2_all_dice": "Prossimo lancio: -2 a tutti i dadi.",
@@ -238,6 +239,7 @@ var pending_adventure_sacrifice_slot_card: Node3D
 var character_ability_used_this_roll: bool = false
 var tyris_backpack_occupied: bool = false
 var pending_character_backpack_prompt_mode: String = ""
+var pending_heal_redirect_amount: int = 0
 var match_closed: bool = false
 var position_marker: Node3D
 var dragging_marker: bool = false
@@ -446,8 +448,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_confirm_action_prompt()
 			return
 		if action_prompt_no != null and action_prompt_no.get_global_rect().has_point(event.position):
+			if pending_character_backpack_prompt_mode == "mission_heal_redirect" and deck_rules != null and deck_rules.has_method("resolve_heal_redirection_choice"):
+				deck_rules.resolve_heal_redirection_choice(self, false)
 			_hide_action_prompt()
 			return
+	if action_prompt_panel != null and action_prompt_panel.visible and event is InputEventKey and event.pressed:
+		if event.keycode == KEY_ESCAPE:
+			get_tree().quit()
+		return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion:
@@ -1944,6 +1952,10 @@ func _confirm_character_backpack_prompt() -> void:
 	pending_character_backpack_prompt_mode = ""
 	if mode.is_empty():
 		return
+	if mode == "mission_heal_redirect":
+		if deck_rules != null and deck_rules.has_method("resolve_heal_redirection_choice"):
+			deck_rules.resolve_heal_redirection_choice(self, true)
+		return
 	if mode == "store":
 		if active_character_id != "character_sir_arthur_a" or phase_index != 0:
 			return
@@ -2974,6 +2986,8 @@ func _add_hand_card_to_treasure_market(card_data: Dictionary) -> void:
 	if not _is_treasure_card_data(card_data):
 		return
 	_add_treasure_card_data_to_market(card_data)
+	if deck_rules != null and deck_rules.has_method("on_treasure_discarded_from_hand"):
+		deck_rules.on_treasure_discarded_from_hand(self, card_data)
 
 func _is_treasure_card_data(card_data: Dictionary) -> bool:
 	if card_data.is_empty():
@@ -3841,6 +3855,26 @@ func _apply_player_heart_loss(amount: int) -> void:
 	_refresh_character_hearts_tokens()
 	if player_current_hearts <= 0:
 		_show_match_end_message("Game Over: hai finito i cuori.")
+
+func _apply_heal(amount: int, source_code: String = "") -> bool:
+	if amount <= 0:
+		return false
+	if deck_rules != null and deck_rules.has_method("request_heal_redirection"):
+		var handled: bool = bool(deck_rules.request_heal_redirection(self, amount, source_code))
+		if handled:
+			return true
+	return _apply_heal_direct(amount)
+
+func _apply_heal_direct(amount: int) -> bool:
+	if amount <= 0:
+		return false
+	if player_current_hearts >= player_max_hearts:
+		return false
+	player_current_hearts = min(player_max_hearts, player_current_hearts + amount)
+	_update_character_form_for_hearts()
+	_update_hand_ui_stats()
+	_refresh_character_hearts_tokens()
+	return true
 
 func _consume_equipped_prevent_heart_loss() -> bool:
 	for slot in equipment_slots:
