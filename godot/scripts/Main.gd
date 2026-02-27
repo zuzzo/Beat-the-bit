@@ -170,6 +170,7 @@ var player_gold: int = 30
 var player_tombstones: int = 0
 var player_experience: int = 0
 var enemies_defeated_total: int = 0
+var bosses_defeated_total: int = 0
 var pending_penalty_discards: int = 0
 var pending_discard_reason: String = ""
 var pending_discard_paid: bool = false

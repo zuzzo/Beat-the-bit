@@ -146,6 +146,8 @@ static func apply_battlefield_result(main: Node, card: Node3D, total: int) -> vo
 			var defeated_pos: Vector3 = card.global_position
 			if card_type == "scontro":
 				main.enemies_defeated_total += 1
+			elif card_type == "boss":
+				main.bosses_defeated_total += 1
 			main._report_battlefield_reward(card_data, total, difficulty)
 			var routed_to_mission: bool = false
 			if main.deck_rules != null and main.deck_rules.has_method("on_enemy_defeated"):

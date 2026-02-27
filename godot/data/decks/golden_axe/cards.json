@@ -231,16 +231,17 @@
         "name":  "Aiutare i bisognosi",
         "image":  "res://assets/cards/Golden Axe/Adventure/aiutare i bisognosi.png",
         "mission":  {
-                        "type":  "defeat_enemies",
-                        "count":  2
+                        "type":  "pay_coins",
+                        "cost":  5
                     },
         "reward_brown":  [
-                             "reward_xp_1"
+                             "reward_xp_4"
                          ],
         "reward_silver":  [
-
+                              "gain_heart"
                           ],
         "set":  "GoldenAxe",
+        "text":  "Missione: dona 5 monete al viandante. In Organizzazione puoi riscattare: +4 XP e cura 1 cuore.",
         "type":  "missione"
     },
     {
@@ -263,20 +264,22 @@
     },
     {
         "id":  "ga_mission_rapimento_reale",
-        "name":  "Rapimento reale",
+        "name":  "Salva i reali",
         "image":  "res://assets/cards/Golden Axe/Adventure/rapimento reale.png",
         "mission":  {
-                        "type":  "defeat_enemies_and_pay_coins",
-                        "count":  3,
-                        "cost":  4
+                        "type":  "defeat_bosses",
+                        "count":  2,
+                        "on_claim":  "summon_final_boss"
                     },
         "reward_brown":  [
-                             "reward_xp_5"
+
                          ],
         "reward_silver":  [
 
                           ],
         "set":  "GoldenAxe",
+        "mission_track_by_stack":  true,
+        "text":  "Missione: sconfiggi 2 Boss. Metti i Boss sconfitti sotto questa missione (anche in turni diversi). In Organizzazione puoi riscattarla per affrontare il Boss finale.",
         "type":  "missione"
     },
     {
