@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bg6rvhxbmmwiq"
-path="res://.godot/imported/velocità.png-e920a8738cf758785ece2acb151221ed.ctex"
+uid="uid://bmhkmv443ich3"
+path="res://.godot/imported/bandito a cavallo.png-966410020293ef000efdafc55f7df82e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/cards/ghost_n_goblins/treasure/velocità.png"
-dest_files=["res://.godot/imported/velocità.png-e920a8738cf758785ece2acb151221ed.ctex"]
+source_file="res://assets/cards/Golden Axe/bandito a cavallo.png"
+dest_files=["res://.godot/imported/bandito a cavallo.png-966410020293ef000efdafc55f7df82e.ctex"]
 
 [params]
 

@@ -156,10 +156,12 @@ func _add_quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, 
 
 func set_card_texture(texture_path: String) -> void:
 	if texture_path.is_empty():
+		push_warning("Card texture path vuoto: fallback materiale neutro.")
 		_set_neutral_material()
 		return
 	var texture := load(texture_path)
 	if texture == null:
+		push_warning("Texture carta non trovata: %s (fallback neutro)." % texture_path)
 		_set_neutral_material()
 		return
 	var mat := front_material.duplicate() as StandardMaterial3D

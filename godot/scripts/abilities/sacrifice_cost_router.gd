@@ -71,18 +71,43 @@ func apply(context: Dictionary) -> void:
 		context["cost_result"] = 1
 		context["handled"] = true
 		return
-	if code == "pay_coins_3":
-		if main.player_gold < 3:
+	if code.begins_with("pay_coins_"):
+		var amount_text := code.trim_prefix("pay_coins_")
+		var amount: int = int(amount_text)
+		if amount <= 0:
+			context["cost_result"] = 0
+			context["handled"] = true
+			return
+		if main.player_gold < amount:
 			if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-				main.hand_ui.call("set_info", main._ui_text("Costo non pagabile: servono 3 monete."))
+				main.hand_ui.call("set_info", main._ui_text("Costo non pagabile: servono %d monete." % amount))
 			context["cost_result"] = 0
 			context["handled"] = true
 			return
 		var coins_context := {
 			"main": main,
-			"amount": 3
+			"amount": amount
 		}
 		AbilityRegistry.apply("lose_coins", coins_context)
+		context["cost_result"] = 1
+		context["handled"] = true
+		return
+	if code.begins_with("pay_xp_"):
+		var amount_text := code.trim_prefix("pay_xp_")
+		var amount: int = int(amount_text)
+		if amount <= 0:
+			context["cost_result"] = 0
+			context["handled"] = true
+			return
+		if int(main.player_experience) < amount:
+			if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+				main.hand_ui.call("set_info", main._ui_text("Costo non pagabile: servono %d XP." % amount))
+			context["cost_result"] = 0
+			context["handled"] = true
+			return
+		main.player_experience = max(0, int(main.player_experience) - amount)
+		if main.hand_ui != null and main.hand_ui.has_method("set_experience"):
+			main.hand_ui.call("set_experience", main.player_experience)
 		context["cost_result"] = 1
 		context["handled"] = true
 		return

@@ -40,11 +40,17 @@ static func resolve_reward_tokens_for_recovery(main: Node) -> void:
 		var code := str(token.get_meta("reward_code", ""))
 		match code:
 			"reward_group_vaso_di_coccio":
-				await consume_token_and_draw_treasure(main, token, "vaso_di_coccio")
+				await consume_token_and_draw_treasure(main, token, "tier_1")
 			"reward_group_chest":
-				await consume_token_and_draw_treasure(main, token, "chest")
+				await consume_token_and_draw_treasure(main, token, "tier_2")
 			"reward_group_teca":
-				await consume_token_and_draw_treasure(main, token, "teca")
+				await consume_token_and_draw_treasure(main, token, "tier_3")
+			"reward_tier_1":
+				await consume_token_and_draw_treasure(main, token, "tier_1")
+			"reward_tier_2":
+				await consume_token_and_draw_treasure(main, token, "tier_2")
+			"reward_tier_3":
+				await consume_token_and_draw_treasure(main, token, "tier_3")
 			"reward_token_tombstone":
 				collect_tombstone_token(main, token, hud_target)
 			_:
@@ -109,6 +115,9 @@ static func flip_treasure_card_for_recovery(main: Node, card: Node3D) -> void:
 		card.set_meta("flip_rotate_on_lifted_axis", true)
 		card.call("flip_to_side", reveal_pos)
 		await main.get_tree().create_timer(1.45).timeout
+		if main.has_method("_is_card_flip_animating"):
+			while card != null and is_instance_valid(card) and bool(main.call("_is_card_flip_animating", card)):
+				await main.get_tree().process_frame
 	else:
 		card.global_position = reveal_pos
 	if card != null and is_instance_valid(card):

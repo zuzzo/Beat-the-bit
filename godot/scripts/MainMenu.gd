@@ -54,7 +54,13 @@ const EFFECT_DESCRIPTIONS := {
 	"bonus_damage_multiheart": "Dopo il danno, bonus contro nemici con piu cuori.",
 	"reset_hearts_and_dice": "Ripristina cuori e dadi base.",
 	"return_to_hand": "Ritorna in mano dopo l'uso.",
-	"discard_hand_card_1": "Scarta 1 carta dalla mano."
+	"discard_hand_card_1": "Scarta 1 carta dalla mano.",
+	"pay_coins_2": "Paga 2 monete.",
+	"pay_coins_3": "Paga 3 monete.",
+	"pay_coins_4": "Paga 4 monete.",
+	"pay_xp_2": "Paga 2 XP.",
+	"pay_xp_3": "Paga 3 XP.",
+	"pay_xp_4": "Paga 4 XP."
 }
 
 const TIMING_DESCRIPTIONS := {
@@ -148,6 +154,9 @@ func _load_cards() -> void:
 		var entry_set: String = str((entry as Dictionary).get("set", ""))
 		if not entry_set.is_empty() and entry_set != set_id:
 			continue
+		var normalized_type: String = _normalize_card_type(str((entry as Dictionary).get("type", "")))
+		if normalized_type != "":
+			(entry as Dictionary)["type"] = normalized_type
 		_cards.append(entry)
 
 func _build_adventure_index() -> void:
@@ -279,7 +288,7 @@ func _build_details(card: Dictionary) -> String:
 	var category: String = _category_for(card)
 	lines.append("Nome: %s" % str(card.get("name", "")))
 	lines.append("ID: %s" % str(card.get("id", "")))
-	lines.append("Tipo: %s" % str(card.get("type", "")))
+	lines.append("Tipo: %s" % _describe_card_type(str(card.get("type", ""))))
 	if card.has("difficulty"):
 		lines.append("Difficolta: %s" % str(card.get("difficulty")))
 	if card.has("hearts"):
@@ -314,6 +323,32 @@ func _build_details(card: Dictionary) -> String:
 			for entry in understood:
 				lines.append("  - %s" % entry)
 	return "\n".join(lines)
+
+func _describe_card_type(raw_type: String) -> String:
+	var t: String = raw_type.strip_edges().to_lower()
+	match t:
+		"scontro":
+			return "Scontro"
+		"concatenamento":
+			return "Concatenamento"
+		"maledizione":
+			return "Maledizione"
+		"missione":
+			return "Missione (icona zaino)"
+		"evento":
+			return "Evento"
+		"equipaggiamento":
+			return "Equipaggiamento"
+		"istantaneo":
+			return "Istantaneo"
+		"boss":
+			return "Boss"
+		"boss_finale":
+			return "Boss finale"
+		"personaggio":
+			return "Personaggio"
+		_:
+			return raw_type.strip_edges()
 
 func _describe_treasure_effects(card: Dictionary) -> Array[String]:
 	var out: Array[String] = []
@@ -500,7 +535,7 @@ func _on_preview_resized() -> void:
 
 
 func _category_for(card: Dictionary) -> String:
-	var ctype := str(card.get("type", ""))
+	var ctype := _normalize_card_type(str(card.get("type", "")))
 	if str(card.get("id", "")) == REGNO_ID:
 		return "single"
 	if ctype in ["scontro", "concatenamento", "maledizione", "evento", "missione"]:
@@ -510,6 +545,32 @@ func _category_for(card: Dictionary) -> String:
 	if ctype in ["boss", "boss_finale"]:
 		return "boss"
 	return "single"
+
+func _normalize_card_type(raw_type: String) -> String:
+	var t: String = raw_type.strip_edges().to_lower()
+	if t == "":
+		return ""
+	match t:
+		"encounter", "enemy", "adventure", "combat":
+			return "scontro"
+		"chain":
+			return "concatenamento"
+		"curse":
+			return "maledizione"
+		"mission", "missions", "missioni", "emissione", "emissioni", "zaino":
+			return "missione"
+		"event":
+			return "evento"
+		"equipment":
+			return "equipaggiamento"
+		"instant", "spell":
+			return "istantaneo"
+		"character":
+			return "personaggio"
+		"final_boss":
+			return "boss_finale"
+		_:
+			return t
 
 func _filter_match(filter_id: int, category: String) -> bool:
 	match filter_id:

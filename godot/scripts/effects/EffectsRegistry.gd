@@ -13,6 +13,17 @@ static func apply_direct_card_effect(main: Node, effect_name: String, _card_data
 		"deal_1_damage":
 			apply_direct_damage_to_battlefield(main, 1)
 			return true
+		"remove_one_blue_die":
+			main.blue_dice = max(0, int(main.blue_dice) - 1)
+			main.dice_count = main.DICE_FLOW.get_total_dice(main)
+			if not main.roll_pending_apply and not main.roll_in_progress:
+				main.DICE_FLOW.clear_dice_preview(main)
+				main.DICE_FLOW.spawn_dice_preview(main)
+			return true
+		"fendente_damage_10_12_return_hand":
+			return _apply_range_damage_and_return(main, 10, 12)
+		"sferzata_damage_7_9_return_hand":
+			return _apply_range_damage_and_return(main, 7, 9)
 		"discard_revealed_adventure":
 			main._discard_revealed_adventure_card()
 			return true
@@ -138,3 +149,21 @@ static func consume_next_roll_effects(main: Node, values: Array[int]) -> void:
 		return
 	for name in consumed:
 		main.post_roll_effects.erase(name)
+
+static func _apply_range_damage_and_return(main: Node, min_difficulty: int, max_difficulty: int) -> bool:
+	var battlefield: Node3D = main._get_battlefield_card()
+	if battlefield == null or not is_instance_valid(battlefield):
+		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+			main.hand_ui.call("set_info", main._ui_text("Nessun nemico in campo."))
+		return true
+	var card_data: Dictionary = battlefield.get_meta("card_data", {})
+	var difficulty: int = int(card_data.get("difficulty", 0))
+	if difficulty < min_difficulty or difficulty > max_difficulty:
+		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+			main.hand_ui.call("set_info", main._ui_text("Effetto valido solo su nemici difficolta %d-%d." % [min_difficulty, max_difficulty]))
+		return true
+	apply_direct_damage_to_battlefield(main, 1)
+	var source: Node3D = main.pending_action_source_card
+	if source != null and is_instance_valid(source):
+		main._force_return_equipped_to_hand(source)
+	return true

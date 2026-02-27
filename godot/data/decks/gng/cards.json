@@ -642,7 +642,7 @@
                     ],
         "group":  "chest",
         "id":  "treasure_velocita",
-        "image":  "res://assets/cards/ghost_n_goblins/treasure/velocitÃ .png",
+        "image":  "res://assets/cards/ghost_n_goblins/treasure/velocita.png",
         "name":  "Velocita",
         "set":  "GnG",
         "timed_effects":  [

@@ -13,7 +13,6 @@ var _turn_label: Label
 var _hearts_label: Label
 var _cards_label: Label
 var _gold_label: Label
-var _tokens_label: Label
 var _experience_label: Label
 var _token_icons_row: HBoxContainer
 var _next_phase_button: Button
@@ -172,15 +171,13 @@ func set_money(value: int) -> void:
 
 func set_tokens(value: int) -> void:
 	_tokens = max(value, 0)
-	if _tokens_label != null:
-		_tokens_label.text = _ui_text("Token Tombstone: %d" % _tokens)
 	if _token_icons_row != null:
 		for child in _token_icons_row.get_children():
 			child.queue_free()
 		for i in _tokens:
 			var icon := TextureRect.new()
 			icon.texture = TOMBSTONE_ICON
-			icon.custom_minimum_size = Vector2(26, 26)
+			icon.custom_minimum_size = Vector2(42, 42)
 			icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -380,55 +377,63 @@ func _create_hand_bar() -> void:
 	_left_title.add_theme_font_size_override("font_size", 30)
 	left_content.add_child(_left_title)
 
+	var stats_row := HBoxContainer.new()
+	stats_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_row.size_flags_vertical = Control.SIZE_FILL
+	stats_row.set("theme_override_constants/separation", 18)
+	left_content.add_child(stats_row)
+
+	var stats_left := VBoxContainer.new()
+	stats_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_left.size_flags_vertical = Control.SIZE_FILL
+	stats_left.set("theme_override_constants/separation", 2)
+	stats_row.add_child(stats_left)
+
+	var stats_right := VBoxContainer.new()
+	stats_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_right.size_flags_vertical = Control.SIZE_FILL
+	stats_right.set("theme_override_constants/separation", 2)
+	stats_row.add_child(stats_right)
+
 	_phase_label = Label.new()
 	_turn_label = Label.new()
 	_hearts_label = Label.new()
 	_cards_label = Label.new()
 	_gold_label = Label.new()
-	_tokens_label = Label.new()
 	_experience_label = Label.new()
 	_phase_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_turn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hearts_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cards_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_gold_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_tokens_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_experience_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_hearts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_cards_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_tokens_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_experience_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	left_content.add_child(_phase_label)
-	left_content.add_child(_turn_label)
-	left_content.add_child(_hearts_label)
-	left_content.add_child(_cards_label)
-	left_content.add_child(_gold_label)
-	left_content.add_child(_experience_label)
-	left_content.add_child(_tokens_label)
+	stats_left.add_child(_phase_label)
+	stats_left.add_child(_hearts_label)
+	stats_left.add_child(_cards_label)
+	stats_left.add_child(_experience_label)
+	stats_right.add_child(_turn_label)
+	stats_right.add_child(_gold_label)
 	_token_icons_row = HBoxContainer.new()
 	_token_icons_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_token_icons_row.alignment = BoxContainer.ALIGNMENT_BEGIN
-	_token_icons_row.set("theme_override_constants/separation", 4)
-	left_content.add_child(_token_icons_row)
+	_token_icons_row.set("theme_override_constants/separation", 8)
+	_token_icons_row.custom_minimum_size = Vector2(0, 46)
+	stats_right.add_child(_token_icons_row)
 	_apply_ui_font(_phase_label)
 	_apply_player_panel_font(_turn_label)
 	_apply_player_panel_font(_hearts_label)
 	_apply_player_panel_font(_cards_label)
 	_apply_player_panel_font(_gold_label)
 	_apply_player_panel_font(_experience_label)
-	_apply_player_panel_font(_tokens_label)
-
-	left_content.add_spacer(true)
-
-	_next_phase_button = Button.new()
-	_next_phase_button.text = _ui_text("Fase successiva")
-	_next_phase_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_next_phase_button.pressed.connect(_advance_phase)
-	_apply_player_panel_font(_next_phase_button)
-	left_content.add_child(_next_phase_button)
 
 	_left_panel.add_child(left_content)
 	add_child(_left_panel)
@@ -471,16 +476,31 @@ func _create_hand_bar() -> void:
 	right_style.border_width_right = 1
 	right_style.border_color = Color(1, 1, 1, 0.25)
 	_right_panel.add_theme_stylebox_override("panel", right_style)
+
+	var right_content := VBoxContainer.new()
+	right_content.mouse_filter = Control.MOUSE_FILTER_PASS
+	right_content.anchor_left = 0.0
+	right_content.anchor_right = 1.0
+	right_content.anchor_top = 0.0
+	right_content.anchor_bottom = 1.0
+	right_content.offset_left = 20.0
+	right_content.offset_right = -20.0
+	right_content.offset_top = 16.0
+	right_content.offset_bottom = -16.0
+	right_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right_content.set("theme_override_constants/separation", 10)
+
 	_right_title = Label.new()
 	_right_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_right_title.text = ""
+	_right_title.text = _ui_text("Info")
 	_right_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_right_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_right_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_right_title.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_right_title.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_apply_ui_font(_right_title)
 	_right_title.add_theme_font_size_override("font_size", 30)
-	_right_panel.add_child(_right_title)
+	right_content.add_child(_right_title)
 	_info_label = Label.new()
 	_info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_info_label.text = ""
@@ -492,7 +512,17 @@ func _create_hand_bar() -> void:
 	_info_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_apply_ui_font(_info_label)
 	_info_label.add_theme_font_size_override("font_size", 24)
-	_right_panel.add_child(_info_label)
+	right_content.add_child(_info_label)
+
+	_next_phase_button = Button.new()
+	_next_phase_button.text = _ui_text("Fase successiva")
+	_next_phase_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_next_phase_button.size_flags_vertical = Control.SIZE_SHRINK_END
+	_next_phase_button.pressed.connect(_advance_phase)
+	_apply_player_panel_font(_next_phase_button)
+	right_content.add_child(_next_phase_button)
+
+	_right_panel.add_child(right_content)
 	add_child(_right_panel)
 	set_tokens(_tokens)
 	set_experience(_experience)

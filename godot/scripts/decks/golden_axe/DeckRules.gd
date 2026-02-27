@@ -129,14 +129,112 @@ static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
 		main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: premio %s." % format_regno_reward(reward_code)))
 	return true
 
+static func try_open_map_actions(main: Node, card: Node3D) -> bool:
+	if main.regno_card == null or not is_instance_valid(main.regno_card):
+		return false
+	if card != main.regno_card:
+		return false
+	if main.phase_index != 0:
+		return true
+	if main.has_method("_show_map_actions_prompt"):
+		main._show_map_actions_prompt()
+	return true
+
+static func get_map_action_options(_main: Node) -> Array:
+	return [
+		{"code": "heal_1", "label": "Paga 3 monete: curi 1 cuore"},
+		{"code": "draw_tier_1", "label": "Paga 4 monete: pesca Carta I"},
+		{"code": "draw_tier_2", "label": "Paga 3 XP: pesca Carta II"},
+		{"code": "draw_tier_3", "label": "Paga 5 XP: pesca Carta III"},
+		{"code": "draw_boss", "label": "Paga 4 XP: pesca Boss"},
+		{"code": "summon_final_boss", "label": "Paga 12 XP: evoca Boss finale"}
+	]
+
+static func execute_map_action(main: Node, code: String) -> void:
+	var action := code.strip_edges().to_lower()
+	match action:
+		"heal_1":
+			if main.player_gold < 3:
+				_report_map_action_info(main, "Monete insufficienti (serve 3).")
+				return
+			if main.player_current_hearts >= main.player_max_hearts:
+				_report_map_action_info(main, "Sei gia a cuori massimi.")
+				return
+			main.player_gold -= 3
+			main.player_current_hearts = min(main.player_max_hearts, main.player_current_hearts + 1)
+			main._update_hand_ui_stats()
+			main._refresh_character_hearts_tokens()
+			_report_map_action_info(main, "Mappa: +1 cuore (costo 3 monete).")
+		"draw_tier_1":
+			if main.player_gold < 4:
+				_report_map_action_info(main, "Monete insufficienti (serve 4).")
+				return
+			main.player_gold -= 4
+			main._update_hand_ui_stats()
+			await main._draw_treasure_until_group("tier_1")
+			_report_map_action_info(main, "Mappa: pescata Carta I (costo 4 monete).")
+		"draw_tier_2":
+			if main.player_experience < 3:
+				_report_map_action_info(main, "XP insufficienti (serve 3).")
+				return
+			main.player_experience -= 3
+			main._update_hand_ui_stats()
+			await main._draw_treasure_until_group("tier_2")
+			_report_map_action_info(main, "Mappa: pescata Carta II (costo 3 XP).")
+		"draw_tier_3":
+			if main.player_experience < 5:
+				_report_map_action_info(main, "XP insufficienti (serve 5).")
+				return
+			main.player_experience -= 5
+			main._update_hand_ui_stats()
+			await main._draw_treasure_until_group("tier_3")
+			_report_map_action_info(main, "Mappa: pescata Carta III (costo 5 XP).")
+		"draw_boss":
+			if main.player_experience < 4:
+				_report_map_action_info(main, "XP insufficienti (serve 4).")
+				return
+			if main._get_top_boss_card() == null:
+				_report_map_action_info(main, "Nessun Boss disponibile nel mazzo.")
+				return
+			main.player_experience -= 4
+			main._update_hand_ui_stats()
+			await main._claim_boss_to_hand_from_regno()
+			_report_map_action_info(main, "Mappa: pescato Boss (costo 4 XP).")
+		"summon_final_boss":
+			if main.player_experience < 12:
+				_report_map_action_info(main, "XP insufficienti (serve 12).")
+				return
+			if main.regno_final_boss_spawned:
+				_report_map_action_info(main, "Boss finale gia evocato.")
+				return
+			if main._get_blocking_adventure_card() != null:
+				_report_map_action_info(main, "C'e gia un nemico in campo.")
+				return
+			main.player_experience -= 12
+			main._update_hand_ui_stats()
+			main._reveal_final_boss_from_regno()
+			_report_map_action_info(main, "Mappa: evocato Boss finale (costo 12 XP).")
+		_:
+			_report_map_action_info(main, "Azione mappa non riconosciuta: %s" % code)
+
+static func _report_map_action_info(main: Node, text: String) -> void:
+	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+		main.hand_ui.call("set_info", main._ui_text(text))
+
 static func _apply_regno_reward(main: Node, code: String) -> void:
 	match code:
 		"reward_group_vaso_di_coccio":
-			_claim_treasure_from_group(main, "vaso_di_coccio")
+			_claim_treasure_from_group(main, "tier_1")
 		"reward_group_chest":
-			_claim_treasure_from_group(main, "chest")
+			_claim_treasure_from_group(main, "tier_2")
 		"reward_group_teca":
-			_claim_treasure_from_group(main, "teca")
+			_claim_treasure_from_group(main, "tier_3")
+		"reward_tier_1":
+			_claim_treasure_from_group(main, "tier_1")
+		"reward_tier_2":
+			_claim_treasure_from_group(main, "tier_2")
+		"reward_tier_3":
+			_claim_treasure_from_group(main, "tier_3")
 		"gain_heart":
 			if main.player_current_hearts < main.player_max_hearts:
 				main.player_current_hearts = min(main.player_max_hearts, main.player_current_hearts + 1)
@@ -424,6 +522,12 @@ static func format_regno_reward(code: String) -> String:
 			return "Chest"
 		"reward_group_teca":
 			return "Teca"
+		"reward_tier_1":
+			return "Carta I"
+		"reward_tier_2":
+			return "Carta II"
+		"reward_tier_3":
+			return "Carta III"
 		"gain_heart":
 			return "Cuore"
 		"boss":

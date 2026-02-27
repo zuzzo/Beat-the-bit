@@ -41,6 +41,9 @@ func load_cards(deck_id: String = "") -> void:
 		var card_set: String = str((entry as Dictionary).get("set", ""))
 		if card_set != set_id:
 			continue
+		var normalized_type: String = _normalize_card_type(str((entry as Dictionary).get("type", "")))
+		if normalized_type != "":
+			(entry as Dictionary)["type"] = normalized_type
 		cards.append(entry)
 		var ctype := str(entry.get("type", ""))
 		match ctype:
@@ -62,3 +65,29 @@ func load_cards(deck_id: String = "") -> void:
 				cards_characters.append(entry)
 			_:
 				pass
+
+func _normalize_card_type(raw_type: String) -> String:
+	var t: String = raw_type.strip_edges().to_lower()
+	if t == "":
+		return ""
+	match t:
+		"encounter", "enemy", "adventure", "combat":
+			return "scontro"
+		"chain":
+			return "concatenamento"
+		"curse":
+			return "maledizione"
+		"mission", "missions", "missioni", "emissione", "emissioni", "zaino":
+			return "missione"
+		"event":
+			return "evento"
+		"equipment":
+			return "equipaggiamento"
+		"instant", "spell":
+			return "istantaneo"
+		"character":
+			return "personaggio"
+		"final_boss":
+			return "boss_finale"
+		_:
+			return t

@@ -19,6 +19,8 @@ static func get_roll_total_with_chain_bonus(main: Node) -> int:
 	var total: int = int(main.last_roll_total)
 	if main.pending_chain_bonus != 0:
 		total += int(main.pending_chain_bonus)
+	if main.has_method("_get_equipped_roll_total_modifier"):
+		total += int(main.call("_get_equipped_roll_total_modifier"))
 	return total
 
 static func consume_chain_bonus(main: Node) -> void:

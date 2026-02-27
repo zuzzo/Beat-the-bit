@@ -197,6 +197,10 @@ static func reposition_adventure_discard_stack(main: Node) -> void:
 static func move_adventure_to_discard(main: Node, card: Node3D) -> void:
 	if card == null or not is_instance_valid(card):
 		return
+	var slot_die: Node3D = card.get_meta("sacrifice_slot_die", null) as Node3D
+	if slot_die != null and is_instance_valid(slot_die):
+		slot_die.queue_free()
+	card.set_meta("sacrifice_slot_die", null)
 	for child in card.get_children():
 		if child is Node3D and child.has_meta("battlefield_heart_token"):
 			child.queue_free()
