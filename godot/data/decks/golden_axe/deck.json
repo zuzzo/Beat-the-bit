@@ -11,14 +11,14 @@
     "single": "res://assets/cards/Golden Axe/Singles"
   },
   "assets": {
-    "adventure_back": "res://assets/cards/Golden Axe/Singles/retro.png",
-    "boss_back": "res://assets/cards/Golden Axe/Singles/retro.png",
+    "adventure_back": "res://assets/cards/Golden Axe/Adventure/Back_adventure.png",
+    "boss_back": "res://assets/cards/Golden Axe/Boss/back_Boss.png",
     "character_front": "res://assets/cards/Golden Axe/Singles/Tyris Flare.png",
     "character_front_b": "res://assets/cards/Golden Axe/Singles/Gilius Thunderhead.png",
-    "character_back": "res://assets/cards/Golden Axe/Singles/retro.png",
+    "character_back": "res://assets/cards/Golden Axe/Singles/back_personaggio.png",
     "regno_front": "res://assets/cards/Golden Axe/Singles/mappa.png",
-    "regno_back": "res://assets/cards/Golden Axe/Singles/retro.png",
+    "regno_back": "res://assets/cards/Golden Axe/Singles/back_regno del male.png",
     "final_boss_front": "res://assets/cards/Golden Axe/Singles/death adder.png",
-    "treasure_back": "res://assets/cards/Golden Axe/Singles/retro.png"
+    "treasure_back": "res://assets/cards/Golden Axe/Treasure/back_treasure.png"
   }
 }

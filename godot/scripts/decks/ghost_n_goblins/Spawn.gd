@@ -24,6 +24,8 @@ static func spawn_treasure_cards(main: Node) -> void:
 		card.set_meta("in_treasure_market", false)
 		card.set_meta("stack_index", i)
 		var image_path := str(treasures[i].get("image", ""))
+		if card.has_method("set_texture_flip_x"):
+			card.call_deferred("set_texture_flip_x", true)
 		if not image_path.is_empty() and card.has_method("set_card_texture"):
 			card.call_deferred("set_card_texture", image_path)
 		if card.has_method("set_back_texture"):
@@ -56,7 +58,7 @@ static func spawn_adventure_cards(main: Node) -> void:
 		card.set_meta("stack_index", i)
 		var image_path: String = main._get_adventure_image_path(adventures[i])
 		if card.has_method("set_texture_flip_x"):
-			card.call_deferred("set_texture_flip_x", false)
+			card.call_deferred("set_texture_flip_x", true)
 		if image_path != "" and card.has_method("set_card_texture"):
 			card.call_deferred("set_card_texture", image_path)
 		if card.has_method("set_back_texture"):

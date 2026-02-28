@@ -159,7 +159,7 @@ var top_sorting_offset: float = 0.0
 var equipment_slots: Array[Area3D] = []
 var equipment_slots_root: Node3D
 var equipment_slots_y_offset: float = 0.02
-var equipment_slots_z_offset: float = 1.2
+var equipment_slots_z_offset: float = 2.25
 const CARD_CENTER_X_OFFSET := 0.7
 const EQUIP_SLOT_WIDTH := 1.4
 const EQUIP_SLOT_HEIGHT := 2.0
@@ -292,7 +292,9 @@ var chain_row_count: int = 0
 var discarded_adventure_count: int = 0
 var is_adventure_stack_hovered: bool = false
 var ADVENTURE_BACK := "res://assets/cards/ghost_n_goblins/adventure/Back_adventure.png"
-const MISSION_SIDE_OFFSET := Vector3(1.6, 0.0, 0.0)
+const MISSION_SIDE_OFFSET := Vector3(3.6, 0.0, 0.0)
+const MISSION_SIDE_SPACING_X := 1.55
+const MISSION_SIDE_Y_STEP := 0.01
 const EVENT_ROW_SPACING := 1.6
 const CHAIN_ROW_SPACING := 0.9
 const CHAIN_ROW_OFFSET := Vector3(-1.6, 0.0, 0.0)
@@ -787,6 +789,7 @@ func _process(_delta: float) -> void:
 		_center_flip_choice_prompt()
 	_update_coord_label()
 	_update_regno_overlay()
+	_update_completed_mission_highlights()
 	_update_adventure_value_box()
 	_update_coin_total_label()
 
@@ -1295,8 +1298,6 @@ func _try_spend_tombstone_on_regno(card: Node3D) -> bool:
 	return deck_rules.try_spend_tombstone_on_regno(self, card)
 
 func _try_show_map_actions_prompt(card: Node3D) -> bool:
-	if str(GameConfig.selected_deck_id).strip_edges().to_lower() != "golden_axe":
-		return false
 	if deck_rules == null or not deck_rules.has_method("try_open_map_actions"):
 		return false
 	return deck_rules.try_open_map_actions(self, card)
@@ -2321,6 +2322,30 @@ func _get_mission_requirements(card_data: Dictionary) -> Dictionary:
 func _report_mission_status(card_data: Dictionary, completed: bool) -> void:
 	deck_rules.report_mission_status(self, card_data, completed)
 
+func _update_completed_mission_highlights() -> void:
+	if deck_rules == null:
+		return
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		var card := child as Node3D
+		if not bool(card.get_meta("in_mission_side", false)):
+			if card.has_method("set_mission_completed_blink"):
+				card.call("set_mission_completed_blink", false)
+			continue
+		var card_data: Dictionary = card.get_meta("card_data", {})
+		if card_data.is_empty():
+			if card.has_method("set_mission_completed_blink"):
+				card.call("set_mission_completed_blink", false)
+			continue
+		var completed := false
+		if deck_rules.has_method("is_mission_completed_for_visual"):
+			completed = bool(deck_rules.call("is_mission_completed_for_visual", self, card, card_data))
+		else:
+			completed = _is_mission_completed(card_data)
+		if card.has_method("set_mission_completed_blink"):
+			card.call("set_mission_completed_blink", completed)
+
 func _resize_adventure_prompt() -> void:
 	ADVENTURE_PROMPT.resize(self)
 
@@ -3166,11 +3191,14 @@ func _start_pending_adventure_sacrifice_die_removal_choice() -> void:
 		return
 	if pending_adventure_sacrifice_remove_after_roll_count <= 0:
 		return
-	var available: int = max(0, int(last_roll_values.size()))
+	var available: int = _count_selectable_roll_dice_for_mode("sacrifice_remove")
 	if available <= 0:
 		pending_adventure_sacrifice_remove_after_roll_count = 0
 		pending_adventure_sacrifice_remove_choice_count = 0
 		pending_adventure_sacrifice_sequence_active = false
+		pending_adventure_sacrifice_slot_card = null
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Nessun dado blu disponibile da rimuovere."))
 		return
 	pending_adventure_sacrifice_remove_choice_count = min(pending_adventure_sacrifice_remove_after_roll_count, available)
 	pending_adventure_sacrifice_remove_after_roll_count = 0
@@ -3191,6 +3219,19 @@ func _center_drop_half_prompt() -> void:
 func _hide_drop_half_prompt() -> void:
 	if dice_drop_panel != null:
 		dice_drop_panel.visible = false
+
+func _count_selectable_roll_dice_for_mode(mode: String) -> int:
+	var target_mode := mode.strip_edges().to_lower()
+	if target_mode == "sacrifice_remove":
+		var count := 0
+		for die_any in active_dice:
+			var die := die_any as RigidBody3D
+			if die == null or not is_instance_valid(die):
+				continue
+			if die.has_method("get_dice_type") and str(die.call("get_dice_type")) == "blue":
+				count += 1
+		return count
+	return max(0, int(last_roll_values.size()))
 
 func _confirm_drop_half_selection() -> void:
 	var mode := dice_drop_mode
@@ -4381,10 +4422,15 @@ func _apply_character_texture_override() -> void:
 		texture_path = curse_texture_override
 	elif active_character_id == "character_sir_arthur_b":
 		texture_path = CHARACTER_FRONT_B
-	if character_card.has_method("set_card_texture"):
-		character_card.call_deferred("set_card_texture", texture_path)
-	if character_card.has_method("set_face_up"):
-		character_card.call_deferred("set_face_up", true)
+	if character_card.has_method("flip_in_place_with_textures"):
+		character_card.call_deferred("flip_in_place_with_textures", texture_path, texture_path, true, true)
+	elif character_card.has_method("flip_in_place_with_front_texture"):
+		character_card.call_deferred("flip_in_place_with_front_texture", texture_path)
+	else:
+		if character_card.has_method("set_card_texture"):
+			character_card.call_deferred("set_card_texture", texture_path)
+		if character_card.has_method("set_face_up"):
+			character_card.call_deferred("set_face_up", true)
 	_refresh_character_backpack_marker()
 
 func _report_battlefield_reward(card_data: Dictionary, total: int, difficulty: int) -> void:
@@ -4577,7 +4623,7 @@ func _try_transform_character(card: Node3D) -> bool:
 		return false
 	if card != character_card:
 		return false
-	if phase_index == 2:
+	if phase_index != 0:
 		return false
 	var current_entry: Dictionary = _get_character_entry(active_character_id)
 	if current_entry.is_empty():
@@ -4721,12 +4767,11 @@ func _reposition_equipment_slots() -> void:
 		return
 	var total_width := (count * EQUIP_SLOT_WIDTH) + ((count - 1) * EQUIP_SLOT_SPACING)
 	var start_x := -(total_width * 0.5) + (EQUIP_SLOT_WIDTH * 0.5)
-	var base_z := equipment_slots_z_offset
 	for i in count:
 		var slot := equipment_slots[i]
 		if slot == null:
 			continue
-		slot.position = Vector3(start_x + i * (EQUIP_SLOT_WIDTH + EQUIP_SLOT_SPACING), 0.0, base_z)
+		slot.position = Vector3(start_x + i * (EQUIP_SLOT_WIDTH + EQUIP_SLOT_SPACING), 0.0, 0.0)
 
 func _get_character_max_slots() -> int:
 	if not curse_stats_override.is_empty():

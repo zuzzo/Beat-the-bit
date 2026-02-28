@@ -176,8 +176,12 @@ static func schedule_next_chain_reveal(main: Node) -> void:
 	main._confirm_adventure_prompt()
 
 static func get_next_mission_side_pos(main: Node) -> Vector3:
-	var base := Vector3(main.character_pos.x + main.MISSION_SIDE_OFFSET.x, main.adventure_reveal_pos.y, main.character_pos.z + main.MISSION_SIDE_OFFSET.z)
-	var pos := base + Vector3(0.0, main.mission_side_count * main.REVEALED_Y_STEP, 0.0)
+	var base := Vector3(
+		main.character_pos.x + main.MISSION_SIDE_OFFSET.x,
+		main.character_pos.y + main.MISSION_SIDE_Y_STEP,
+		main.character_pos.z + main.MISSION_SIDE_OFFSET.z
+	)
+	var pos := base + Vector3(main.mission_side_count * main.MISSION_SIDE_SPACING_X, main.mission_side_count * main.MISSION_SIDE_Y_STEP, 0.0)
 	main.mission_side_count += 1
 	return pos
 
@@ -234,6 +238,9 @@ static func is_mission_completed(main: Node, card_data: Dictionary) -> bool:
 	if coins_required > 0 and main.player_gold < coins_required:
 		return false
 	return true
+
+static func is_mission_completed_for_visual(main: Node, _card: Node3D, card_data: Dictionary) -> bool:
+	return is_mission_completed(main, card_data)
 
 static func apply_mission_cost(main: Node, card_data: Dictionary) -> void:
 	var req := get_mission_requirements(main, card_data)

@@ -66,76 +66,23 @@ static func consume_next_roll_effects(_main: Node, _values: Array[int]) -> void:
 
 static func create_regno_reward_label(main: Node, ui: CanvasLayer) -> void:
 	main.regno_reward_label = Label.new()
-	main.regno_reward_label.text = main._ui_text("Regno: -")
+	main.regno_reward_label.text = main._ui_text("Mappa: clic per azioni")
 	main.regno_reward_label.position = Vector2(20, 110)
 	ui.add_child(main.regno_reward_label)
 
 static func try_advance_regno_track(main: Node) -> void:
-	# Advance only when leaving adventure with no unresolved blocking enemy.
-	if main._get_blocking_adventure_card() != null:
-		return
-	if main.regno_card == null or not is_instance_valid(main.regno_card):
-		return
-	if main.regno_track_rewards.is_empty():
-		return
-	var max_index: int = main.regno_track_rewards.size() - 1
-	if main.regno_track_index >= max_index:
-		return
-	main.regno_track_index += 1
-	update_regno_reward_label(main)
+	return
 
 static func try_spend_tombstone_on_regno(main: Node, card: Node3D) -> bool:
-	if main.regno_card == null or not is_instance_valid(main.regno_card):
-		return false
-	if card != main.regno_card:
-		return false
-	if main.player_tombstones <= 0:
-		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-			main.hand_ui.call("set_info", main._ui_text("Non hai token Tombstone da spendere."))
-		return true
-	if main.regno_track_rewards.is_empty():
-		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-			main.hand_ui.call("set_info", main._ui_text("Tracciato Regno non disponibile."))
-		return true
-	var max_index: int = main.regno_track_rewards.size() - 1
-	if main.regno_track_index >= max_index:
-		var final_code := str(main.regno_track_rewards[main.regno_track_index])
-		if final_code == "boss_finale":
-			if main.regno_final_boss_spawned:
-				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-					main.hand_ui.call("set_info", main._ui_text("Boss finale gia evocato."))
-				return true
-			if main._get_blocking_adventure_card() != null:
-				if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-					main.hand_ui.call("set_info", main._ui_text("C'e gia un nemico in campo."))
-				return true
-			main.player_tombstones -= 1
-			if main.hand_ui != null and main.hand_ui.has_method("set_tokens"):
-				main.hand_ui.call("set_tokens", main.player_tombstones)
-			main._reveal_final_boss_from_regno()
-			if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-				main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: evocato Boss finale."))
-			return true
-		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-			main.hand_ui.call("set_info", main._ui_text("Il Regno del Male e gia al massimo."))
-		return true
-	main.player_tombstones -= 1
-	update_regno_reward_label(main)
-	_apply_regno_reward(main, str(main.regno_track_rewards[main.regno_track_index]))
-	if main.hand_ui != null and main.hand_ui.has_method("set_tokens"):
-		main.hand_ui.call("set_tokens", main.player_tombstones)
-	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-		var reward_code := str(main.regno_track_rewards[main.regno_track_index])
-		main.hand_ui.call("set_info", main._ui_text("Speso 1 Tombstone: premio %s." % format_regno_reward(reward_code)))
-	return true
+	return false
 
 static func try_open_map_actions(main: Node, card: Node3D) -> bool:
 	if main.regno_card == null or not is_instance_valid(main.regno_card):
 		return false
 	if card != main.regno_card:
 		return false
-	if main.phase_index != 0 and main.phase_index != 1:
-		return true
+	if main.phase_index != 0:
+		return false
 	if main.has_method("_show_map_actions_prompt"):
 		main._show_map_actions_prompt()
 	return true
@@ -276,8 +223,12 @@ static func schedule_next_chain_reveal(main: Node) -> void:
 	main._confirm_adventure_prompt()
 
 static func get_next_mission_side_pos(main: Node) -> Vector3:
-	var base := Vector3(main.character_pos.x + main.MISSION_SIDE_OFFSET.x, main.adventure_reveal_pos.y, main.character_pos.z + main.MISSION_SIDE_OFFSET.z)
-	var pos := base + Vector3(0.0, main.mission_side_count * main.REVEALED_Y_STEP, 0.0)
+	var base := Vector3(
+		main.character_pos.x + main.MISSION_SIDE_OFFSET.x,
+		main.character_pos.y + main.MISSION_SIDE_Y_STEP,
+		main.character_pos.z + main.MISSION_SIDE_OFFSET.z
+	)
+	var pos := base + Vector3(main.mission_side_count * main.MISSION_SIDE_SPACING_X, main.mission_side_count * main.MISSION_SIDE_Y_STEP, 0.0)
 	main.mission_side_count += 1
 	return pos
 
@@ -347,6 +298,9 @@ static func is_mission_completed(main: Node, card_data: Dictionary) -> bool:
 	if discard_treasure_required > 0:
 		return false
 	return true
+
+static func is_mission_completed_for_visual(main: Node, card: Node3D, card_data: Dictionary) -> bool:
+	return _is_mission_completed_for_card(main, card, card_data)
 
 static func _is_mission_completed_for_card(main: Node, card: Node3D, card_data: Dictionary) -> bool:
 	if bool(card_data.get("mission_track_by_stack", false)):
@@ -723,28 +677,18 @@ static func spawn_regno_del_male(main: Node) -> void:
 	main.regno_card = card
 
 static func setup_regno_overlay(main: Node) -> void:
-	main.regno_track_nodes = get_regno_track_nodes(main)
-	main.regno_track_rewards = get_regno_track_rewards(main)
-	_ensure_regno_outline(main)
+	main.regno_track_nodes = []
+	main.regno_track_rewards = []
+	main.regno_track_index = 0
+	var outline := main.get_meta("regno_outline", null) as MeshInstance3D
+	if outline != null and outline.is_inside_tree():
+		outline.queue_free()
+	main.set_meta("regno_outline", null)
 
 static func build_regno_boxes(main: Node) -> void:
 	return
 
 static func update_regno_overlay(main: Node) -> void:
-	if main.regno_card == null or not is_instance_valid(main.regno_card):
-		return
-	if main.regno_track_nodes.is_empty():
-		return
-	_ensure_regno_outline(main)
-	main.regno_blink_time = Time.get_ticks_msec() / 1000.0
-	var alpha: float = 0.25 + 0.55 * abs(sin(main.regno_blink_time * 3.0))
-	var outline := main.get_meta("regno_outline", null) as MeshInstance3D
-	if outline != null and outline.is_inside_tree():
-		var mat := outline.material_override as ShaderMaterial
-		if mat != null:
-			mat.set_shader_parameter("border_color", Color(1.0, 0.9, 0.2, alpha))
-		var data: Dictionary = main.regno_track_nodes[main.regno_track_index]
-		_update_regno_outline_transform(main, outline, data)
 	update_regno_reward_label(main)
 
 static func _ensure_regno_outline(main: Node) -> void:
@@ -809,11 +753,7 @@ static func _get_regno_border_texture() -> Texture2D:
 static func update_regno_reward_label(main: Node) -> void:
 	if main.regno_reward_label == null:
 		return
-	if main.regno_track_rewards.is_empty() or main.regno_track_index < 0 or main.regno_track_index >= main.regno_track_rewards.size():
-		main.regno_reward_label.text = main._ui_text("Regno: -")
-		return
-	var code := str(main.regno_track_rewards[main.regno_track_index])
-	main.regno_reward_label.text = main._ui_text("Regno: %s" % format_regno_reward(code))
+	main.regno_reward_label.text = main._ui_text("Mappa: clic per azioni")
 
 static func get_regno_track_nodes(_main: Node) -> Array:
 	for entry in CardDatabase.cards_shared:

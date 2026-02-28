@@ -14,6 +14,10 @@ var flip_uv_x: bool = false
 var front_material: StandardMaterial3D
 var back_material: StandardMaterial3D
 var side_material: StandardMaterial3D
+var mission_completed_blink: bool = false
+var mission_completed_blink_time: float = 0.0
+var short_edge_pivot_active: bool = false
+var back_flip_uv_x: bool = false
 
 const CARD_SIZE: Vector2 = Vector2(1.4, 2.0)
 const CARD_THICKNESS: float = 0.04
@@ -22,6 +26,8 @@ func _ready() -> void:
 	base_scale = scale
 	base_mesh_scale = mesh.scale
 	_initialize_card_materials()
+	if outline.material_override is ShaderMaterial:
+		outline.material_override = (outline.material_override as ShaderMaterial).duplicate()
 	mesh.mesh = _build_card_mesh(CARD_SIZE, CARD_THICKNESS)
 	mesh.set_surface_override_material(0, front_material)
 	mesh.set_surface_override_material(1, back_material)
@@ -76,10 +82,10 @@ func _build_card_mesh(size: Vector2, thickness: float) -> ArrayMesh:
 		Vector3(-half_w, -half_h, -half_t),
 		Vector3(-half_w, half_h, -half_t),
 		Vector3(half_w, half_h, -half_t),
-		Vector2(0.0, 1.0),
 		Vector2(1.0, 1.0),
-		Vector2(1.0, 0.0),
+		Vector2(0.0, 1.0),
 		Vector2(0.0, 0.0),
+		Vector2(1.0, 0.0),
 		Vector3(0.0, 0.0, -1.0)
 	)
 	st_back.commit(mesh_out)
@@ -188,6 +194,31 @@ func _set_neutral_material() -> void:
 func set_highlighted(active: bool) -> void:
 	outline.visible = active
 
+func set_mission_completed_blink(active: bool) -> void:
+	mission_completed_blink = active
+	if not active:
+		mission_completed_blink_time = 0.0
+		outline.visible = false
+		return
+	outline.visible = true
+	_update_mission_completed_outline(0.0)
+
+func _process(delta: float) -> void:
+	if not mission_completed_blink:
+		return
+	mission_completed_blink_time += delta
+	_update_mission_completed_outline(mission_completed_blink_time)
+
+func _update_mission_completed_outline(time_value: float) -> void:
+	if outline == null:
+		return
+	outline.visible = true
+	var mat := outline.material_override as ShaderMaterial
+	if mat == null:
+		return
+	var alpha: float = 0.35 + 0.55 * abs(sin(time_value * 4.5))
+	mat.set_shader_parameter("border_color", Color(1.0, 0.92, 0.18, alpha))
+
 func set_dragging(active: bool) -> void:
 	if active:
 		mesh.sorting_offset = 100.0
@@ -207,6 +238,58 @@ func set_face_up(value: bool) -> void:
 
 func is_face_up_now() -> bool:
 	return is_face_up
+
+func flip_in_place_with_textures(front_texture_path: String, back_texture_path: String = "", front_flip_x: bool = false, back_flip_x: bool = false) -> void:
+	if is_animating:
+		return
+	is_animating = true
+	_prepare_short_edge_flip_rest_pose()
+	_activate_short_edge_pivot()
+	var start_pos := global_position
+	var lift_pos := start_pos + Vector3(0.0, 0.7, 0.0)
+	var resolved_back_texture := back_texture_path if not back_texture_path.is_empty() else front_texture_path
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(self, "global_position", lift_pos, 0.24)
+	tween.tween_property(pivot, "rotation:y", -PI * 0.5, 0.27)
+	tween.tween_callback(func() -> void:
+		set_face_up(false)
+		set_texture_flip_x(front_flip_x)
+		set_card_texture(front_texture_path)
+		set_back_texture_flip_x(back_flip_x)
+		set_back_texture(resolved_back_texture)
+	)
+	tween.tween_property(pivot, "rotation:y", -PI, 0.27)
+	tween.tween_property(self, "global_position", start_pos, 0.24)
+	tween.tween_callback(func() -> void:
+		global_position = start_pos
+		is_animating = false
+	)
+
+func flip_in_place_with_front_texture(texture_path: String) -> void:
+	flip_in_place_with_textures(texture_path, texture_path, true, true)
+
+func _prepare_short_edge_flip_rest_pose() -> void:
+	_activate_short_edge_pivot()
+	if absf(absf(pivot.rotation.y) - PI) <= 0.01:
+		pivot.rotation = Vector3.ZERO
+		set_face_up(true)
+	else:
+		pivot.rotation = Vector3.ZERO
+
+func _activate_short_edge_pivot() -> void:
+	if short_edge_pivot_active:
+		return
+	short_edge_pivot_active = true
+	var half_width := CARD_SIZE.x * 0.5
+	var half_height := CARD_SIZE.y * 0.5
+	pivot.position.x = half_width
+	pivot.position.y = -half_height
+	for child in pivot.get_children():
+		if child is Node3D:
+			var node := child as Node3D
+			node.position.x -= half_width
+			node.position.y += half_height
 
 func flip_to_side(target_position: Vector3) -> void:
 	if is_animating:
@@ -262,8 +345,15 @@ func set_back_texture(texture_path: String) -> void:
 	var mat := back_material.duplicate() as StandardMaterial3D
 	mat.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
 	mat.albedo_texture = texture
+	mat.uv1_scale = Vector3(-1.0, 1.0, 1.0) if back_flip_uv_x else Vector3(1.0, 1.0, 1.0)
 	back_material = mat
 	_apply_face_materials()
+
+func set_back_texture_flip_x(value: bool) -> void:
+	back_flip_uv_x = value
+	if back_material != null:
+		back_material.uv1_scale = Vector3(-1.0, 1.0, 1.0) if back_flip_uv_x else Vector3(1.0, 1.0, 1.0)
+		_apply_face_materials()
 
 func _apply_face_materials() -> void:
 	if mesh == null:

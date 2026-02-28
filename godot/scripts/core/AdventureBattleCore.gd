@@ -7,7 +7,7 @@ static func get_effective_difficulty(main: Node, card_data: Dictionary) -> Dicti
 	for effect in main.post_roll_effects:
 		var effect_name := str(effect)
 		if effect_name == "next_roll_plus_3":
-			modifier -= 3
+			modifier += 3
 	var effective := base + modifier
 	return {
 		"base": base,
@@ -15,13 +15,49 @@ static func get_effective_difficulty(main: Node, card_data: Dictionary) -> Dicti
 		"effective": effective
 	}
 
+static func get_roll_total_modifier(main: Node) -> int:
+	var modifier := 0
+	if main.pending_chain_bonus != 0:
+		modifier += int(main.pending_chain_bonus)
+	if main.has_method("_get_equipped_roll_total_modifier"):
+		modifier += int(main.call("_get_equipped_roll_total_modifier"))
+	return modifier
+
 static func get_roll_total_with_chain_bonus(main: Node) -> int:
 	var total: int = int(main.last_roll_total)
-	if main.pending_chain_bonus != 0:
-		total += int(main.pending_chain_bonus)
-	if main.has_method("_get_equipped_roll_total_modifier"):
-		total += int(main.call("_get_equipped_roll_total_modifier"))
+	total += get_roll_total_modifier(main)
 	return total
+
+static func _format_value_box(value: int) -> String:
+	return "%d" % value
+
+static func _format_modifier(value: int) -> String:
+	if value > 0:
+		return "+%d" % value
+	if value < 0:
+		return "%d" % value
+	return "0"
+
+static func _build_enemy_value_text(base: int, modifier: int, effective: int) -> String:
+	var line := "Mostro: %s" % _format_value_box(base)
+	if modifier != 0:
+		line += " %s = %d" % [_format_modifier(modifier), effective]
+	return line
+
+static func _build_player_value_text(main: Node) -> String:
+	if not main.roll_pending_apply:
+		return "Tuo tiro: -"
+	var modifier := get_roll_total_modifier(main)
+	var total := get_roll_total_with_chain_bonus(main)
+	if main.last_roll_values.is_empty():
+		return "Tuo tiro: -"
+	var base_total := int(main.last_roll_total)
+	var line := "Tuo tiro: %d" % base_total
+	if modifier != 0:
+		line += " %s" % _format_modifier(modifier)
+	if modifier != 0 or total != base_total:
+		line += " = %d" % total
+	return line
 
 static func consume_chain_bonus(main: Node) -> void:
 	if main.pending_chain_bonus == 0:
@@ -47,19 +83,9 @@ static func update_adventure_value_box(main: Node) -> void:
 	var base: int = int(diff_info.get("base", 0))
 	var modifier: int = int(diff_info.get("modifier", 0))
 	var effective: int = int(diff_info.get("effective", 0))
-	if modifier != 0:
-		main.adventure_value_label.text = main._ui_text("Mostro: %d\n(mod %d)" % [effective, modifier])
-	else:
-		main.adventure_value_label.text = main._ui_text("Mostro: %d" % base)
+	main.adventure_value_label.text = main._ui_text(_build_enemy_value_text(base, modifier, effective))
 	if main.player_value_label != null:
-		if main.roll_pending_apply:
-			var total: int = get_roll_total_with_chain_bonus(main)
-			if main.pending_chain_bonus != 0:
-				main.player_value_label.text = main._ui_text("Tuo tiro: %d (+%d)" % [total, main.pending_chain_bonus])
-			else:
-				main.player_value_label.text = main._ui_text("Tuo tiro: %d" % total)
-		else:
-			main.player_value_label.text = main._ui_text("Tuo tiro: -")
+		main.player_value_label.text = main._ui_text(_build_player_value_text(main))
 	main.DICE_FLOW.refresh_roll_dice_buttons(main)
 	if main.compare_button != null:
 		main.compare_button.disabled = (not main.roll_pending_apply) or main._get_pending_roll_dice_choice_count() > 0 or main._is_mandatory_action_locked()

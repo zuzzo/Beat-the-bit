@@ -126,8 +126,9 @@ static func create_adventure_value_box(main: Node, ui_layer: CanvasLayer) -> voi
 	main.adventure_value_label.add_theme_font_override("font", main.UI_FONT)
 	main.adventure_value_label.add_theme_font_size_override("font_size", 38)
 	main.adventure_value_label.add_theme_constant_override("font_spacing/space", 8)
+	main.adventure_value_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	main.adventure_value_label.text = main._ui_text("Mostro: -")
-	main.adventure_value_label.custom_minimum_size = Vector2(260, 90)
+	main.adventure_value_label.custom_minimum_size = Vector2(360, 64)
 	monster_panel.add_child(main.adventure_value_label)
 
 	main.compare_button = Button.new()
@@ -159,8 +160,9 @@ static func create_adventure_value_box(main: Node, ui_layer: CanvasLayer) -> voi
 	main.player_value_label.add_theme_font_override("font", main.UI_FONT)
 	main.player_value_label.add_theme_font_size_override("font_size", 38)
 	main.player_value_label.add_theme_constant_override("font_spacing/space", 8)
+	main.player_value_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	main.player_value_label.text = main._ui_text("Tuo tiro: -")
-	main.player_value_label.custom_minimum_size = Vector2(260, 54)
+	main.player_value_label.custom_minimum_size = Vector2(420, 64)
 	player_box.add_child(main.player_value_label)
 	main.player_dice_buttons_row = HBoxContainer.new()
 	main.player_dice_buttons_row.alignment = BoxContainer.ALIGNMENT_CENTER

@@ -13,6 +13,14 @@ func apply(context: Dictionary) -> void:
 	main.pending_adventure_sacrifice_remove_after_roll_count = 0
 	main.pending_adventure_sacrifice_remove_choice_count = 1
 	main.dice_count = main.DICE_FLOW.get_total_dice(main)
+	if main.has_method("_count_selectable_roll_dice_for_mode") and int(main.call("_count_selectable_roll_dice_for_mode", "sacrifice_remove")) <= 0:
+		main.pending_adventure_sacrifice_remove_choice_count = 0
+		main.pending_adventure_sacrifice_sequence_active = false
+		main.pending_adventure_sacrifice_slot_card = null
+		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+			main.hand_ui.call("set_info", main._ui_text("Nessun dado blu disponibile da rimuovere."))
+		context["handled"] = true
+		return
 	main._show_drop_half_prompt(main.pending_adventure_sacrifice_remove_choice_count, "sacrifice_remove")
 	if main.hand_ui != null and main.hand_ui.has_method("set_info"):
 		main.hand_ui.call("set_info", main._ui_text("Approccio alternativo attivo: rimuovi 1 dado e occupa lo slot della carta."))

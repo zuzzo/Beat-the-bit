@@ -314,6 +314,7 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		child.queue_free()
 	if not main.roll_pending_apply:
 		return
+	var selection_enabled := _are_roll_dice_buttons_selectable(main)
 	for i in main.last_roll_values.size():
 		var idx: int = i
 		var value: int = main.last_roll_values[idx]
@@ -322,25 +323,17 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.custom_minimum_size = Vector2(36, 30)
 		btn.text = str(value)
+		btn.disabled = not selection_enabled
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if selection_enabled else Control.CURSOR_ARROW
 		btn.add_theme_font_override("font", main.UI_FONT)
 		btn.add_theme_font_size_override("font_size", 24)
-		_apply_roll_die_button_theme(btn, _get_roll_die_type(main, idx))
-		btn.button_pressed = main.selected_roll_dice.has(idx)
+		var is_selected: bool = main.selected_roll_dice.has(idx)
+		_apply_roll_die_button_theme(btn, _get_roll_die_type(main, idx), is_selected)
+		btn.button_pressed = is_selected
 		btn.pressed.connect(func() -> void:
 			on_roll_die_button_pressed(main, idx)
 		)
 		main.player_dice_buttons_row.add_child(btn)
-	var chain_bonus_count := int(main.pending_chain_bonus / 3)
-	for _i in chain_bonus_count:
-		var bonus_btn := Button.new()
-		bonus_btn.focus_mode = Control.FOCUS_NONE
-		bonus_btn.disabled = true
-		bonus_btn.custom_minimum_size = Vector2(36, 30)
-		bonus_btn.text = "3"
-		bonus_btn.tooltip_text = main._ui_text("Bonus Piattaforma")
-		bonus_btn.add_theme_font_override("font", main.UI_FONT)
-		bonus_btn.add_theme_font_size_override("font_size", 24)
-		main.player_dice_buttons_row.add_child(bonus_btn)
 
 static func _get_roll_die_type(main: Node, index: int) -> String:
 	if index < 0 or index >= main.active_dice.size():
@@ -352,7 +345,17 @@ static func _get_roll_die_type(main: Node, index: int) -> String:
 		return str(die.call("get_dice_type"))
 	return "blue"
 
-static func _apply_roll_die_button_theme(btn: Button, die_type: String) -> void:
+static func _are_roll_dice_buttons_selectable(main: Node) -> bool:
+	if main._get_pending_roll_dice_choice_count() > 0:
+		return true
+	if main.action_prompt_panel != null and main.action_prompt_panel.visible:
+		var action_window := CardTiming.get_current_card_action_window(main, main.pending_action_card_data)
+		var effects := CardTiming.get_effects_for_window(main.pending_action_card_data, action_window)
+		if effects.has("after_roll_set_one_die_to_1") or effects.has("reroll_same_dice") or effects.has("lowest_die_applies_to_all"):
+			return true
+	return false
+
+static func _apply_roll_die_button_theme(btn: Button, die_type: String, is_selected: bool = false) -> void:
 	var bg := Color(0.35, 0.35, 0.35, 0.9)
 	var border := Color(0.95, 0.95, 0.95, 0.85)
 	var fg := Color(1, 1, 1, 1)
@@ -369,19 +372,23 @@ static func _apply_roll_die_button_theme(btn: Button, die_type: String) -> void:
 			bg = Color(0.25, 0.50, 0.92, 0.95)
 			border = Color(0.08, 0.22, 0.45, 0.95)
 			fg = Color(1, 1, 1, 1)
+	if is_selected:
+		bg = Color(1.0, 0.86, 0.22, 1.0)
+		border = Color(0.36, 0.22, 0.02, 1.0)
+		fg = Color(0.08, 0.06, 0.02, 1.0)
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = bg
 	normal.border_color = border
-	normal.border_width_top = 2
-	normal.border_width_bottom = 2
-	normal.border_width_left = 2
-	normal.border_width_right = 2
+	normal.border_width_top = 3 if is_selected else 2
+	normal.border_width_bottom = 3 if is_selected else 2
+	normal.border_width_left = 3 if is_selected else 2
+	normal.border_width_right = 3 if is_selected else 2
 	normal.corner_radius_top_left = 6
 	normal.corner_radius_top_right = 6
 	normal.corner_radius_bottom_left = 6
 	normal.corner_radius_bottom_right = 6
 	var pressed := normal.duplicate() as StyleBoxFlat
-	pressed.bg_color = bg.darkened(0.25)
+	pressed.bg_color = bg.darkened(0.08) if is_selected else bg.darkened(0.25)
 	btn.add_theme_stylebox_override("normal", normal)
 	btn.add_theme_stylebox_override("hover", normal)
 	btn.add_theme_stylebox_override("pressed", pressed)
