@@ -6,7 +6,13 @@ static func show(main: Node, card_data: Dictionary, is_magic: bool, source_card:
 	var effects := CardTiming.get_effects_for_window(card_data, action_window)
 	if effects.has("after_roll_set_one_die_to_1") and main.roll_pending_apply:
 		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
-			main.hand_ui.call("set_info", main._ui_text("Seleziona 1 dado da impostare a 1 e poi conferma."))
+			main.hand_ui.call("set_info", main._ui_text("Seleziona 1 dado e poi scegli il valore da 1 a 6."))
+	elif effects.has("reroll_same_dice") and main.roll_pending_apply:
+		main.selected_roll_dice.clear()
+		if main.DICE_FLOW != null and main.DICE_FLOW.has_method("refresh_roll_dice_buttons"):
+			main.DICE_FLOW.refresh_roll_dice_buttons(main)
+		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
+			main.hand_ui.call("set_info", main._ui_text("Seleziona i dadi che vuoi rilanciare e poi conferma."))
 	var name := str(card_data.get("name", "Carta"))
 	if main.action_prompt_label != null:
 		main.action_prompt_label.text = main._ui_text("Vuoi usare %s?" % name)
@@ -46,6 +52,9 @@ static func confirm(main: Node) -> void:
 	if not main._validate_roll_selection_for_effects(effects):
 		if main.hand_ui != null and main.hand_ui.has_method("set_info"):
 			main.hand_ui.call("set_info", main._ui_text("Seleziona il dado richiesto e conferma."))
+		return
+	if effects.has("after_roll_set_one_die_to_1") and main.roll_pending_apply and main.has_method("_show_roll_value_choice_prompt"):
+		main.call("_show_roll_value_choice_prompt", effects, action_window)
 		return
 	main._use_card_effects(main.pending_action_card_data, effects, action_window)
 	if main.pending_action_is_magic and not effects.has("return_to_hand"):

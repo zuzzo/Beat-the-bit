@@ -44,6 +44,9 @@ static func apply_direct_card_effect(main: Node, effect_name: String, _card_data
 		"deal_1_damage":
 			apply_direct_damage_to_battlefield(main, 1)
 			return true
+		"deal_2_damage":
+			apply_direct_damage_to_battlefield(main, 2)
+			return true
 		"remove_one_blue_die":
 			main.blue_dice = max(0, int(main.blue_dice) - 1)
 			main.dice_count = main.DICE_FLOW.get_total_dice(main)
@@ -130,7 +133,10 @@ static func apply_post_roll_effect(main: Node, effect_name: String, selected_val
 		"after_roll_set_one_die_to_1":
 			var target := get_first_selected_die_index(main)
 			if target >= 0:
-				main.last_roll_values[target] = 1
+				var chosen_value: int = 1
+				if main.has_method("get") and main.get("pending_roll_set_die_value") != null:
+					chosen_value = clampi(int(main.get("pending_roll_set_die_value")), 1, 6)
+				main.last_roll_values[target] = chosen_value
 		"lowest_die_applies_to_all":
 			if selected_values.is_empty():
 				return

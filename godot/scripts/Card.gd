@@ -239,10 +239,19 @@ func set_face_up(value: bool) -> void:
 func is_face_up_now() -> bool:
 	return is_face_up
 
+func _play_flip_sfx() -> void:
+	var node: Node = self
+	while node != null:
+		if node.has_method("_play_card_flip_sfx"):
+			node.call("_play_card_flip_sfx")
+			return
+		node = node.get_parent()
+
 func flip_in_place_with_textures(front_texture_path: String, back_texture_path: String = "", front_flip_x: bool = false, back_flip_x: bool = false) -> void:
 	if is_animating:
 		return
 	is_animating = true
+	_play_flip_sfx()
 	_prepare_short_edge_flip_rest_pose()
 	_activate_short_edge_pivot()
 	var start_pos := global_position
@@ -295,6 +304,7 @@ func flip_to_side(target_position: Vector3) -> void:
 	if is_animating:
 		return
 	is_animating = true
+	_play_flip_sfx()
 	pivot.rotation = Vector3.ZERO
 	var dir := -1.0
 	if has_meta("flip_dir"):

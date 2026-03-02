@@ -48,27 +48,30 @@ func load_cards(deck_id: String = "") -> void:
 		if normalized_type != "":
 			card_data["type"] = normalized_type
 		_normalize_card_effects(card_data)
-		cards.append(card_data)
+		var copies: int = max(1, int(card_data.get("copies", 1)))
+		cards.append(card_data.duplicate(true))
 		var ctype := str(card_data.get("type", ""))
-		match ctype:
-			"scontro", "concatenamento", "maledizione", "missione":
-				deck_adventure.append(card_data)
-			"evento":
-				# Shared board events (e.g. Regno del male) are not adventure-deck cards.
-				if str(card_data.get("id", "")) == "shared_regno_del_male":
-					cards_shared.append(card_data)
-				else:
-					deck_adventure.append(card_data)
-			"equipaggiamento", "istantaneo":
-				deck_treasures.append(card_data)
-			"boss":
-				deck_boss.append(card_data)
-			"boss_finale":
-				deck_boss_finale.append(card_data)
-			"personaggio":
-				cards_characters.append(card_data)
-			_:
-				pass
+		for _copy_idx in copies:
+			var copy_data: Dictionary = card_data.duplicate(true)
+			match ctype:
+				"scontro", "concatenamento", "maledizione", "missione":
+					deck_adventure.append(copy_data)
+				"evento":
+					# Shared board events (e.g. Regno del male) are not adventure-deck cards.
+					if str(copy_data.get("id", "")) == "shared_regno_del_male":
+						cards_shared.append(copy_data)
+					else:
+						deck_adventure.append(copy_data)
+				"equipaggiamento", "istantaneo":
+					deck_treasures.append(copy_data)
+				"boss":
+					deck_boss.append(copy_data)
+				"boss_finale":
+					deck_boss_finale.append(copy_data)
+				"personaggio":
+					cards_characters.append(copy_data)
+				_:
+					pass
 
 func _normalize_card_effects(card_data: Dictionary) -> void:
 	var effects: Array = card_data.get("effects", [])

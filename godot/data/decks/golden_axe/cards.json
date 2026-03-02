@@ -15,6 +15,7 @@
                           ],
         "sacrifice_cost":  "pay_coins_4",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -34,6 +35,7 @@
                           ],
         "sacrifice_cost":  "discard_hand_card_1",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -53,6 +55,7 @@
                           ],
         "sacrifice_cost":  "discard_hand_card_1",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -72,6 +75,7 @@
                           ],
         "sacrifice_cost":  "pay_coins_4",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -91,6 +95,7 @@
                           ],
         "sacrifice_cost":  "pay_xp_2",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -129,6 +134,7 @@
                           ],
         "sacrifice_cost":  "discard_hand_card_1",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -167,6 +173,7 @@
                           ],
         "sacrifice_cost":  "discard_hand_card_1",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -186,6 +193,7 @@
                           ],
         "sacrifice_cost":  "pay_xp_2",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -223,6 +231,7 @@
                           ],
         "sacrifice_cost":  "pay_coins_4",
         "sacrifice_effect":  "extra_die_then_remove_blue",
+        "copies":  2,
         "set":  "GoldenAxe",
         "type":  "scontro"
     },
@@ -534,22 +543,24 @@
         "image":  "res://assets/cards/Golden Axe/Singles/mappa.png"
     },
     {
-        "cost":  4,
-        "effects":  [
-                        "deal_1_damage"
-                    ],
-        "group":  "tier_1",
+        "cost":  12,
+        "effects":  [],
+        "group":  "tier_3",
         "id":  "ga_treasure_ax_battler",
         "image":  "res://assets/cards/Golden Axe/Treasure/ax battler.png",
         "name":  "Ax battler",
-        "timed_effects":  [
-                              {
-                                  "effect":  "bonus_damage_multiheart",
-                                  "when":  "after_damage"
-                              }
-                          ],
+        "stats":  {
+                      "max_hand":  3,
+                      "max_hearts":  2,
+                      "max_slots":  3,
+                      "start_dice":  2,
+                      "min_dice":  2,
+                      "start_hearts":  2
+                  },
+        "timed_effects":  [],
         "set":  "GoldenAxe",
-        "type":  "equipaggiamento"
+        "type":  "equipaggiamento",
+        "text":  "Costo 12. Maledizione-personaggio acquistabile. Sostituisce il personaggio in gioco. Non puo curarsi. Max 3 carte, 2 cuori, 3 slot, 2 dadi. Quando finisce i cuori, rimuovi Ax Battler e torna il personaggio maledetto."
     },
     {
         "cost":  8,
@@ -752,23 +763,18 @@
     },
     {
         "cost":  10,
-        "text":  "Costo 10. Equipaggiamento (Tier 3). Aumenta il tuo limite cuore di +2, +1 slot equipaggiamento.",
+        "text":  "Costo 10. Equipaggiamento (Tier 3). Tutti i tuoi dadi hanno -1.",
         "effects":  [
-                        "equip_max_hearts_plus_2",
-                        "armor_extra_slot_1"
+                        "equipped_all_dice_minus_1"
                     ],
         "group":  "tier_3",
         "id":  "ga_treasure_level_up_dadi",
         "image":  "res://assets/cards/Golden Axe/Treasure/Level up dadi.png",
-        "name":  "Level up Cuore",
+        "name":  "Level up Dadi",
         "timed_effects":  [
                               {
-                                  "effect":  "equip_max_hearts_plus_2",
-                                  "when":  "equip"
-                              },
-                              {
-                                  "effect":  "armor_extra_slot_1",
-                                  "when":  "equip"
+                                  "effect":  "equipped_all_dice_minus_1",
+                                  "when":  "after_roll"
                               }
                           ],
         "set":  "GoldenAxe",
@@ -781,7 +787,7 @@
                     ],
         "group":  "tier_3",
         "id":  "ga_treasure_level_up_vita",
-        "image":  "res://assets/cards/Golden Axe/Treasure/level up vita.png",
+        "image":  "res://assets/cards/Golden Axe/Treasure/level up cuore.png",
         "name":  "Level up cuore",
         "timed_effects":  [
                               {
@@ -837,7 +843,7 @@
         "type":  "istantaneo"
     },
     {
-        "cost":  8,
+        "cost":  11,
         "effects":  [
                         "next_roll_double_then_remove_half"
                     ],
@@ -852,31 +858,14 @@
                               }
                           ],
         "set":  "GoldenAxe",
-        "type":  "istantaneo"
+        "type":  "istantaneo",
+        "text":  "Costo 11. Istantaneo (Tier 3). Solo multigiocatore: scambia il tuo personaggio e i suoi equipaggiamenti con quelli di un altro giocatore."
     },
     {
-        "cost":  9,
-        "text":  "Riprendilo in mano. Togli 1 cuore al nemico con difficolta da 7 a 9.",
+        "cost":  11,
+        "text":  "Costo 11. Istantaneo (Tier 3). Scartala dalla mano: togli 2 cuori a un nemico.",
         "effects":  [
-                        "sferzata_damage_7_9_return_hand"
-                    ],
-        "group":  "tier_2",
-        "id":  "ga_treasure_sferzata",
-        "image":  "res://assets/cards/Golden Axe/Treasure/sferzata.png",
-        "name":  "Sferzata",
-        "timed_effects":  [
-                              {
-                                  "effect":  "sferzata_damage_7_9_return_hand",
-                                  "when":  "any_time"
-                              }
-                          ],
-        "set":  "GoldenAxe",
-        "type":  "equipaggiamento"
-    },
-    {
-        "cost":  8,
-        "effects":  [
-                        "add_green_die"
+                        "deal_2_damage"
                     ],
         "group":  "tier_3",
         "id":  "ga_treasure_soffio_del_drago",
@@ -884,7 +873,7 @@
         "name":  "Soffio del drago",
         "timed_effects":  [
                               {
-                                  "effect":  "add_green_die",
+                                  "effect":  "deal_2_damage",
                                   "when":  "any_time"
                               }
                           ],

@@ -193,6 +193,7 @@ static func track_dice_sum(main: Node) -> void:
 	main.roll_in_progress = false
 	main._consume_next_roll_effects(values)
 	main._deck_apply_roll_overrides(values)
+	_apply_equipped_die_value_modifiers(main, values)
 	var total: int = 0
 	for i in values.size():
 		var v: int = int(values[i])
@@ -267,15 +268,23 @@ static func rebuild_roll_values_from_active_dice(main: Node) -> void:
 	main.last_roll_values.clear()
 	main.selected_roll_dice.clear()
 	var names: Array[String] = []
+	var raw_values: Array[int] = []
 	var total: int = 0
 	for i in main.active_dice.size():
 		var dice: RigidBody3D = main.active_dice[i]
 		if dice == null or not is_instance_valid(dice):
 			continue
 		var value: int = get_top_face_value(main, dice)
-		main.last_roll_values.append(value)
-		total += _get_signed_die_value(value, dice)
+		raw_values.append(value)
 		names.append(get_top_face_name(main, dice))
+	_apply_equipped_die_value_modifiers(main, raw_values)
+	for i in raw_values.size():
+		var value: int = int(raw_values[i])
+		main.last_roll_values.append(value)
+		var dice: RigidBody3D = null
+		if i < main.active_dice.size():
+			dice = main.active_dice[i]
+		total += _get_signed_die_value(value, dice)
 		main.selected_roll_dice.append(main.last_roll_values.size() - 1)
 	main.last_roll_total = total
 	if main.sum_label != null:
@@ -298,15 +307,40 @@ static func _get_signed_die_value(value: int, dice: RigidBody3D) -> int:
 			return -value
 	return value
 
+static func _apply_equipped_die_value_modifiers(main: Node, values: Array[int]) -> void:
+	if values.is_empty():
+		return
+	if not main.has_method("_count_equipped_timed_effect"):
+		return
+	var minus_per_die: int = int(main.call("_count_equipped_timed_effect", "equipped_all_dice_minus_1", "after_roll"))
+	if minus_per_die <= 0:
+		return
+	for i in values.size():
+		values[i] = max(0, int(values[i]) - minus_per_die)
+
 static func refresh_roll_dice_buttons(main: Node) -> void:
 	if main.player_dice_buttons_row == null:
 		return
 	var selected: Array = main.selected_roll_dice.duplicate()
 	selected.sort()
-	var dice_types_sig := ""
+	var dice_types_sig: String = ""
 	for i in main.last_roll_values.size():
 		dice_types_sig += "|%s" % _get_roll_die_type(main, i)
-	var key := "%s|%s|%s|%d|%s" % [str(main.roll_pending_apply), str(main.last_roll_values), str(selected), int(main.pending_chain_bonus), dice_types_sig]
+	var action_prompt_visible: bool = main.action_prompt_panel != null and main.action_prompt_panel.visible
+	var selection_enabled: bool = _are_roll_dice_buttons_selectable(main)
+	var pending_action_id: String = ""
+	if main.pending_action_card_data is Dictionary:
+		pending_action_id = str(main.pending_action_card_data.get("id", ""))
+	var key: String = "%s|%s|%s|%d|%s|%s|%s|%s" % [
+		str(main.roll_pending_apply),
+		str(main.last_roll_values),
+		str(selected),
+		int(main.pending_chain_bonus),
+		dice_types_sig,
+		str(action_prompt_visible),
+		str(selection_enabled),
+		pending_action_id
+	]
 	if key == main.player_dice_buttons_key:
 		return
 	main.player_dice_buttons_key = key
@@ -314,17 +348,19 @@ static func refresh_roll_dice_buttons(main: Node) -> void:
 		child.queue_free()
 	if not main.roll_pending_apply:
 		return
-	var selection_enabled := _are_roll_dice_buttons_selectable(main)
 	for i in main.last_roll_values.size():
 		var idx: int = i
 		var value: int = main.last_roll_values[idx]
-		var btn := Button.new()
+		var btn: Button = Button.new()
 		btn.toggle_mode = true
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.custom_minimum_size = Vector2(36, 30)
 		btn.text = str(value)
 		btn.disabled = not selection_enabled
-		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if selection_enabled else Control.CURSOR_ARROW
+		if selection_enabled:
+			btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		else:
+			btn.mouse_default_cursor_shape = Control.CURSOR_ARROW
 		btn.add_theme_font_override("font", main.UI_FONT)
 		btn.add_theme_font_size_override("font_size", 24)
 		var is_selected: bool = main.selected_roll_dice.has(idx)
@@ -348,6 +384,9 @@ static func _get_roll_die_type(main: Node, index: int) -> String:
 static func _are_roll_dice_buttons_selectable(main: Node) -> bool:
 	if main._get_pending_roll_dice_choice_count() > 0:
 		return true
+	if main.phase_index == 1 and main.roll_pending_apply and not main.roll_in_progress:
+		if str(main.active_character_id) == "character_sir_arthur_b" and not bool(main.character_ability_used_this_roll) and not main.player_hand.is_empty():
+			return true
 	if main.action_prompt_panel != null and main.action_prompt_panel.visible:
 		var action_window := CardTiming.get_current_card_action_window(main, main.pending_action_card_data)
 		var effects := CardTiming.get_effects_for_window(main.pending_action_card_data, action_window)
@@ -417,23 +456,15 @@ static func on_roll_die_button_pressed(main: Node, index: int) -> void:
 		main.selected_roll_dice.erase(index)
 	else:
 		main.selected_roll_dice.append(index)
-	if main.action_prompt_panel != null and main.action_prompt_panel.visible:
+	if main.action_prompt_panel != null and main.action_prompt_panel.visible and main.roll_pending_apply:
 		var action_window := CardTiming.get_current_card_action_window(main, main.pending_action_card_data)
 		var effects := CardTiming.get_effects_for_window(main.pending_action_card_data, action_window)
-		if main.roll_pending_apply and effects.has("after_roll_set_one_die_to_1"):
+		if effects.has("after_roll_set_one_die_to_1"):
 			main.selected_roll_dice.clear()
 			main.selected_roll_dice.append(index)
-			main.last_roll_values[index] = 1
-			recalculate_last_roll_total(main)
 			refresh_roll_dice_buttons(main)
-			if not main.pending_action_is_magic and main.pending_action_source_card != null and is_instance_valid(main.pending_action_source_card):
-				if effects.has("return_to_hand"):
-					main._force_return_equipped_to_hand(main.pending_action_source_card)
-			if main.pending_action_is_magic:
-				if not effects.has("return_to_hand"):
-					main.player_hand.erase(main.pending_action_card_data)
-					main._refresh_hand_ui()
-			main._hide_action_prompt()
+			return
+	refresh_roll_dice_buttons(main)
 
 static func get_selected_roll_values(main: Node) -> Array[int]:
 	var out: Array[int] = []

@@ -2,6 +2,8 @@ extends RefCounted
 class_name RewardResolutionCore
 
 static func cleanup_battlefield_rewards_for_recovery(main: Node) -> void:
+	if main._get_blocking_adventure_card() != null:
+		return
 	await resolve_reward_tokens_for_recovery(main)
 	# Move coins toward the player HUD area, then remove them.
 	var target: Vector3 = get_player_collect_target(main)

@@ -46,6 +46,7 @@ const EFFECT_DESCRIPTIONS := {
 	"next_roll_minus_2_all_dice": "Nel prossimo lancio, -2 a tutti i dadi (min 1).",
 	"lowest_die_applies_to_all": "Prima del lancio, il valore piu basso vale per tutti i dadi.",
 	"deal_1_damage": "Infligge 1 danno immediato al nemico attivo.",
+	"deal_2_damage": "Infligge 2 danni immediati al nemico attivo.",
 	"ignore_fatigue_if_all_different": "Se tutti i dadi sono diversi, ignori fatica.",
 	"next_roll_double_then_remove_half": "Nel prossimo lancio, raddoppia i dadi e annulla la meta piu bassa.",
 	"on_heart_loss_destroy_fatigue": "Quando perdi un cuore, rimuovi una fatica.",

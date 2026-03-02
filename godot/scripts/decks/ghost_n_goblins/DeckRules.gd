@@ -226,6 +226,8 @@ static func try_claim_mission(main: Node, card: Node3D) -> void:
 	apply_mission_cost(main, card_data)
 	report_mission_status(main, card_data, true)
 	main._move_adventure_to_discard(card)
+	if main.has_method("_reflow_mission_side_cards"):
+		main._reflow_mission_side_cards()
 
 static func is_mission_completed(main: Node, card_data: Dictionary) -> bool:
 	var req := get_mission_requirements(main, card_data)

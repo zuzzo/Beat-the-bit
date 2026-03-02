@@ -43,7 +43,8 @@ static func try_show_adventure_prompt(main: Node, card: Node3D) -> void:
 	if main._get_blocking_adventure_card() != null:
 		main._show_battlefield_warning()
 		return
-	ADVENTURE_PROMPT.show(main, card)
+	main.pending_adventure_card = card
+	main._confirm_adventure_prompt()
 
 static func hide_adventure_prompt(main: Node) -> void:
 	ADVENTURE_PROMPT.hide(main)

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://eogqfg7frf7y"
+path="res://.godot/imported/mischare il mazzo.mp3-847867fa2da8eee23408149f9de371b0.mp3str"
+
+[deps]
+
+source_file="res://assets/Music/mischare il mazzo.mp3"
+dest_files=["res://.godot/imported/mischare il mazzo.mp3-847867fa2da8eee23408149f9de371b0.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -9,6 +9,9 @@ const UI_FONT := preload("res://assets/Font/ARCADECLASSIC.TTF")
 const POSITION_BOX_SCENE := preload("res://scenes/PositionBox.tscn")
 const MUSIC_TRACK := preload("res://assets/Music/Music.mp3")
 const BATTLE_MUSIC_TRACK := preload("res://assets/Music/Battaglia a Turni.mp3")
+const CARD_PLAY_SFX := preload("res://assets/Music/giocare carta.mp3")
+const CARD_FLIP_SFX := preload("res://assets/Music/girare carta.mp3")
+const DECK_SHUFFLE_SFX := preload("res://assets/Music/mischare il mazzo.mp3")
 const MUSIC_ON_ICON := preload("res://assets/Music/sound_on.png")
 const MUSIC_OFF_ICON := preload("res://assets/Music/sound_off.png")
 const FIGHT_ICON := preload("res://assets/Token/fight.png")
@@ -19,6 +22,7 @@ const TOKEN_TOMBSTONE := "res://assets/Token/tombstone.png"
 const TOKEN_XP_1 := "res://assets/Token/1xp.png"
 const TOKEN_XP_5 := "res://assets/Token/5xp.png"
 const EXPLOSION_SHEET := "res://assets/Animation/explosion.png"
+const AX_BATTLER_CARD_ID := "ga_treasure_ax_battler"
 const DECK_UTILS := preload("res://scripts/DeckUtils.gd")
 const CARD_TIMING := preload("res://scripts/core/CardTiming.gd")
 const DICE_FLOW := preload("res://scripts/core/DiceFlow.gd")
@@ -44,7 +48,7 @@ const CARD_EFFECT_DESCRIPTIONS := {
 	"discard_revealed_adventure": "Scarta l'avventura rivelata.",
 	"reroll_same_dice": "Rilancia i dadi selezionati.",
 	"after_roll_minus_1_all_dice": "Dopo il lancio: -1 a tutti i dadi.",
-	"after_roll_set_one_die_to_1": "Dopo il lancio: imposta 1 dado a 1.",
+	"after_roll_set_one_die_to_1": "Dopo il lancio: imposta 1 dado a un valore da 1 a 6.",
 	"reroll_5_or_6": "Rilancia i dadi con valore 5 o 6.",
 	"halve_even_dice": "Dopo il lancio: dimezza i dadi pari.",
 	"add_red_die": "Aggiunge un dado rosso.",
@@ -55,6 +59,7 @@ const CARD_EFFECT_DESCRIPTIONS := {
 	"next_roll_minus_2_all_dice": "Prossimo lancio: -2 a tutti i dadi.",
 	"lowest_die_applies_to_all": "Il dado piu basso vale per tutti.",
 	"deal_1_damage": "Infligge 1 danno immediato.",
+	"deal_2_damage": "Infligge 2 danni immediati.",
 	"remove_one_blue_die": "Rimuove 1 dado blu prima del lancio.",
 	"fendente_damage_10_12_return_hand": "Riprendila in mano: infligge 1 danno a nemico con difficolta 10-12.",
 	"sferzata_damage_7_9_return_hand": "Riprendila in mano: infligge 1 danno a nemico con difficolta 7-9.",
@@ -215,6 +220,11 @@ var action_prompt_label: Label
 var action_prompt_yes: Button
 var action_prompt_no: Button
 var action_prompt_block_until_ms: int = 0
+var roll_value_prompt_panel: PanelContainer
+var roll_value_prompt_label: Label
+var pending_roll_value_effects: Array = []
+var pending_roll_value_window: String = ""
+var pending_roll_set_die_value: int = 1
 var chain_choice_panel: PanelContainer
 var chain_choice_label: Label
 var flip_choice_panel: PanelContainer
@@ -251,6 +261,9 @@ var battlefield_warning_label: Label
 var battlefield_warning_ok: Button
 var music_player: AudioStreamPlayer
 var battle_music_player: AudioStreamPlayer
+var card_play_sfx_player: AudioStreamPlayer
+var card_flip_sfx_player: AudioStreamPlayer
+var deck_shuffle_sfx_player: AudioStreamPlayer
 var music_toggle_button: TextureButton
 var music_fade_tween: Tween
 var music_enabled: bool = true
@@ -361,6 +374,7 @@ func _ready() -> void:
 	camera.global_position = Vector3(0.65, 6.0, 3.8)
 	fight_icon = _load_texture("res://assets/Token/fight.png")
 	_play_music()
+	_setup_sfx_players()
 	_update_phase_lighting()
 	_spawn_placeholders()
 	_init_player_hand()
@@ -1668,11 +1682,16 @@ func _decline_adventure_prompt() -> void:
 func _show_action_prompt(card_data: Dictionary, is_magic: bool, source_card: Node3D = null) -> void:
 	if Time.get_ticks_msec() < action_prompt_block_until_ms:
 		return
+	if str(card_data.get("id", "")).strip_edges() == "ga_treasure_scelta_mortale":
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Scelta mortale funziona solo in una partita con altri giocatori."))
+		return
 	ACTION_PROMPT.show(self, card_data, is_magic, source_card)
 
 func _hide_action_prompt() -> void:
 	action_prompt_block_until_ms = Time.get_ticks_msec() + 400
 	pending_character_backpack_prompt_mode = ""
+	_hide_roll_value_choice_prompt()
 	ACTION_PROMPT.hide(self)
 
 func _center_action_prompt() -> void:
@@ -1685,6 +1704,66 @@ func _confirm_action_prompt() -> void:
 		_hide_action_prompt()
 		return
 	ACTION_PROMPT.confirm(self)
+
+func _show_roll_value_choice_prompt(effects: Array, action_window: String) -> void:
+	if roll_value_prompt_panel == null or roll_value_prompt_label == null:
+		return
+	pending_roll_value_effects = effects.duplicate()
+	pending_roll_value_window = action_window
+	if action_prompt_panel != null:
+		action_prompt_panel.visible = false
+	roll_value_prompt_label.text = _ui_text("Scegli il nuovo valore del dado selezionato (1-6).")
+	roll_value_prompt_panel.visible = true
+	_center_roll_value_choice_prompt()
+
+func _hide_roll_value_choice_prompt() -> void:
+	if roll_value_prompt_panel != null:
+		roll_value_prompt_panel.visible = false
+	pending_roll_value_effects.clear()
+	pending_roll_value_window = ""
+	pending_roll_set_die_value = 1
+
+func _center_roll_value_choice_prompt() -> void:
+	if roll_value_prompt_panel == null:
+		return
+	roll_value_prompt_panel.custom_minimum_size = Vector2.ZERO
+	roll_value_prompt_panel.reset_size()
+	roll_value_prompt_panel.custom_minimum_size = roll_value_prompt_panel.get_combined_minimum_size()
+	roll_value_prompt_panel.reset_size()
+	var view_size: Vector2 = get_viewport().get_visible_rect().size
+	var size: Vector2 = roll_value_prompt_panel.size
+	roll_value_prompt_panel.position = (view_size - size) * 0.5
+
+func _confirm_roll_value_choice(value: int) -> void:
+	if pending_action_card_data.is_empty() or pending_roll_value_effects.is_empty():
+		_hide_roll_value_choice_prompt()
+		return
+	pending_roll_set_die_value = clampi(value, 1, 6)
+	var effects: Array = pending_roll_value_effects.duplicate()
+	var action_window: String = pending_roll_value_window
+	if roll_value_prompt_panel != null:
+		roll_value_prompt_panel.visible = false
+	_use_card_effects(pending_action_card_data, effects, action_window)
+	if pending_action_is_magic and not effects.has("return_to_hand"):
+		var card_id := str(pending_action_card_data.get("id", "")).strip_edges()
+		var had_card_in_hand := false
+		for item in player_hand:
+			if not (item is Dictionary):
+				continue
+			var data := item as Dictionary
+			if data == pending_action_card_data:
+				had_card_in_hand = true
+				break
+			if not card_id.is_empty() and str(data.get("id", "")).strip_edges() == card_id:
+				had_card_in_hand = true
+				break
+		if had_card_in_hand:
+			_remove_hand_card(pending_action_card_data, pending_action_card_data)
+			_add_hand_card_to_treasure_market(pending_action_card_data)
+			_refresh_hand_ui()
+	if has_method("_sync_roll_totals_and_ui"):
+		_sync_roll_totals_and_ui()
+	_hide_action_prompt()
 
 func _use_card_effects(card_data: Dictionary, effects: Array = [], action_window: String = "") -> void:
 	if effects.is_empty():
@@ -1888,8 +1967,10 @@ func _try_activate_character_card_ability(card: Node3D) -> bool:
 			hand_ui.call("set_info", _ui_text("Nessuna carta da scartare per attivare l'abilita."))
 		return true
 	if selected_roll_dice.is_empty() or selected_roll_dice.size() != 1:
+		selected_roll_dice.clear()
+		_refresh_roll_dice_buttons()
 		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Seleziona 1 dado blu da portare a 0."))
+			hand_ui.call("set_info", _ui_text("Seleziona 1 dado blu da portare a 0 e clicca di nuovo Gilius."))
 		return true
 	var idx: int = int(selected_roll_dice[0])
 	if idx < 0 or idx >= last_roll_values.size() or idx >= active_dice.size():
@@ -1899,8 +1980,10 @@ func _try_activate_character_card_ability(card: Node3D) -> bool:
 		return true
 	var dtype := str(die.call("get_dice_type"))
 	if dtype != "blue":
+		selected_roll_dice.clear()
+		_refresh_roll_dice_buttons()
 		if hand_ui != null and hand_ui.has_method("set_info"):
-			hand_ui.call("set_info", _ui_text("Puoi selezionare solo un dado blu."))
+			hand_ui.call("set_info", _ui_text("Puoi selezionare solo un dado blu. Riprova e clicca di nuovo Gilius."))
 		return true
 	if not _discard_one_hand_card_for_effect({}):
 		return true
@@ -2180,6 +2263,7 @@ func _ensure_treasure_stack_from_market_if_empty() -> bool:
 	if recycled.is_empty():
 		return _rebuild_treasure_stack_from_database()
 	DECK_UTILS.shuffle_deck(recycled)
+	_play_deck_shuffle_sfx()
 	for i in recycled.size():
 		var card := recycled[i]
 		_normalize_treasure_card_for_stack(card, i)
@@ -2263,6 +2347,7 @@ func _rebuild_treasure_stack_from_database() -> bool:
 	if rebuild_cards.is_empty():
 		return false
 	DECK_UTILS.shuffle_deck(rebuild_cards)
+	_play_deck_shuffle_sfx()
 	for i in rebuild_cards.size():
 		var data: Dictionary = rebuild_cards[i]
 		var card: Node3D = CARD_SCENE.instantiate()
@@ -2309,6 +2394,53 @@ func _reveal_mission_card(card: Node3D, card_data: Dictionary) -> void:
 
 func _try_claim_mission(card: Node3D) -> void:
 	deck_rules.try_claim_mission(self, card)
+
+func _reflow_mission_side_cards() -> void:
+	var missions: Array[Node3D] = []
+	for child in get_children():
+		if not (child is Node3D):
+			continue
+		var card := child as Node3D
+		if not bool(card.get_meta("in_mission_side", false)):
+			continue
+		missions.append(card)
+	missions.sort_custom(func(a: Node3D, b: Node3D) -> bool:
+		if is_zero_approx(a.global_position.x - b.global_position.x):
+			return a.global_position.y < b.global_position.y
+		return a.global_position.x < b.global_position.x
+	)
+	var base := Vector3(
+		character_pos.x + MISSION_SIDE_OFFSET.x,
+		character_pos.y + MISSION_SIDE_Y_STEP,
+		character_pos.z + MISSION_SIDE_OFFSET.z
+	)
+	for i in missions.size():
+		var card := missions[i]
+		if card == null or not is_instance_valid(card):
+			continue
+		var target_pos := base + Vector3(float(i) * MISSION_SIDE_SPACING_X, float(i) * MISSION_SIDE_Y_STEP, 0.0)
+		_move_mission_card_with_progress(card, target_pos)
+	mission_side_count = missions.size()
+
+func _move_mission_card_with_progress(card: Node3D, target_pos: Vector3) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(card, "global_position", target_pos, 0.22)
+	var raw_progress: Variant = card.get_meta("mission_progress_cards", [])
+	if not (raw_progress is Array):
+		return
+	var progress_cards: Array = raw_progress as Array
+	for i in progress_cards.size():
+		var item: Variant = progress_cards[i]
+		if not (item is Node3D):
+			continue
+		var progress_card := item as Node3D
+		if progress_card == null or not is_instance_valid(progress_card):
+			continue
+		var progress_target := target_pos + Vector3(0.0, -float(i + 1) * REVEALED_Y_STEP, 0.0)
+		tween.parallel().tween_property(progress_card, "global_position", progress_target, 0.22)
 
 func _is_mission_completed(card_data: Dictionary) -> bool:
 	return deck_rules.is_mission_completed(self, card_data)
@@ -2401,6 +2533,7 @@ func _spawn_coord_label() -> void:
 	_create_music_toggle(ui)
 	_create_purchase_prompt()
 	_create_action_prompt()
+	_create_roll_value_choice_prompt()
 	_create_sell_prompt()
 	_create_dice_drop_prompt()
 
@@ -3071,11 +3204,11 @@ func _create_action_prompt() -> void:
 	action_prompt_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	content.add_child(action_prompt_label)
 
-	var button_row := HBoxContainer.new()
-	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	button_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	button_row.set("theme_override_constants/separation", 16)
+	var action_button_row := HBoxContainer.new()
+	action_button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	action_button_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	action_button_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	action_button_row.set("theme_override_constants/separation", 16)
 	action_prompt_yes = Button.new()
 	action_prompt_yes.text = _ui_text("Si")
 	action_prompt_yes.add_theme_font_override("font", UI_FONT)
@@ -3088,9 +3221,65 @@ func _create_action_prompt() -> void:
 	action_prompt_no.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
 	action_prompt_no.add_theme_constant_override("font_spacing/space", 8)
 	action_prompt_no.pressed.connect(_hide_action_prompt)
-	button_row.add_child(action_prompt_yes)
-	button_row.add_child(action_prompt_no)
-	content.add_child(button_row)
+	action_button_row.add_child(action_prompt_yes)
+	action_button_row.add_child(action_prompt_no)
+	content.add_child(action_button_row)
+
+func _create_roll_value_choice_prompt() -> void:
+	var prompt_layer := CanvasLayer.new()
+	prompt_layer.layer = 12
+	add_child(prompt_layer)
+	roll_value_prompt_panel = PanelContainer.new()
+	roll_value_prompt_panel.visible = false
+	roll_value_prompt_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	roll_value_prompt_panel.z_index = 210
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0, 0, 0, 0.8)
+	panel_style.border_width_top = 2
+	panel_style.border_width_bottom = 2
+	panel_style.border_width_left = 2
+	panel_style.border_width_right = 2
+	panel_style.border_color = Color(1, 1, 1, 0.35)
+	roll_value_prompt_panel.add_theme_stylebox_override("panel", panel_style)
+	prompt_layer.add_child(roll_value_prompt_panel)
+
+	var content := VBoxContainer.new()
+	content.anchor_right = 1.0
+	content.anchor_bottom = 1.0
+	content.offset_left = 16.0
+	content.offset_top = 12.0
+	content.offset_right = -16.0
+	content.offset_bottom = -12.0
+	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	content.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.set("theme_override_constants/separation", 10)
+	roll_value_prompt_panel.add_child(content)
+
+	roll_value_prompt_label = Label.new()
+	roll_value_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	roll_value_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	roll_value_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	roll_value_prompt_label.custom_minimum_size = Vector2(460, 0)
+	roll_value_prompt_label.add_theme_font_override("font", UI_FONT)
+	roll_value_prompt_label.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+	roll_value_prompt_label.add_theme_constant_override("font_spacing/space", 8)
+	content.add_child(roll_value_prompt_label)
+
+	var value_button_row := HBoxContainer.new()
+	value_button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	value_button_row.set("theme_override_constants/separation", 8)
+	content.add_child(value_button_row)
+	for i in 6:
+		var value := i + 1
+		var btn := Button.new()
+		btn.text = "%d" % value
+		btn.add_theme_font_override("font", UI_FONT)
+		btn.add_theme_font_size_override("font_size", PURCHASE_FONT_SIZE)
+		btn.add_theme_constant_override("font_spacing/space", 8)
+		btn.pressed.connect(func() -> void:
+			_confirm_roll_value_choice(value)
+		)
+		value_button_row.add_child(btn)
 
 	# content already added above
 
@@ -3896,6 +4085,8 @@ func _apply_player_heart_loss(amount: int) -> void:
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
 	if player_current_hearts <= 0:
+		if _handle_ax_battler_heart_depletion():
+			return
 		_show_match_end_message("Game Over: hai finito i cuori.")
 
 func _apply_heal(amount: int, source_code: String = "") -> bool:
@@ -3909,6 +4100,10 @@ func _apply_heal(amount: int, source_code: String = "") -> bool:
 
 func _apply_heal_direct(amount: int) -> bool:
 	if amount <= 0:
+		return false
+	if active_curse_id == AX_BATTLER_CARD_ID:
+		if hand_ui != null and hand_ui.has_method("set_info"):
+			hand_ui.call("set_info", _ui_text("Ax Battler non puo curarsi."))
 		return false
 	if player_current_hearts >= player_max_hearts:
 		return false
@@ -4000,13 +4195,6 @@ func _count_equipped_timed_effect(effect_name: String, when: String = "") -> int
 func _get_equipped_roll_total_modifier() -> int:
 	var modifier: int = 0
 	modifier -= _count_equipped_timed_effect("equipped_roll_total_minus_1", "after_roll")
-	var all_dice_minus_cards: int = _count_equipped_timed_effect("equipped_all_dice_minus_1", "after_roll")
-	if all_dice_minus_cards > 0 and not last_roll_values.is_empty():
-		var reducible: int = 0
-		for v in last_roll_values:
-			if int(v) > 1:
-				reducible += 1
-		modifier -= reducible * all_dice_minus_cards
 	return modifier
 
 func _apply_end_turn_equipped_rewards() -> void:
@@ -4345,6 +4533,25 @@ func _apply_curse(card_data: Dictionary) -> void:
 	_update_hand_ui_stats()
 	_refresh_character_hearts_tokens()
 
+func _activate_ax_battler_curse(card_data: Dictionary) -> bool:
+	if card_data.is_empty():
+		return false
+	_apply_curse(card_data)
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Ax Battler prende il posto del personaggio. Non puo curarsi."))
+	return true
+
+func _handle_ax_battler_heart_depletion() -> bool:
+	if active_curse_id != AX_BATTLER_CARD_ID:
+		return false
+	_clear_active_curse(false)
+	player_current_hearts = min(player_max_hearts, max(1, player_current_hearts + 1))
+	_update_hand_ui_stats()
+	_refresh_character_hearts_tokens()
+	if hand_ui != null and hand_ui.has_method("set_info"):
+		hand_ui.call("set_info", _ui_text("Ax Battler rimosso: torna il personaggio maledetto."))
+	return true
+
 func _clear_active_curse(send_to_discard: bool = true) -> void:
 	if active_curse_id.strip_edges() == "":
 		return
@@ -4615,6 +4822,8 @@ func _update_character_form_for_hearts() -> void:
 	active_character_id = target_id
 	_apply_character_texture_override()
 	_init_character_stats(true)
+	_apply_equipment_slot_limit_after_curse()
+	_update_hand_ui_stats()
 
 func _try_transform_character(card: Node3D) -> bool:
 	if card == null or not is_instance_valid(card):
@@ -4642,6 +4851,7 @@ func _try_transform_character(card: Node3D) -> bool:
 	active_character_id = target_id
 	_apply_character_texture_override()
 	_init_character_stats(true)
+	_apply_equipment_slot_limit_after_curse()
 	_update_hand_ui_stats()
 	if hand_ui != null and hand_ui.has_method("set_info"):
 		var target_name: String = str(_get_character_entry(active_character_id).get("name", active_character_id))
@@ -4947,6 +5157,11 @@ func _on_hand_request_place_equipment(card: Dictionary, screen_pos: Vector2) -> 
 	var card_type := str(resolved.get("type", "")).strip_edges().to_lower()
 	if card_type != "equipaggiamento":
 		return
+	if str(resolved.get("id", "")).strip_edges() == AX_BATTLER_CARD_ID:
+		if _activate_ax_battler_curse(resolved):
+			_remove_hand_card(card, resolved)
+			_refresh_hand_ui()
+		return
 	var slot := _get_equipment_slot_under_mouse(screen_pos)
 	if slot == null:
 		slot = _get_first_free_equipment_slot()
@@ -5010,7 +5225,10 @@ func _place_equipment_in_slot(slot: Area3D, card_data: Dictionary) -> void:
 	card.set_meta("equipped_flipped", false)
 	var extra := _apply_equipment_extra_slots(card_data)
 	card.set_meta("extra_slots", extra)
+	if extra > 0:
+		_add_equipment_slots(extra)
 	_apply_equipment_slot_limit_after_curse()
+	_play_card_play_sfx()
 
 func _apply_equipment_extra_slots(card_data: Dictionary) -> int:
 	return _get_equipment_bonus_slots_from_card_data(card_data)
@@ -5260,6 +5478,9 @@ func _build_adventure_image_index() -> void:
 	dir.list_dir_end()
 
 func _get_adventure_image_path(card: Dictionary) -> String:
+	var explicit_image := str(card.get("image", "")).strip_edges()
+	if not explicit_image.is_empty():
+		return explicit_image
 	var card_name := _normalize_name(str(card.get("name", "")))
 	var key := _strip_variant_suffix(card_name)
 	if not adventure_image_index.has(key):
@@ -5286,6 +5507,34 @@ func _normalize_name(card_name: String) -> String:
 
 func _play_music() -> void:
 	MUSIC_CORE.play_music(self, MUSIC_TRACK, BATTLE_MUSIC_TRACK)
+
+func _setup_sfx_players() -> void:
+	card_play_sfx_player = _create_sfx_player(CARD_PLAY_SFX, -10.0)
+	card_flip_sfx_player = _create_sfx_player(CARD_FLIP_SFX, -9.0)
+	deck_shuffle_sfx_player = _create_sfx_player(DECK_SHUFFLE_SFX, -8.0)
+
+func _create_sfx_player(stream: AudioStream, volume_db: float) -> AudioStreamPlayer:
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = volume_db
+	player.bus = "Master"
+	add_child(player)
+	return player
+
+func _play_card_play_sfx() -> void:
+	if card_play_sfx_player == null:
+		return
+	card_play_sfx_player.play()
+
+func _play_card_flip_sfx() -> void:
+	if card_flip_sfx_player == null:
+		return
+	card_flip_sfx_player.play()
+
+func _play_deck_shuffle_sfx() -> void:
+	if deck_shuffle_sfx_player == null:
+		return
+	deck_shuffle_sfx_player.play()
 
 func _update_phase_music(immediate: bool = false) -> void:
 	MUSIC_CORE.update_phase_music(self, immediate)
